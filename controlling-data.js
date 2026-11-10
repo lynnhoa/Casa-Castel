@@ -27,9 +27,14 @@ window._ctrl = {
 
 /* Nov 2026 (C1 #17): every read is checked first — one failed read changes nothing (it switched the year anyway,
    without its bookings, and 'Book all' then overwrote real amounts). All parts are taken over together and the
-   year is set last, so a failed year change leaves you exactly where you were. */
-async function ctlLoadAll(year) {
-  const y = year || window._ctrl.year;
+   year is set last, so a failed year change leaves you exactly where you were.
+   C5 (#31): opt (only the reload when the app comes back, controlling-soll.js) = { ok(seq), quiet } — its rows are taken
+   over only if ok() still says so (no newer load, the same year, no save on its way or made meanwhile); quiet = a
+   failed read is no error message (the screen simply keeps what it has). Every other load works exactly as before. */
+let _ctlLoadSeq = 0;
+async function ctlLoadAll(year, opt) {
+  const y = year || window._ctrl.year, seq = ++_ctlLoadSeq;
+  const inc0 = window._src && window._src.incAll;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -43,9 +48,21 @@ async function ctlLoadAll(year) {
     _ctlSupa.from('ctrl_reconciliation').select('*').eq('year', y),
   ]);
   const rows = { properties: p, units: u, categories: c, income: inc, apt_expenses: apt, castel_expenses: cst, one_time: ot, recon: rec };
-  for (const k in rows) if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
+  for (const k in rows) if (rows[k].error) { if (!(opt && opt.quiet)) console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
+  if (opt && typeof opt.ok === 'function' && !opt.ok(seq)) throw new Error('not taken over');
+  const yearChanged = window._ctrl.year !== y;
   for (const k in rows) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
+  // C5: the all-years copy (balances) gets this year's rows as just read — unless a newer read of it came meanwhile
+  if (Array.isArray(inc0) && window._src.incAll === inc0) {
+    const key = r => r.unit_id + '|' + r.month, fresh = new Map(window._ctrl.income.filter(r => r.year === y).map(r => [key(r), r]));
+    const out = [];
+    for (const r of inc0) { if (r.year !== y) out.push(r); else if (fresh.has(key(r))) { out.push(fresh.get(key(r))); fresh.delete(key(r)); } }
+    window._src.incAll = out.concat([...fresh.values()]);
+  }
+  // C5: a tenant without a saved rent learns it from the loaded year's entries — another year, that Soll anew
+  if (yearChanged && typeof ctlSollDropLearned === 'function') ctlSollDropLearned();
+  ctlDataChanged();                                          // C5: new rows → the Tenant history works its balances out again
   await probe;
 }
 
@@ -83,6 +100,7 @@ function _ctlIncChanged(old, kalt, nk, split) {
   return false;
 }
 function _ctlIncCache(data) {
+  ctlDataChanged();                                                // C5: the Tenant history balances follow
   const y = data.year, m = data.month, u = data.unit_id;
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
@@ -130,6 +148,34 @@ function ctlProp(pid)   { return window._ctrl.properties.find(p => p.id === pid)
 function ctlUnit(uid)   { return window._ctrl.units.find(u => u.id === uid); }
 function ctlCat(cid)    { return window._ctrl.categories.find(c => c.id === cid); }
 function ctlUnitsOf(pid){ return window._ctrl.units.filter(u => u.property_id === pid); }
+
+/* ── C5 (Nov 2026, #32 · #33) · one screen = one snapshot ───────────────────────
+   A screen is drawn in one go (synchronously): nothing can be saved or loaded while it is drawn. So inside one
+   drawing a figure asked for again (a property's month, its links, its Abrechnungen …) is worked out once and
+   reused (ctlMemo). The memo starts with the drawing and is thrown away when it ends (ctlScope, try/finally),
+   also after an error. Outside a drawing nothing is kept: Settlements, every save and 'Book all' work exactly as
+   before. ctlDataChanged() (after any change of the data) also empties a memo that is running.
+   _ctlGen counts the changes: the Tenant history keeps its balances until the next one (controlling-soll.js). */
+let _ctlMemo = null;
+window._ctlGen = 0;
+function ctlScope(fn) {
+  if (typeof fn !== 'function' || fn._ctlScoped) return fn;
+  const w = function () {
+    if (_ctlMemo) return fn.apply(this, arguments);                 // drawn inside another drawing (Setup → History)
+    _ctlMemo = new Map();
+    try { return fn.apply(this, arguments); } finally { _ctlMemo = null; }
+  };
+  w._ctlScoped = true;
+  return w;
+}
+function ctlMemo(key, make) {
+  if (!_ctlMemo) return make();
+  if (_ctlMemo.has(key)) return _ctlMemo.get(key);
+  const v = make();
+  if (_ctlMemo) _ctlMemo.set(key, v);
+  return v;
+}
+function ctlDataChanged() { window._ctlGen++; if (_ctlMemo) _ctlMemo.clear(); }
 
 /* Timezone-safe date parser for invoice_date strings.
    Splits "YYYY-MM-DD..." directly — avoids new Date() shifting the day
@@ -265,6 +311,7 @@ async function ctlDeleteIncome(unit_id, month) {
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
   if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  ctlDataChanged();                                                  // C5: the Tenant history balances follow
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
 
@@ -290,6 +337,13 @@ async function ctlCreateUnit(fields) {
   if (error) throw error;
   window._ctrl.units.push(data);
   return data;
+}
+
+/* Setup: remove a unit (nothing booked on it — Setup checks that first) */
+async function ctlDeleteUnit(id) {
+  const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', id);
+  if (error) throw error;
+  window._ctrl.units = window._ctrl.units.filter(x => x.id !== id);
 }
 
 /* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
@@ -364,6 +418,57 @@ async function ctlDeleteOneTime(id) {
   window._ctrl.one_time = window._ctrl.one_time.filter(r => r.id !== id);
 }
 
+
+/* ── C5 (Nov 2026, #31) · saves on their way ───────────────────────────────────
+   Every save of Controlling's own data counts here while it runs (_ctlBusy) and when it starts and ends
+   (_ctlWriteSeq). The reload when the app comes back takes the year's rows over only if no save ran meanwhile —
+   rows read before a save never hide it (and 'Book all' never books it again). Each save also tells the
+   Tenant history that the data changed (ctlDataChanged).
+   rows = a save of month rows only (Income / Expenses entries and marks: take, 'Book all', Undo …): the read of the
+   other apps' data (ctlSollLoad) contains none of them and is not read again for it — only the income of every year
+   keeps your rows (C5 review: taps one after another threw every read away and the old rent stayed). Every other save
+   also counts in _ctlSrcBusy / _ctlSrcSeq. ctlIdle(max, src) → once no save (src: of that kind) has run for CTL_QUIET
+   ms — 'Book all' saves line after line — at most max ms (default 90 s; a phone gives a request up after ~60 s). */
+window._ctlBusy = 0; window._ctlWriteSeq = 0; window._ctlSrcBusy = 0; window._ctlSrcSeq = 0;
+const CTL_QUIET = 800;
+let _ctlIdleW = [], _ctlLastEnd = 0, _ctlSrcLastEnd = 0;
+function ctlIdle(max, src) {
+  const end = Date.now() + (max || 90000);
+  return new Promise(done => {
+    let t = 0;
+    const go = () => {
+      clearTimeout(t);
+      const now = Date.now(), q = (src ? _ctlSrcLastEnd : _ctlLastEnd) + CTL_QUIET - now;
+      if (now >= end) return done();
+      if ((src ? window._ctlSrcBusy : window._ctlBusy) > 0) { _ctlIdleW.push(go); t = setTimeout(go, end - now); return; }
+      if (q > 0) { t = setTimeout(go, Math.min(q, end - now)); return; }
+      done();
+    };
+    go();
+  });
+}
+function ctlWriting(fn, rows) {
+  if (typeof fn !== 'function' || fn._ctlWrite) return fn;
+  const w = async function () {
+    window._ctlBusy++; window._ctlWriteSeq++;
+    if (!rows) { window._ctlSrcBusy++; window._ctlSrcSeq++; }
+    try { return await fn.apply(this, arguments); }
+    finally {
+      window._ctlBusy--; window._ctlWriteSeq++; _ctlLastEnd = Date.now();
+      if (!rows) { window._ctlSrcBusy--; window._ctlSrcSeq++; _ctlSrcLastEnd = _ctlLastEnd; }
+      ctlDataChanged();
+      if (_ctlIdleW.length) { const w0 = _ctlIdleW; _ctlIdleW = []; w0.forEach(f => f()); }   // each one looks again
+    }
+  };
+  w._ctlWrite = true;
+  return w;
+}
+ctlUpsertIncome = ctlWriting(ctlUpsertIncome, 1);   ctlUpsertApt = ctlWriting(ctlUpsertApt, 1);       ctlUpsertCastel = ctlWriting(ctlUpsertCastel, 1);
+ctlDeleteIncome = ctlWriting(ctlDeleteIncome, 1);   ctlDeleteCastel = ctlWriting(ctlDeleteCastel, 1);
+ctlSetIncomeMark = ctlWriting(ctlSetIncomeMark, 1); ctlSetCastelMark = ctlWriting(ctlSetCastelMark, 1); ctlSetAptMark = ctlWriting(ctlSetAptMark, 1);
+ctlAddOneTime = ctlWriting(ctlAddOneTime);       ctlUpdateOneTime = ctlWriting(ctlUpdateOneTime); ctlDeleteOneTime = ctlWriting(ctlDeleteOneTime);
+ctlCreateUnit = ctlWriting(ctlCreateUnit);       ctlDeleteUnit = ctlWriting(ctlDeleteUnit);     ctlCreateProperty = ctlWriting(ctlCreateProperty);
+ctlUpdateRow = ctlWriting(ctlUpdateRow);
 
 /* ── Setup history ──────────────────────────────────────────── */
 async function ctlLogHistory(entity_type, entity_id, field, oldV, newV) {

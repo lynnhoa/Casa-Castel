@@ -970,3 +970,7 @@ function _cxRepDownload(f, name) {
   if (typeof ctlToast === 'function') ctlToast(name + ' exported');
   cxReportClose();
 }
+
+/* C5 (#32): one export = one snapshot (controlling-data.js ctlScope) */
+cxRepData = ctlScope(cxRepData);
+cxRepQuick = ctlScope(cxRepQuick);

@@ -26,11 +26,7 @@
 
 'use strict';
 
-let _cxDash = { openInc: 0, openMonth: 0 };           // for the jump targets
 if (!CX.dashView) CX.dashView = 'm';                    // default: Monat
-if (CX.dashMode !== 'konto' && CX.dashMode !== 'tats') CX.dashMode = 'konto';   // Konto | Tatsächlich (D18)
-
-/* Konto / Tatsächlich of several properties over several months (change round 3) */
 
 function _cxIsFuture(y, m) {
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
@@ -60,7 +56,8 @@ function _cxYearMonths(y) {                             // 1 … current month (
    Its Soll (export Income / Expense) only from its first to its last rent or cost booking — a late Abrechnung paid after
    the sale brings no Soll back. Active properties: as before, from the purchase month on. No sale date exists anywhere,
    so the bookings are the rule. Only the loaded year has its bookings here (another year → null). */
-function _cxPropSpan(p, y, regular) {
+function _cxPropSpan(p, y, regular) { return ctlMemo('span|' + p.id + '|' + y + '|' + window._ctrl.year + '|' + !!regular, () => _cxPropSpanRaw(p, y, regular)); }   // C5: once per drawing
+function _cxPropSpanRaw(p, y, regular) {
   const C = window._ctrl, has = v => v !== null && v !== undefined && v !== '';
   if (y !== C.year) return null;
   const uids = new Set(ctlUnitsOf(p.id).map(u => u.id));
@@ -131,10 +128,10 @@ function _cxOpenOf(p, y, m) {
    Kreditraten come from Properties (rate, Zinsen, Tilgung) — not entered.
    ══════════════════════════════════════════════════════════════ */
 
-/* How many one-off bills / refunds and Abrechnungen results fall in the period (dashboard tiles) */
-
-/* One property over some months (all Ist values; loans from Properties) */
-function _cxDashProp(p, months) {
+/* One property over some months (all Ist values; loans from Properties) · C5: once per drawing (the year stays the
+   year's own sum — the Kreditrate split is decided on the year's totals, never a sum of the month results) */
+function _cxDashProp(p, months) { return ctlMemo('dp|' + p.id + '|' + window._ctrl.year + '|' + months.join(','), () => _cxDashPropRaw(p, months)); }
+function _cxDashPropRaw(p, months) {
   const y = window._ctrl.year, casa = p.id === CASA_PROP_ID;
   const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
   const r = { kalt: 0, nk: 0, kosten: 0, einmalig: 0, abr: 0, rate: 0, zins: 0, tilg: 0, unknown: 0, split: true, loan: null };
@@ -191,8 +188,6 @@ function _cxDashSum(list) {
   for (const k in t) if (k !== 'noSplit') t[k] = cxR(t[k]);
   return t;
 }
-
-/* The calculation: Kalt | Warm, three results */
 
 /* ── Calculation sheet (tap on the Cashflow number) ─────────────
    Full-screen drawer: Rentals · Casa Castel · Total. Month: one-offs and
@@ -368,19 +363,14 @@ window.renderDashboard = function () {
   const t = _cxDashSum(per.map(x => x.r));
   const D = '\u2014';
 
-  // open items (to enter / confirm) in the period
-  let open = 0, openInc = 0, openCasa = 0;
-  const openMonths = new Set();
-  for (const p of props) for (const mm of months) {
+  // open items (to enter / confirm) in the period — C5 (#33): only Month view shows them ("preliminary")
+  let open = 0;
+  if (!isYear) for (const p of props) for (const mm of months) {
     if (_cxIsFuture(y, mm)) continue;                       // DB1: a later month is not due yet → nothing open
     if (!p.active || !ctlPropOwned(p, y, mm)) continue;     // before the purchase / switched off (sold): nothing is open
-    const o = _cxOpenOf(p, y, mm), k = o.inc + o.exp;
-    if (k) openMonths.add(mm);
-    open += k; openInc += o.inc;
-    if (p.id === CASA_PROP_ID) openCasa += k;
+    const o = _cxOpenOf(p, y, mm);
+    open += o.inc + o.exp;
   }
-  _cxDash.openInc = openInc; _cxDash.openCasa = openCasa; _cxDash.open = open;
-  _cxDash.openMonth = openMonths.size ? Math.max(...openMonths) : 0;
 
   const periodTitle = isYear ? String(y) : EN_M[m - 1] + ' ' + y;
   const lastM = months.length ? months[months.length - 1] : 0;
@@ -547,12 +537,6 @@ window.renderDashboard = function () {
         try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {}
         return window.renderDashboard();
       }
-      if (a === 'gotoOpen') {
-        // wired once → read the live view (CX.dashView), not this render's
-        if (CX.dashView === 'y' && _cxDash.openMonth) { CX.month = _cxDash.openMonth; try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {} }
-        CX.sub = _cxDash.openInc ? 'income' : 'expenses';
-        return cxGoto(_cxDash.openCasa && _cxDash.openCasa === _cxDash.open ? 'casa' : 'rentals');
-      }
       if (a === 'toProps') { location.href = 'properties.html'; return; }
       if (a === 'yprev' || a === 'ynext') {
         const ny = window._ctrl.year + (a === 'yprev' ? -1 : 1);
@@ -609,3 +593,6 @@ window.renderDashboard = function () {
 `;
   document.head.appendChild(st);
 })();
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderDashboard = ctlScope(window.renderDashboard);

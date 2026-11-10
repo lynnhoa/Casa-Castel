@@ -187,8 +187,9 @@ async function _cxHClick(ev, host) {
   const [app, tid] = key.split(':');
   try {
     if (a === 'delP') {
+      const pid = b.dataset.id;               // the entry tapped — a drawing under the question moves rows (C5 review)
       if (!(await ccConfirm('Delete this rent entry?', '', 'Delete', true))) return;
-      await ccRpDelete(db, b.dataset.id);
+      await ccRpDelete(db, pid);
     }
     if (a === 'confirm') {
       const t = _cxHTenant(app, tid); if (!t) return;
@@ -220,6 +221,7 @@ async function _cxHClick(ev, host) {
     if (typeof ccRpIsMissing === 'function' && ccRpIsMissing(e)) ctlToast('Please run the SQL update first');
     else cxToastErr(e);
   }
+  if (typeof ctlDataChanged === 'function') ctlDataChanged();   // C5: saved or not — the balances are worked out again
   rerender();
 }
 
@@ -241,24 +243,31 @@ async function _cxHChange(ev, host) {
   ev.stopPropagation();
   const [key, field] = el.dataset.hDate.split('|');
   const [app, tid] = key.split(':');
-  const t = _cxHTenant(app, tid); if (!t) return;
+  const t0 = _cxHTenant(app, tid); if (!t0) return;
   const iso = ccRpIso(el.value) || null;
   if (field === 'mietbeginn' && !iso) { ctlToast('Move-in can\'t be empty'); return window.renderHistory(host); }
   // #10: say what really happens — the rent follows the Contract start (default) or, with "Rent from: Move-in"
   // or no Contract start, the move-in. The rent entries keep their dates either way.
-  if (field === 'mietbeginn' && t.mietbeginn) {
-    const cs = t.rent_from === 'move' ? '' : _cxHCs(t);
+  if (field === 'mietbeginn' && t0.mietbeginn) {
+    const cs = t0.rent_from === 'move' ? '' : _cxHCs(t0);
     const what = cs ? 'The rent follows the contract start (' + cxFmtDate(cs) + ') – change it in Tenants.'
                     : 'The rent then starts on the new move-in, ' + cxFmtDate(iso) + '.';
     if (!(await ccConfirm('Change the move-in?', what, 'Change'))) return window.renderHistory(host);
   }
+  // C5 review: a read that landed while the question was open has new tenant rows — the date goes into those
+  const t = _cxHTenant(app, tid) || t0;
   const before = t[field];
   t[field] = iso;
   try {
-    const { error } = await _ctlSupa.from(_cxHTable(app)).update({ [field]: iso }).eq('id', t.id);
+    const { error } = await ctlWriting(() => _ctlSupa.from(_cxHTable(app)).update({ [field]: iso }).eq('id', t.id))();
     if (error) throw error;
     ctlSollReset();
     ctlToast('Saved');
-  } catch (e) { t[field] = before; cxToastErr(e); }
+  } catch (e) { t[field] = before; if (typeof ctlDataChanged === 'function') ctlDataChanged(); cxToastErr(e); }   // C5: back to the date before
   window.renderHistory(host);
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderHistory = ctlScope(window.renderHistory);
+/* C5: a rent entry saved or deleted here counts as a save — a read running meanwhile is read again after it (ctlSollLoad) */
+if (typeof ccRpInsert === 'function') { ccRpInsert = ctlWriting(ccRpInsert); ccRpUpdate = ctlWriting(ccRpUpdate); ccRpDelete = ctlWriting(ccRpDelete); }

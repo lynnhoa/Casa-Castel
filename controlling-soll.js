@@ -114,36 +114,69 @@ async function ctlReadAll(first, query, label) {
    that part simply falls back to the plan values.
    Nov 2026 (C1 #16): a read that fails on a LATER load (the app comes back in front on a weak connection) keeps
    the rows already loaded — it emptied them: Kreditrate lines vanished, Hausgeld fell back to an old amount and
-   'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before. */
-async function ctlSollLoad() {
-  const had = !!window._src.loaded;
-  const res = await Promise.all(_CX_SRC.map(([, t]) => {
-    const q = () => _ctlSupa.from(t).select('*');
-    return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
-  }));
-  _CX_SRC.forEach(([k, t], i) => {
+   'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before.
+   C5 (Nov 2026, #31): only = a Set of keys → just those sources (+ the Abrechnungen bookings if 'abrPay' is in it):
+   every source the other apps change while Controlling is in the background (_CX_LIVE) — all but the income of
+   every year (large; the year on screen comes with the return, the rest with a full read) and the meter readings
+   (Settlements only). Without it: everything, as before.
+   A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review).
+   A save of your own while a later read runs (an Abrechnung booked, a rent entered, a move-out typed …): the answer
+   may have been read before that save and would hide it (the row showed open again, the move-out went blank), while
+   keeping the old rows would hide what the other apps changed → that read is not used; it is read again once the
+   saves are done (ctlIdle: no save for a moment — at most 90 s, then the rows you have stay and the next return reads
+   everything). Saves of month rows only (take, 'Book all', Undo, marks — ctlWriting rows) are not in this read: it is
+   used, only the income of every year stays as you have it (it holds those rows) and comes with the next full read.
+   window._src.day: the day of the read — the Soll reads today (data checks, room price from this month on). */
+const _CX_LIVE = new Set(_CX_SRC.map(([k]) => k).filter(k => k !== 'incAll' && k !== 'readings').concat('abrPay', 'knkAll'));
+const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
+const _cxLost = new Set();
+const _CX_ABR_Q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
+const _CX_KNK_Q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
+async function _cxReadSources(SRC, abr, knk) {
+  const one = (q, t) => q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
+  return Promise.all([Promise.all(SRC.map(([, t]) => one(() => _ctlSupa.from(t).select('*'), t))),
+    abr ? one(_CX_ABR_Q, 'ctrl_expense_one_time (Abrechnungen)') : null,
+    knk ? one(_CX_KNK_Q, 'ctrl_expense_one_time (Kaufnebenkosten)') : null]);
+}
+async function ctlSollLoad(only) {
+  const had = !!window._src.loaded, lost = k => !had || _cxLost.has(k);
+  const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
+  const abr = !only || only.has('abrPay'), knk = !only || only.has('knkAll');
+  let got = null, keepInc = false;
+  const end = Date.now() + 90000;
+  do {
+    if (had && typeof ctlIdle === 'function') await ctlIdle(Math.max(1, end - Date.now()), true);   // a save on its way: read after it
+    const ws = window._ctlWriteSeq, ss = window._ctlSrcSeq;
+    const r = await _cxReadSources(SRC, abr, knk);
+    if (!had || (window._ctlSrcSeq === ss && !(window._ctlSrcBusy > 0))) {
+      got = r; keepInc = had && (window._ctlWriteSeq !== ws || window._ctlBusy > 0);   // month rows saved meanwhile
+    }
+  } while (!got && Date.now() < end);
+  if (!got) { window._src.fullAt = 0; return; }                        // saves all the while: the rows you have stay
+  const [res, ra, rk] = got;
+  SRC.forEach(([k, t], i) => {
+    if (keepInc && k === 'incAll') return;                // holds the month rows you saved meanwhile
     if (res[i].error) {
       console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
-      if (had) return;                                   // keep what was loaded before
-    }
+      if (!lost(k)) return;                              // keep what was loaded before
+      _cxLost.add(k);
+    } else _cxLost.delete(k);
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
-  try {
-    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
-    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
-    if (r.error) throw r.error;
-    window._src.abrPay = r.data || [];
-  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!had) window._src.abrPay = []; }
+  if (ra) {
+    if (!ra.error) { window._src.abrPay = ra.data || []; _cxLost.delete('abrPay'); }
+    else { console.warn('[controlling] Abrechnungen bookings:', ra.error.message || ra.error); if (lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
+  }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
-  try {
-    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
-    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
-    if (r.error) throw r.error;
-    window._src.knkAll = r.data || [];
-  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (!had) window._src.knkAll = []; }
+  if (rk) {
+    if (!rk.error) { window._src.knkAll = rk.data || []; _cxLost.delete('knkAll'); }
+    else { console.warn('[controlling] Kaufnebenkosten:', rk.error.message || rk.error); if (lost('knkAll')) { window._src.knkAll = []; _cxLost.add('knkAll'); } }
+  }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
+  window._src.day = _cxToday();
+  if (!only && !keepInc) window._src.fullAt = window._src.loadedAt;
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen
 }
 
@@ -176,21 +209,76 @@ function ctlVisibleCheck(propName, unitName, check) {
   const left = String(check).split(' · ').filter(t => !d[ctlCheckKey(propName, unitName, t)]);
   return left.length ? left.join(' · ') : null;
 }
-/* Reload the other apps' data (tenants, rooms, parking, loans, settlements) */
+/* Reload the other apps' data (tenants, rooms, parking, loans, settlements) — at most every 20 s.
+   C5 (Nov 2026, #31) · full = everything (Setup, the first time, or the last full read is 10 minutes old): as before,
+   then the screen is worked out anew. Otherwise only what the other apps change (_CX_LIVE) — and, with year, the year
+   on screen (another device or Settlements may have booked meanwhile, ctlLoadAll). Nothing changed → the rows you
+   had stay (the very same ones), nothing is worked out or drawn again → false. A failed read keeps what was there.
+   The year's rows are taken over only if no newer load, no other year and no save came meanwhile (ctlLoadAll opt). */
 let _cxRefreshing = null;
-async function ctlRefreshSources(force) {
-  if (_cxRefreshing) return _cxRefreshing;
-  if (!force && window._src.loadedAt && Date.now() - window._src.loadedAt < 20000) return false;
+async function ctlRefreshSources(force, full, year) {
+  // a full read asked for (Setup) while a return reads only the live part: the full read follows it (C5 review)
+  if (_cxRefreshing) return (full || force) && !_cxRefreshing.all
+    ? _cxRefreshing.then(a => ctlRefreshSources(force, full, year).then(b => a || b)) : _cxRefreshing;
+  const now = Date.now(), S = window._src, last = full ? S.fullAt : S.loadedAt;
+  if (!force && last && now - last < 20000) return false;
+  const all = !!(force || full || !S.fullAt || now - S.fullAt >= CTL_FULL_EVERY);
   _cxRefreshing = (async () => {
-    try { await ctlSollLoad(); if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
+    try {
+      return await _ctlReload(all ? null : new Set([..._CX_LIVE, ..._cxLost]), year);   // + what failed at start
+    }
     catch (e) { console.warn('[controlling] refresh', e); return false; }
     finally { _cxRefreshing = null; }
   })();
+  _cxRefreshing.all = all;
   return _cxRefreshing;
 }
+/* The year on screen again (through the global ctlLoadAll: Providers' months come with it) → true if taken over */
+async function _ctlReloadYear() {
+  const C = window._ctrl, y = C.year, ws = window._ctlWriteSeq;
+  const calm = () => !(window._ctlBusy > 0) && window._ctlWriteSeq === ws &&
+    !(typeof _cxOt !== 'undefined' && CX.tab === 'onetime' && _cxOt.form !== null);   // a One-off being edited keeps its rows
+  let mine = null;
+  const ok = seq => { if (seq !== undefined) mine = seq; return mine === _ctlLoadSeq && C.year === y && calm(); };
+  if (!calm()) return false;
+  try { await ctlLoadAll(y, { ok, quiet: true }); } catch (e) { return false; }
+  return true;
+}
+/* only = the live part (a Set of keys) or null = everything. Changed (or a save of yours meanwhile) → the Soll is worked
+   out anew → true. Nothing changed → the rows you had stay (the very same ones) → false: nothing is drawn again —
+   Setup and Tenant history read everything when opened, and were drawn again from scratch each time (C5 review). */
+async function _ctlReload(only, year) {
+  const S = window._src, C = window._ctrl, pv = window._pvCtl || null;
+  const sk = only ? [...only] : _CX_SRC.map(([k]) => k).concat('abrPay', 'knkAll'),
+    ck = ['properties', 'units', 'categories', 'income', 'apt_expenses', 'castel_expenses', 'one_time', 'recon'];
+  const keep = { s: sk.map(k => S[k]), c: ck.map(k => C[k]), inc: S.incAll, pv: pv && [pv.y, pv.rows, pv.claimed] };
+  const sig = () => JSON.stringify([sk.map(k => S[k]), ck.map(k => C[k]), pv && [pv.y, pv.rows, pv.claimed]]);
+  const before = sig(), ws = window._ctlWriteSeq, day = S.day;
+  await Promise.all([only ? ctlSollLoad(only) : ctlSollLoad(), year ? _ctlReloadYear() : null]);
+  const saved = window._ctlWriteSeq !== ws || window._ctlBusy > 0;      // a save meanwhile: its rows stay as they are now
+  // a new day counts as a change: the Soll reads today (a contract that ended yesterday, the room price of a new month)
+  if (saved || S.day !== day || sig() !== before) { if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
+  // nothing changed: the rows you had stay — an open pop-up, a fold or a line being booked keeps its own rows
+  sk.forEach((k, i) => { S[k] = keep.s[i]; });
+  ck.forEach((k, i) => { C[k] = keep.c[i]; });
+  S.incAll = keep.inc;
+  if (pv && keep.pv) { pv.y = keep.pv[0]; pv.rows = keep.pv[1]; pv.claimed = keep.pv[2]; }
+  if (typeof ccRpSetRows === 'function') ccRpSetRows(S.rentP);
+  return false;
+}
+/* Back to the app: Controlling only (its boot sets _ctlLiveReload) — Settlements loads this file too but has its own
+   rule (settlements-app.js, once a minute); it read everything twice (C5 x5). Setup and Tenant history read
+   everything, as before: the income of every year (balances) and what was just fixed in Rentals / Casa Castel. */
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState !== 'visible' || !window._src.loaded) return;
-  if (await ctlRefreshSources(false) && typeof cxRenderActive === 'function') cxRenderActive();
+  if (document.visibilityState !== 'visible' || !window._src.loaded || !window._ctlLiveReload) return;
+  const setup = typeof CX !== 'undefined' && CX.tab === 'setup';
+  const ch = await ctlRefreshSources(false, setup, true);
+  if (typeof cxRenderActive !== 'function' || typeof CX === 'undefined') return;
+  if (CX.tab !== 'setup') { if (ch) cxRenderActive(); return; }
+  // Setup / Tenant history: a form being filled in is not reset (_cxFilling) — drawn once it is done (_cxSU.due)
+  const su = typeof _cxSU !== 'undefined' ? _cxSU : {};
+  if (!(ch || su.due)) return;
+  if (typeof _cxFilling === 'function' && _cxFilling(document.getElementById('tab-setup'))) su.due = true; else cxRenderActive();
 });
 
 /* ── small helpers ── */
@@ -218,7 +306,12 @@ const _cxEurS = v => { const n = Number(v) || 0, whole = Math.abs(n - Math.round
 const _cxIsParking = u => /garage|stellplatz|\btg\b/i.test(String(u.unit_type || '') + ' ' + String(u.name || ''));
 
 /* ── Links ─────────────────────────────────────────────────── */
+/* C5 (#32): asked thousands of times per screen → once per property and drawing (ctlMemo, controlling-data.js) */
 function ctlPropLinks(p) {
+  return typeof ctlMemo === 'function' && p && p.id != null
+    ? ctlMemo('pl|' + p.id + '|' + (p.rentals_apartment_ref ?? '') + '|' + (p.loan_ref ?? '') + '|' + p.name, () => _ctlPropLinks(p)) : _ctlPropLinks(p);
+}
+function _ctlPropLinks(p) {
   const S = window._src;
   let apt = null, aptAuto = false, loan = null, loanAuto = false;
   if (p.rentals_apartment_ref) apt = S.apts.find(a => String(a.id) === String(p.rentals_apartment_ref)) || null;
@@ -365,7 +458,8 @@ const _cxUnitCache = new Map();
 /* Year export only (bucket 3, Oct 2026): '' = every tenant whose rent window covers a day pays (the app) ·
    'old' | 'new' = one rent per day and unit on double-rent days (the previous / the new tenant) */
 let _cxOneRent = '';
-function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
+const _cxLearnedU = new Set();                            // units whose Soll used a rent learned from the loaded year
+function ctlSollReset() { _cxUnitCache.clear(); _cxLearnedU.clear(); if (typeof ctlDataChanged === 'function') ctlDataChanged(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
 /* x6 (Nov 2026) · an Income entry was saved or deleted: forget the Soll of that ONE unit — a tenant without a saved rent
    learns it from these entries (_cxLearned reads only this unit's rows), so its other months follow at once, as after a
    reload. Keys: v2 'v2|pid|unit|y|m|…' · v1 'pid|unit|y|m|…' */
@@ -373,6 +467,13 @@ function ctlSollDropUnit(unitId) {
   if (unitId === null || unitId === undefined) return;
   const id = String(unitId);
   for (const k of [..._cxUnitCache.keys()]) { const s = k.split('|'); if ((s[0] === 'v2' ? s[2] : s[1]) === id) _cxUnitCache.delete(k); }
+}
+/* C5 · another year loaded: a rent learned from entries (_cxLearned reads the loaded year) is worked out anew —
+   the same figure a freshly opened page shows; every other unit keeps its worked-out Soll */
+function ctlSollDropLearned() {
+  for (const id of _cxLearnedU) ctlSollDropUnit(id);
+  _cxLearnedU.clear();
+  ctlSettlementInvalidate();
 }
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
@@ -382,6 +483,7 @@ function ctlSollDropUnit(unitId) {
      3 today's room / apartment price — flagged if the tenant is no longer there   */
 function _cxLearned(u, t, y, m) {
   if (u.id == null) return null;
+  _cxLearnedU.add(String(u.id));
   const count = new Map(), P = ctlProp(u.property_id);
   for (const r of (window._ctrl.income || [])) {
     if (r.unit_id !== u.id || (r.year === y && r.month === m)) continue;
@@ -946,8 +1048,20 @@ function ctlTenancyBalance(u, pid, tid) {
   return { soll: _cxR(soll), ist: _cxR(ist), saldo: _cxR(soll - ist), months, missing, missingSum: _cxR(missingSum) };
 }
 
-/* Everything the history screen needs for one unit (Phase 3) */
+/* Everything the history screen needs for one unit (Phase 3)
+   C5 (#32): kept until the data changes (_ctlGen: ctlSollReset, an Income entry saved or deleted, a year or the
+   other apps' data loaded, a Tenant history edit) — folding a unit draws the screen again without working out
+   every tenancy and balance anew. Only the Tenant history reads it. */
+const _cxHistCache = new Map();
+let _cxHistGen = null;
 function ctlUnitHistory(u, pid) {
+  const gen = (window._ctlGen || 0) + '|' + _cxToday() + '|' + (window.CC_RENT_ENGINE || '');
+  if (gen !== _cxHistGen) { _cxHistCache.clear(); _cxHistGen = gen; }
+  const k = pid + '|' + (u.id ?? 'v:' + u.name) + '|' + (u.source_type || '') + '|' + (u.source_ref || '');
+  if (!_cxHistCache.has(k)) _cxHistCache.set(k, _ctlUnitHistory(u, pid));
+  return _cxHistCache.get(k);
+}
+function _ctlUnitHistory(u, pid) {
   const p = ctlProp(pid), link = ctlUnitLink(u, p);
   if (!link) return { link: null, tenancies: [], orphans: [] };
   const all = _cxTenancies(link), memo = new Map();

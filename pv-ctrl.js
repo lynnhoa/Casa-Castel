@@ -39,16 +39,19 @@
   };
 
   /* load: the year's Providers months, together with Controlling's own data */
+  /* C5 (#31): the reload when the app comes back passes { ok } — its months are taken over only while ok() still
+     says so, and a failed read there keeps the months you had (every other load: as before) */
   const _load = ctlLoadAll;
   ctlLoadAll = async function () {
     const r = await _load.apply(this, arguments);
+    const opt = arguments[1], live = !!(opt && typeof opt.ok === 'function');
     try {
       const { data, error } = await _ctlSupa.rpc('pv_ctrl_year', { p_year: window._ctrl.year });
-      st.y = window._ctrl.year; st.rows = !error && Array.isArray(data) ? data : [];
-    } catch (e) { st.y = window._ctrl.year; st.rows = []; }
+      if (!live || (!error && opt.ok())) { st.y = window._ctrl.year; st.rows = !error && Array.isArray(data) ? data : []; }
+    } catch (e) { if (!live) { st.y = window._ctrl.year; st.rows = []; } }
     try {                                                    /* Fix 6: which cost types Providers owns, and since when */
       const { data: cl, error: e2 } = await _ctlSupa.rpc('pv_ctrl_claimed', {});
-      st.claimed = !e2 && Array.isArray(cl) ? cl : [];
+      if (!live || (!e2 && opt.ok())) st.claimed = !e2 && Array.isArray(cl) ? cl : [];
     } catch (e) { st.claimed = st.claimed || []; }
     return r;
   };
@@ -122,20 +125,23 @@
     if (failed) { note('Paid \u2713 did not reach Providers \u2013 try again'); return; }
     pv.paid = on; pv.changed = false;
   }
+  // C5 (#31): the Providers confirmation counts as part of the save — a save of month rows, as the one it wraps
+  // (ctlWriting rows: the reload after coming back is not read again for it — Casa Castel takes kept the old Soll)
+  const writing = typeof ctlWriting === 'function' ? f => ctlWriting(f, 1) : f => f;
   const _ups = ctlUpsertCastel;
-  ctlUpsertCastel = async function (category_id, month) {
+  ctlUpsertCastel = writing(async function (category_id, month) {
     const pv = find(category_id, window._ctrl.year, month);
     const res = await _ups.apply(this, arguments);
     await paid(pv, true);
     return res;
-  };
+  });
   const _del = ctlDeleteCastel;
-  ctlDeleteCastel = async function (category_id, month) {
+  ctlDeleteCastel = writing(async function (category_id, month) {
     const pv = find(category_id, window._ctrl.year, month);
     const res = await _del.apply(this, arguments);
     await paid(pv, false);
     return res;
-  };
+  });
 
   /* drill-down: the month's invoices under the line */
   function decorate() {

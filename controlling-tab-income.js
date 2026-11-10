@@ -265,3 +265,6 @@ async function _cxIncSavePartNow(e, ist, y, m) {
     await ctlUpsertIncome(e.u.id, m, cxR(total - nk), nk, split);
   } catch (err) { cxToastErr(err); }
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderIncome = ctlScope(window.renderIncome);

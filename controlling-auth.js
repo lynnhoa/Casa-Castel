@@ -91,6 +91,7 @@ async function boot() {
     await ctlEnsureParts();
     await Promise.all([ctlLoadAll(), ctlSollLoad()]);   // Controlling data + planned amounts from the other apps
     document.getElementById('appShell').style.display = 'block';
+    window._ctlLiveReload = true;                       // C5 (#31): coming back to the app reloads what the other apps change
     window.renderDashboard?.();
   } catch (e) {
     console.error('[controlling] boot failed:', e);
