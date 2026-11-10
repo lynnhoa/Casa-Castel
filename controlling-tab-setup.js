@@ -156,13 +156,11 @@ function _cxSuLoanNow(L, y0, m0, later) {                   // the Kreditrate of
 /* you are filling in host: a field there has the focus (a drawing matches fields by position — a card or tenant row
    that came or went above it gave the field you are in to another property or tenant, or removed it, C5 review), a date
    is being picked (cc-cal), or a field holds something other than what was drawn (typed, picked, ticked) */
-function _cxSuIn(host) {                                   // a field there has the focus, or a date is being picked
-  const a = document.activeElement;
-  return !!(a && host.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) || !!document.getElementById('ccCal');
-}
 function _cxFilling(host) {
   if (!host) return false;
-  if (_cxSuIn(host)) return true;
+  const a = document.activeElement;
+  if (a && host.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return true;
+  if (document.getElementById('ccCal')) return true;
   for (const e of host.querySelectorAll('input, select, textarea')) {
     if (e.type === 'file' || e.type === 'button' || e.type === 'submit') continue;
     if (e.tagName === 'SELECT') { if (e.multiple) continue; const d = [...e.options].findIndex(o => o.defaultSelected); if (e.selectedIndex !== (d < 0 ? 0 : d)) return true; }
@@ -173,20 +171,12 @@ function _cxFilling(host) {
 }
 /* a drawing put off while you were filling in (_cxSU.due) follows once you leave the field — after the tap that left it;
    a Setup save that tap started draws it itself when done (C6: also when 'Book all' saves on another tab meanwhile — it was
-   dropped). A save that ended while you were in a field (dueSave) is drawn once you are in none: its field holds the
-   value saved, not the one drawn (C6s-1). */
+   dropped). A Setup save that ends while you are in a field draws at once: cxPaint keeps the field you are in yours (C6s-1). */
 if (typeof document !== 'undefined') document.addEventListener('focusout', e => {
   const host = document.getElementById('tab-setup');
   if (!_cxSU.due || !host || !host.contains(e.target)) return;
-  setTimeout(() => { if (_cxSU.due && host.style.display !== 'none' && !(window._ctlSrcBusy > 0) && !(_cxSU.dueSave ? _cxSuIn(host) : _cxFilling(host))) window.renderSetup(); }, 250);
+  setTimeout(() => { if (_cxSU.due && host.style.display !== 'none' && !(window._ctlSrcBusy > 0) && !_cxFilling(host)) window.renderSetup(); }, 250);
 });
-/* C6 (C6s-1): a Setup save is done — drawn now, unless you are in a field: a drawing then matched the field you are in by
-   position (a card that came or went gave it to another property, a wrong amount was saved) → once you leave it */
-function _cxSuDone() {
-  const host = document.getElementById('tab-setup');
-  if (host && _cxSuIn(host)) { _cxSU.due = _cxSU.dueSave = true; return; }
-  window.renderSetup();
-}
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
   if (!host || cxOffScreen(host)) return;   // C6: a Setup save that ends after you left Setup draws the screen you are on
@@ -197,7 +187,7 @@ window.renderSetup = function () {
   // Tenant history is opened (a full read at most every 20 s) — drawn again when something changed, unless you are
   // filling in a field: a drawing puts every other field back to its drawn value (a form being filled in kept nothing,
   // C5 review) — then the figures follow with the next drawing (your save) or the next return (_cxSU.due)
-  _cxSU.due = _cxSU.dueSave = false;
+  _cxSU.due = false;
   if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - (window._src.fullAt || 0) > 20000) {
     _cxSU.refreshing = true;
     ctlRefreshSources(false, true).then(ch => {
@@ -368,7 +358,7 @@ window.renderSetup = function () {
           ctlToast(name + ' added');
         } catch (e) { cxToastErr(e); }
         b.disabled = false;
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'firstMonth') {                                      // #30: Full month · From handover day
         const id = Number(b.dataset.p), v = b.dataset.v === 'handover' ? 'handover' : 'full', p = ctlProp(id);
@@ -376,13 +366,13 @@ window.renderSetup = function () {
         b.disabled = true;
         try { await ctlUpdateRow('ctrl_properties', id, { first_month: v }); } catch (e) { cxToastErr(e); }   // ctlUpdateRow resets the Soll
         b.disabled = false;
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'aptAdd') {                                          // #6: the living unit of the linked Rentals apartment
         b.disabled = true;
         try { await _cxSuEnsureLiving(Number(b.dataset.p)); } catch (e) { cxToastErr(e); }   // failed → nothing made, the button stays
         b.disabled = false;
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'acceptAll') {
         b.disabled = true;
@@ -401,26 +391,28 @@ window.renderSetup = function () {
           } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); }
         }
         if (typeof ctlToast === 'function') ctlToast(err ? ok + ' of ' + n + ' saved · ' + String(err.message || err).slice(0, 60) : 'Links saved');
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'hintX') { ctlDismiss(b.dataset.k); return window.renderSetup(); }
       if (a === 'hintAll') { ctlUndismissAll(['lnk:', 'chk:', 'sug:']); return window.renderSetup(); }
       if (a === 'suEdit') { const id = Number(b.dataset.u); _cxSU.edit[id] = !_cxSU.edit[id]; return window.renderSetup(); }
       if (a === 'suDel') {
         const id = Number(b.dataset.u), u = ctlUnit(id);
-        if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
+        if (!u) return;                                               // C6: removed meanwhile (a 2nd tap on its row)
+        if (_cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
         if (!(await ccConfirm('Remove from Controlling?', ccEscHtml(u.name), 'Remove', true))) return;
         try {
           await ctlDeleteUnit(id);
           ctlSollReset();
         } catch (e) { cxToastErr(e); }
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'pkAdd') {
         const pk = (window._src.parking || []).find(x => String(x.id) === String(b.dataset.pk));
         const pid = Number(document.getElementById('cxPkProp-' + b.dataset.pk)?.value);
         const p = ctlProp(pid);
         if (!pk || !p) return;
+        if (window._ctrl.units.some(u => u.source_type === 'rentals_parking' && String(u.source_ref) === String(pk.id))) return;   // C6: added meanwhile (a 2nd tap)
         b.disabled = true;
         // short name inside the property: "Studio One TG 3" in Studio One → "TG 3"
         const short = String(pk.name).toLowerCase().startsWith(String(p.name).toLowerCase() + ' ') ? String(pk.name).slice(p.name.length + 1) : pk.name;
@@ -431,7 +423,7 @@ window.renderSetup = function () {
           ctlSollReset();
           if (typeof ctlToast === 'function') ctlToast(short + ' added to ' + p.name);
         } catch (e) { cxToastErr(e); }
-        return _cxSuDone();
+        return window.renderSetup();
       }
       if (a === 'month') {
         // C6: on or off as the chip shows it, from the months in memory — they hold a tap still on its way (a 2nd chip lost the 1st)
@@ -440,7 +432,7 @@ window.renderSetup = function () {
         let cur = Array.isArray(row && row[field]) && row[field].length ? row[field].map(Number) : (field === 'grundsteuer_months' ? [2, 5, 8, 11] : []);
         cur = !on ? cur.filter(x => x !== mo) : cur.includes(mo) ? cur : cur.concat(mo).sort((x, y) => x - y);
         try { await ctlUpdateRow(t, id, { [field]: cur }); } catch (e) { cxToastErr(e); }
-        return _cxSuDone();
+        return window.renderSetup();
       }
     },
     input: async (key, val) => {
@@ -450,7 +442,7 @@ window.renderSetup = function () {
         if (typeof ctlToast === 'function') ctlToast('Saved');
       }
       catch (e) { cxToastErr(e); }
-      _cxSuDone();
+      window.renderSetup();
     },
   });
   if (!host._cxSelWired) {
@@ -489,7 +481,7 @@ window.renderSetup = function () {
         } catch (e) { cxToastErr(e); }
       }
       if (aptQ) { done(); if (_cxSuAptQ[pid] === mine) delete _cxSuAptQ[pid]; }
-      _cxSuDone();
+      window.renderSetup();
     });
   }
 };

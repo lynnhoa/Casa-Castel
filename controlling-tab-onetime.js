@@ -49,6 +49,7 @@ let _cxOt = {
   knkType: '', knkPart: '',                            // new entry: Kaufnebenkosten type · Kauf / Grundschuld
   bonus: null, bonusNk: null,                          // Bonuses to confirm: the bonus being confirmed · its NK switch
   saving: null, boSaving: null,                        // C6: the invoice / bonus being saved, with what was typed (drawn into its form)
+  formN: 0,                                            // C6: counts the forms opened — the same invoice opened again is another form
 };
 const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_prop')) || null; } catch (e) { return null; } };
 
@@ -254,12 +255,12 @@ async function _cxOtSaveMaint(o, b) {
   const catV = document.getElementById('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;
   b.disabled = true;
-  const sv = _cxOt.saving = { id: o.id, f: { nk_category_id: catV ? Number(catV) : null } };   // C6
+  const sv = _cxOt.saving = { id: o.id, n: _cxOt.formN, f: { nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
     delete o._nk;
     if (saved) _cxOt.flash = saved.id;
-    if (String(_cxOt.form) === String(o.id)) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile stays open
+    if (_cxOt.formN === sv.n) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
     say('Saved');
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
@@ -782,17 +783,18 @@ function _cxOtEditing() {
 }
 function _cxOtOpen(form, pid) {
   _cxOt.form = form; _cxOt.pid = pid; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1; _cxOt.nk = false; _cxOt.knkType = ''; _cxOt.knkPart = '';
+  _cxOt.formN++;
   _cxOt.formAt = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
 }
 /* Something typed that would be lost? (new: any field · edit: anything changed) */
 function _cxOtDirty() {
-  if (_cxOt.form === null || (_cxOt.saving && String(_cxOt.saving.id) === String(_cxOt.form))) return false;   // C6: being saved
+  if (_cxOt.form === null || (_cxOt.saving && _cxOt.saving.n === _cxOt.formN)) return false;   // C6: this form is being saved
   const g = id => document.getElementById(id);
-  const om = _cxOtEditing();
+  const om = _cxOtEditing() && _cxOtShown(_cxOtEditing());   // C6: opened again while it saves → it shows what is being saved
   if (_cxOtIsMaint(om)) return (om._nk !== undefined && om._nk !== !!om.nk_umlage) ||
     (!!g('cxOtNkCat') && String(g('cxOtNkCat').value || '') !== String(om.nk_category_id || ''));
   if (!g('cxOtAmt')) return false;
-  const o = _cxOtEditing();
+  const o = om;
   const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
   if (!o) return !!(amt || text || co);
   return cxParse(amt) !== cxR(o.amount) || text !== String(o.item || '') || co !== String(o.company || '') ||
@@ -844,7 +846,7 @@ async function _cxOtSave(b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   if (!(amt > 0)) { say('Please enter an amount'); g('cxOtAmt')?.focus(); return; }
   if (!date) { say('Please enter a date'); g('cxOtDate')?.focus(); return; }
-  const o = _cxOtEditing(), f0 = _cxOt.form;                 // C6: the form being saved
+  const o = _cxOtEditing(), f0 = _cxOt.form, n0 = _cxOt.formN;   // C6: the form being saved
   const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const kt = kind === 'Kaufnebenkosten' ? (o ? (o._knkType !== undefined ? o._knkType : o.knk_type || '') : _cxOt.knkType) : '';
@@ -865,7 +867,7 @@ async function _cxOtSave(b) {
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
   if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
   b.disabled = true;
-  const sv = o ? (_cxOt.saving = { id: o.id, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
+  const sv = o ? (_cxOt.saving = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
   try {
     let saved;
     if (o) {
@@ -881,7 +883,7 @@ async function _cxOtSave(b) {
     }
     if (saved) { _cxOt.flash = saved.id; _cxOtKeepOpen(pid, saved); }
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
-    if (_cxOt.form === f0) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile stays open
+    if (_cxOt.form === f0 && _cxOt.formN === n0) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
     const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
     if (y !== window._ctrl.year) say('Saved in ' + y);
     else if (_cxOt.view === 'm' && m !== CX.month) say('Saved in ' + CX_MONTHS[m - 1]);

@@ -190,7 +190,8 @@ function _cxIncBulkList() {
   for (const id of Object.keys(_cxIncIndex)) {
     const e = _cxIncIndex[id];
     if (e.part) continue;                                                    // tenant lines: one tap each
-    const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    const stored = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    const has = cxPendIst(id, stored ? 0 : null) !== null;                  // C6: an amount on its way counts, as on its line
     if (has || !e.s.soll || e.s.partial) continue;                           // part months: one tap each
     if (ctlVisibleCheck(e.p.name, e.u.name, e.s.check)) { skipped++; continue; }                                  // data check: deliberate entry only
     list.push(e);
