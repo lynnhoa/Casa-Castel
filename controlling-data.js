@@ -423,43 +423,49 @@ async function ctlDeleteOneTime(id) {
    Every save of Controlling's own data counts here while it runs (_ctlBusy) and when it starts and ends
    (_ctlWriteSeq). The reload when the app comes back takes the year's rows over only if no save ran meanwhile —
    rows read before a save never hide it (and 'Book all' never books it again). Each save also tells the
-   Tenant history that the data changed (ctlDataChanged). ctlIdle() → once no save has run for CTL_QUIET ms (at most
-   max ms, default 90 s — a phone gives a request up after about 60 s): 'Book all' and its Undo save line after line,
-   and a read started between two lines was thrown away again and again (C5 review). */
-window._ctlBusy = 0; window._ctlWriteSeq = 0;
+   Tenant history that the data changed (ctlDataChanged).
+   rows = a save of month rows only (Income / Expenses entries and marks: take, 'Book all', Undo …): the read of the
+   other apps' data (ctlSollLoad) contains none of them and is not read again for it — only the income of every year
+   keeps your rows (C5 review: taps one after another threw every read away and the old rent stayed). Every other save
+   also counts in _ctlSrcBusy / _ctlSrcSeq. ctlIdle(max, src) → once no save (src: of that kind) has run for CTL_QUIET
+   ms — 'Book all' saves line after line — at most max ms (default 90 s; a phone gives a request up after ~60 s). */
+window._ctlBusy = 0; window._ctlWriteSeq = 0; window._ctlSrcBusy = 0; window._ctlSrcSeq = 0;
 const CTL_QUIET = 800;
-let _ctlIdleW = [], _ctlLastEnd = 0;
-function ctlIdle(max) {
+let _ctlIdleW = [], _ctlLastEnd = 0, _ctlSrcLastEnd = 0;
+function ctlIdle(max, src) {
   const end = Date.now() + (max || 90000);
   return new Promise(done => {
     let t = 0;
     const go = () => {
       clearTimeout(t);
-      const now = Date.now(), q = _ctlLastEnd + CTL_QUIET - now;
+      const now = Date.now(), q = (src ? _ctlSrcLastEnd : _ctlLastEnd) + CTL_QUIET - now;
       if (now >= end) return done();
-      if (window._ctlBusy > 0) { _ctlIdleW.push(go); t = setTimeout(go, end - now); return; }
+      if ((src ? window._ctlSrcBusy : window._ctlBusy) > 0) { _ctlIdleW.push(go); t = setTimeout(go, end - now); return; }
       if (q > 0) { t = setTimeout(go, Math.min(q, end - now)); return; }
       done();
     };
     go();
   });
 }
-function ctlWriting(fn) {
+function ctlWriting(fn, rows) {
   if (typeof fn !== 'function' || fn._ctlWrite) return fn;
   const w = async function () {
     window._ctlBusy++; window._ctlWriteSeq++;
+    if (!rows) { window._ctlSrcBusy++; window._ctlSrcSeq++; }
     try { return await fn.apply(this, arguments); }
     finally {
-      window._ctlBusy--; window._ctlWriteSeq++; _ctlLastEnd = Date.now(); ctlDataChanged();
-      if (!(window._ctlBusy > 0) && _ctlIdleW.length) { const w0 = _ctlIdleW; _ctlIdleW = []; w0.forEach(f => f()); }
+      window._ctlBusy--; window._ctlWriteSeq++; _ctlLastEnd = Date.now();
+      if (!rows) { window._ctlSrcBusy--; window._ctlSrcSeq++; _ctlSrcLastEnd = _ctlLastEnd; }
+      ctlDataChanged();
+      if (_ctlIdleW.length) { const w0 = _ctlIdleW; _ctlIdleW = []; w0.forEach(f => f()); }   // each one looks again
     }
   };
   w._ctlWrite = true;
   return w;
 }
-ctlUpsertIncome = ctlWriting(ctlUpsertIncome);   ctlUpsertApt = ctlWriting(ctlUpsertApt);       ctlUpsertCastel = ctlWriting(ctlUpsertCastel);
-ctlDeleteIncome = ctlWriting(ctlDeleteIncome);   ctlDeleteCastel = ctlWriting(ctlDeleteCastel);
-ctlSetIncomeMark = ctlWriting(ctlSetIncomeMark); ctlSetCastelMark = ctlWriting(ctlSetCastelMark); ctlSetAptMark = ctlWriting(ctlSetAptMark);
+ctlUpsertIncome = ctlWriting(ctlUpsertIncome, 1);   ctlUpsertApt = ctlWriting(ctlUpsertApt, 1);       ctlUpsertCastel = ctlWriting(ctlUpsertCastel, 1);
+ctlDeleteIncome = ctlWriting(ctlDeleteIncome, 1);   ctlDeleteCastel = ctlWriting(ctlDeleteCastel, 1);
+ctlSetIncomeMark = ctlWriting(ctlSetIncomeMark, 1); ctlSetCastelMark = ctlWriting(ctlSetCastelMark, 1); ctlSetAptMark = ctlWriting(ctlSetAptMark, 1);
 ctlAddOneTime = ctlWriting(ctlAddOneTime);       ctlUpdateOneTime = ctlWriting(ctlUpdateOneTime); ctlDeleteOneTime = ctlWriting(ctlDeleteOneTime);
 ctlCreateUnit = ctlWriting(ctlCreateUnit);       ctlDeleteUnit = ctlWriting(ctlDeleteUnit);     ctlCreateProperty = ctlWriting(ctlCreateProperty);
 ctlUpdateRow = ctlWriting(ctlUpdateRow);
