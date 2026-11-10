@@ -859,7 +859,14 @@ async function _srSend(btn) {
   finally { if (_srBusy.delete(key)) _srRefreshTenant(); }   // ended without drawing: the button on screen follows
 }
 async function _srSendNow(btn, got, key) {
-  const { c, it, rec, ts } = got;
+  let { c, it, rec, ts } = got;
+  const q = SR._wq && SR._wq[String(rec.property_id)];
+  if (q) {                                                   // C6: a save of this Wohnung on its way (e.g. a Jahresabrechnung
+    if (btn) btn.disabled = true;                            // correction): the letter and result are made from the record as
+    await q.catch(() => {});                                 // stored after it, with the settings read here (was: from the copy
+    const now = SR.rows.find(r => r.id === rec.id);          // before it — the old amount was sent, the record kept the new costs)
+    if (now && now !== rec) { now.tenants = rec.tenants; rec = now; }
+  }
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
@@ -871,7 +878,8 @@ async function _srSendNow(btn, got, key) {
   const date = ts.date || cxToday();
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
-  try { clearTimeout(_srTsTimer); await srSaveRow(rec, null, ['tenants']); } catch (e) {}
+  if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
+  try { await srSaveRow(rec, null, ['tenants']); } catch (e) {}   // another tenant's: it is still saved
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
                    direction: dir, amount: cxR(amountRec), result_date: date, due_date: dir ? _srAdd(date, _srNum(ts.days) ?? 30) : null,

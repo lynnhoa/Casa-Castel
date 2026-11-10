@@ -170,7 +170,7 @@ async function _scSaveRecNow(r) {
   return r;
 }
 function scQueueSave(r) {
-  clearTimeout(SC.saveTimer);
+  clearTimeout(SC.saveTimer); SC._qy = Number(r.year);      // C6: the year waiting to be saved
   SC.saveTimer = setTimeout(() => scSaveRec(r).catch(e => stSay(SC.missing ? 'Please run the Casa Castel settlements SQL first' : 'Saving failed — ' + (e.message || e))), 600);
 }
 function scSet(key) { const r = scRecEnsure(SC.year); return (r.tenants[key] = r.tenants[key] || {}); }
@@ -2752,7 +2752,8 @@ async function _scSendNow(key, btn, M, m0) {
   const date = s.date || cxToday();
   const reset = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
-  clearTimeout(SC.saveTimer); try { await scSaveRec(scRecEnsure(M.y)); } catch (e) {}
+  if (SC._qy === undefined || SC._qy === Number(M.y)) clearTimeout(SC.saveTimer);   // C6: a change of another year waiting to be
+  try { await scSaveRec(scRecEnsure(M.y)); } catch (e) {}                             // saved stays (this letter can wait for the one before)
   let pdf = null;
   try { pdf = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t)); } catch (e) { console.warn('[settlements] letter for archive', e); }
   const r = t.it.r;
@@ -2780,7 +2781,8 @@ async function _scSendNow(key, btn, M, m0) {
   scSaveEnd(M.y, key, m0, 'next');
 }
 async function scSendExtra(M, t, btn, m0) {
-  const s = scSet(t.key), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0, date = s.date || cxToday();
+  const r0 = scRecEnsure(M.y), s = (r0.tenants[t.key] = r0.tenants[t.key] || {});   // C6: in the year it was tapped in (it can
+  const dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0, date = s.date || cxToday();     // wait for a letter before it, the owner can go to another year meanwhile)
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
   let pdf = null;
   try { pdf = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t)); } catch (e) { console.warn('[settlements] letter', e); }
