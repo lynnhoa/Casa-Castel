@@ -14,7 +14,7 @@
 
 'use strict';
 
-const _cxH = { open: {}, add: {} };
+const _cxH = { open: {}, add: {}, busy: {} };   // C6: busy = tenant key → a save of that tenant is on its way
 
 function _cxHTable(app) { return app === 'casa' ? 'tenant_records' : 'rnt_tenant_records'; }
 function _cxHTenant(app, id) {
@@ -68,6 +68,7 @@ function _cxHIssues(w) {
 
 function _cxHTenancyHTML(u, pid, w) {
   const key = w.app + ':' + w.id;
+  const dis = _cxH.busy[key] ? ' disabled' : '';             // C6: its save is on its way — a drawing keeps its buttons and form off
   const iss = _cxHIssues(w);
   const status = w.t.status === 'active' ? cxPill('ok', 'active') : cxPill('grey', 'former');
   const bal = w.balance || { saldo: 0, months: 0 };
@@ -82,14 +83,14 @@ function _cxHTenancyHTML(u, pid, w) {
   const periods = w.periods.map(p =>
     '<div class="cx-kv" style="margin-top:4px"><span>from ' + cxFmtDate(ccRpIso(p.valid_from)) + ' · ' + cxEsc(_cxHKind(p.kind)) +
       (p.first_month === 'voll' ? ' · first month in full' : '') + (p.last_month === 'voll' ? ' · last month in full' : '') + '</span>' +
-    '<span>' + _cxHAmt(p) + ' <button class="cx-link" style="display:inline;padding:0 0 0 8px" data-h="delP" data-id="' + cxEsc(p.id) + '" aria-label="Delete"><i class="ti ti-x" aria-hidden="true"></i></button></span></div>').join('');
+    '<span>' + _cxHAmt(p) + ' <button class="cx-link" style="display:inline;padding:0 0 0 8px" data-h="delP" data-k="' + cxEsc(key) + '" data-id="' + cxEsc(p.id) + '" aria-label="Delete"' + dis + '><i class="ti ti-x" aria-hidden="true"></i></button></span></div>').join('');
 
   const legacy = !w.periods.length && (w.t.kaltmiete != null || w.t.nebenkosten != null)
     ? '<div class="cx-kv" style="margin-top:4px"><span>saved with the tenant · ' + (w.legacyMode === 'pauschal' ? 'Pauschal' : 'Kalt + NK') + '</span><span>' +
         (w.legacyMode === 'pauschal' ? cxEur((Number(w.t.kaltmiete) || 0) + (Number(w.t.nebenkosten) || 0)) + ' Pauschal' +
                                          (_cxHLegacyNkIncl(w.t) ? ' · davon NK ' + cxEur(_cxHLegacyNkIncl(w.t)) : '')
                                       : cxEur(w.t.kaltmiete || 0) + ' Kalt + ' + cxEur(w.t.nebenkosten || 0) + ' NK') + '</span></div>' +
-      (w.from ? '<button class="cx-btn cx-btn--full" style="margin-top:6px" data-h="confirm" data-k="' + cxEsc(key) + '"><i class="ti ti-check" aria-hidden="true"></i>Confirm as rent from move-in</button>' : '')
+      (w.from ? '<button class="cx-btn cx-btn--full" style="margin-top:6px" data-h="confirm" data-k="' + cxEsc(key) + '"' + dis + '><i class="ti ti-check" aria-hidden="true"></i>Confirm as rent from move-in</button>' : '')
     : '';
 
   // Casa Castel has no Staffel — its steps are Mieterhöhungen (Pauschal or Kalt, by the rent valid on that day)
@@ -104,18 +105,22 @@ function _cxHTenancyHTML(u, pid, w) {
     .concat(w.nkSteps.map(h => 'NK from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount)));
 
   const addOpen = !!_cxH.add[key];
+  // C6 (C6h-1): an open form is drawn with what is in it now — any drawing put every field back (a wrong rent was saved)
+  const cur = id => { const e = addOpen && document.getElementById(id + key); return e ? e.value : null; };
+  const val = id => { const v = cur(id); return v ? ' value="' + cxEsc(v) + '"' : ''; };
+  const sel = (id, v, dflt) => { const c = cur(id); return (c !== null ? c === v : dflt) ? ' selected' : ''; };
   const add = addOpen
     ? '<div class="cx-set" style="margin-top:8px">' +
-        '<div class="cx-set__row"><span class="cx-set__k">Valid from</span><label class="cx-f cx-f--l"><input type="text" placeholder="TT.MM.JJJJ" id="h-from-' + cxEsc(key) + '"></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">Type</span><label class="cx-f cx-f--l"><select id="h-mode-' + cxEsc(key) + '">' +
-          '<option value="kalt_nk"' + (w.legacyMode !== 'pauschal' ? ' selected' : '') + '>Kalt + NK</option>' +
-          '<option value="pauschal"' + (w.legacyMode === 'pauschal' ? ' selected' : '') + '>Pauschal</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">Kaltmiete / Pauschale</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-k-' + cxEsc(key) + '"><span>€</span></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">Nebenkosten / davon NK</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-nk-' + cxEsc(key) + '"><span>€</span></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">First month</span><label class="cx-f cx-f--l"><select id="h-fm-' + cxEsc(key) + '"><option value="anteilig">partial</option><option value="voll">in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">Last month</span><label class="cx-f cx-f--l"><select id="h-lm-' + cxEsc(key) + '"><option value="anteilig">partial</option><option value="voll">in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
-        '<div style="display:flex;gap:8px;margin-top:8px"><button class="cx-btn" style="flex:1" data-h="addToggle" data-k="' + cxEsc(key) + '">Cancel</button>' +
-        '<button class="cx-btn cx-btn--p" style="flex:1" data-h="addSave" data-k="' + cxEsc(key) + '">Save</button></div></div>'
+        '<div class="cx-set__row"><span class="cx-set__k">Valid from</span><label class="cx-f cx-f--l"><input type="text" placeholder="TT.MM.JJJJ" id="h-from-' + cxEsc(key) + '"' + val('h-from-') + dis + '></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">Type</span><label class="cx-f cx-f--l"><select id="h-mode-' + cxEsc(key) + '"' + dis + '>' +
+          '<option value="kalt_nk"' + sel('h-mode-', 'kalt_nk', w.legacyMode !== 'pauschal') + '>Kalt + NK</option>' +
+          '<option value="pauschal"' + sel('h-mode-', 'pauschal', w.legacyMode === 'pauschal') + '>Pauschal</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">Kaltmiete / Pauschale</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-k-' + cxEsc(key) + '"' + val('h-k-') + dis + '><span>€</span></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">Nebenkosten / davon NK</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-nk-' + cxEsc(key) + '"' + val('h-nk-') + dis + '><span>€</span></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">First month</span><label class="cx-f cx-f--l"><select id="h-fm-' + cxEsc(key) + '"' + dis + '><option value="anteilig">partial</option><option value="voll"' + sel('h-fm-', 'voll', false) + '>in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">Last month</span><label class="cx-f cx-f--l"><select id="h-lm-' + cxEsc(key) + '"' + dis + '><option value="anteilig">partial</option><option value="voll"' + sel('h-lm-', 'voll', false) + '>in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px"><button class="cx-btn" style="flex:1" data-h="addToggle" data-k="' + cxEsc(key) + '"' + dis + '>Cancel</button>' +
+        '<button class="cx-btn cx-btn--p" style="flex:1" data-h="addSave" data-k="' + cxEsc(key) + '"' + dis + '>Save</button></div></div>'
     : '<button class="cx-link" data-h="addToggle" data-k="' + cxEsc(key) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add rent from a date</button>';
 
   return '<div style="padding:12px 0;border-top:.5px solid var(--cc-rule)">' +
@@ -174,6 +179,18 @@ window.renderHistory = function (host) {
   }
 };
 
+/* C6: this tenant's Confirm, ×, the form and its Save / Cancel off (or on again) at once — a drawing keeps them so (_cxH.busy):
+   nothing can be typed into a form that closes when its save is done */
+function _cxHLock(host, key, on) {
+  host.querySelectorAll('#cxHist button[data-k]').forEach(x => { if (x.dataset.k === key && (x.dataset.h !== 'addToggle' || x.closest('.cx-set'))) x.disabled = on; });
+  ['from', 'mode', 'k', 'nk', 'fm', 'lm'].forEach(n => { const e = document.getElementById('h-' + n + '-' + key); if (e) e.disabled = on; });
+}
+/* C6: a save is done — Tenant history if it is still open, else the screen you are on (it was drawn over Setup after
+   '‹ Setup' and wiped what you typed there; Income kept the old Soll) */
+function _cxHDone(host) {
+  if (CX.hist && host.style.display !== 'none') return window.renderHistory(host);
+  _cxSuDone();
+}
 async function _cxHClick(ev, host) {
   const b = ev.target.closest('[data-h]');
   if (!b || b.disabled) return;
@@ -183,8 +200,10 @@ async function _cxHClick(ev, host) {
   const rerender = () => window.renderHistory(host);
   if (a === 'back') { CX.hist = false; return window.renderSetup(); }
   if (a === 'fold') { _cxH.open[key] = b.getAttribute('aria-expanded') !== 'true'; return rerender(); }
-  if (a === 'addToggle') { _cxH.add[key] = !_cxH.add[key]; return rerender(); }
+  if (a === 'addToggle') { if (_cxH.add[key] && _cxH.busy[key]) return; _cxH.add[key] = !_cxH.add[key]; return rerender(); }   // C6: no Cancel while it saves
   const [app, tid] = key.split(':');
+  if (!key || _cxH.busy[key]) return;                    // C6: a 2nd tap while this tenant's save is on its way wrote the rent twice
+  _cxH.busy[key] = true; _cxHLock(host, key, true);
   try {
     if (a === 'delP') {
       const pid = b.dataset.id;               // the entry tapped — a drawing under the question moves rows (C5 review)
@@ -198,6 +217,7 @@ async function _cxHClick(ev, host) {
     if (a === 'addSave') {
       const t = _cxHTenant(app, tid); if (!t) return;
       const v = id => document.getElementById(id + key);
+      const fm = v('h-fm-').value, lm = v('h-lm-').value;   // C6: the whole form is read before the first write (after it, '‹ Setup' had removed it)
       const from = ccRpIso(v('h-from-').value);
       if (!from) { ctlToast('Please enter "Valid from"'); return; }
       const mode = v('h-mode-').value === 'pauschal' ? 'pauschal' : 'kalt_nk';
@@ -212,7 +232,7 @@ async function _cxHClick(ev, host) {
       if ((t.kaltmiete != null || t.nebenkosten != null) && ein && from > ein && !ccRpFor(app, t.id).length) await _cxHConfirmLegacy(db, app, t);
       await ccRpSetRent(db, { app, rec: t, validFrom: from, mode, kalt: k, nk: mode === 'pauschal' ? null : nk, pauschale: k, nkIncl: nkIn ?? undefined,
         kind: ccRpIso(t.mietbeginn) && from > ccRpIso(t.mietbeginn) ? 'manual' : 'contract', source: 'history_screen',
-        legacyMode: _cxHModeOf(app, t), first_month: v('h-fm-').value, last_month: v('h-lm-').value });
+        legacyMode: _cxHModeOf(app, t), first_month: fm, last_month: lm });
       _cxH.add[key] = false;
     }
     _cxHSync();
@@ -220,9 +240,9 @@ async function _cxHClick(ev, host) {
   } catch (e) {
     if (typeof ccRpIsMissing === 'function' && ccRpIsMissing(e)) ctlToast('Please run the SQL update first');
     else cxToastErr(e);
-  }
+  } finally { delete _cxH.busy[key]; _cxHLock(host, key, false); }
   if (typeof ctlDataChanged === 'function') ctlDataChanged();   // C5: saved or not — the balances are worked out again
-  rerender();
+  _cxHDone(host);
 }
 
 /* #10: the tenant's Contract start, read the same way as the Soll (controlling-soll.js _cxContractStart) */
@@ -264,7 +284,7 @@ async function _cxHChange(ev, host) {
     ctlSollReset();
     ctlToast('Saved');
   } catch (e) { t[field] = before; if (typeof ctlDataChanged === 'function') ctlDataChanged(); cxToastErr(e); }   // C5: back to the date before
-  window.renderHistory(host);
+  _cxHDone(host);
 }
 
 /* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */

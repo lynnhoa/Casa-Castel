@@ -34,7 +34,7 @@ window._ctrl = {
 let _ctlLoadSeq = 0;
 async function ctlLoadAll(year, opt) {
   const y = year || window._ctrl.year, seq = ++_ctlLoadSeq;
-  const inc0 = window._src && window._src.incAll;
+  const inc0 = window._src && window._src.incAll, ss = window._ctlSrcSeq;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -51,7 +51,10 @@ async function ctlLoadAll(year, opt) {
   for (const k in rows) if (rows[k].error) { if (!(opt && opt.quiet)) console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
   if (opt && typeof opt.ok === 'function' && !opt.ok(seq)) throw new Error('not taken over');
   const yearChanged = window._ctrl.year !== y;
-  for (const k in rows) window._ctrl[k] = rows[k].data || [];
+  // C6: properties, units and cost types belong to no year and every Setup save keeps them up to date here — a Setup save
+  // that ran while this was read may be missing from the rows read (TG 9 'missing · Add' again): the rows you have stay
+  const keep = window._ctlSrcSeq !== ss || window._ctlSrcBusy > 0;
+  for (const k in rows) if (!(keep && (k === 'properties' || k === 'units' || k === 'categories'))) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
   // C5: the all-years copy (balances) gets this year's rows as just read — unless a newer read of it came meanwhile
   if (Array.isArray(inc0) && window._src.incAll === inc0) {
@@ -104,8 +107,8 @@ function _ctlIncCache(data) {
   const y = data.year, m = data.month, u = data.unit_id;
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
-  const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
-  if (idx >= 0) window._ctrl.income[idx] = data; else window._ctrl.income.push(data);
+  const idx = y !== window._ctrl.year ? -2 : window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);   // C6: -2 = saved into its year while another one is open
+  if (idx >= 0) window._ctrl.income[idx] = data; else if (idx === -1) window._ctrl.income.push(data);
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(u);   // x6: a learned rent follows the new entry at once
 }
 /* Set (mark = { ok:true, reason }) or clear (null) the mark. Only the mark changes:
@@ -245,12 +248,12 @@ function ctlPropertyMonth(pid, month) {
 /* ── Portfolio + annual rollups ─────────────────────────────── */
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
-async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
-  const y = window._ctrl.year;
+async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split, year) {
+  const y = year || window._ctrl.year;                               // C6: the year the amount was entered in
   const payload = { unit_id, year: y, month, kaltmiete, nebenkosten };
   if (split !== undefined) payload.split = split;                    // per tenant in change months (G1)
   // CP2: a marked difference whose amount changes is new → the mark goes in the same save
-  const old = window._ctrl.income.find(r => r.unit_id === unit_id && r.year === y && r.month === month);
+  const old = (y === window._ctrl.year ? window._ctrl.income : (window._src && window._src.incAll) || []).find(r => r.unit_id === unit_id && r.year === y && r.month === month);
   if (ctlDiffOn('inc') && old && old.diff_ok && _ctlIncChanged(old, kaltmiete, nebenkosten, split)) Object.assign(payload, _ctlMarkFields(null));
   const up = pl => _ctlSupa.from('ctrl_income_months').upsert(pl, { onConflict: 'unit_id,year,month' }).select().single();
   let { data, error } = await up(payload);
@@ -305,8 +308,8 @@ async function ctlUpsertCastel(category_id, month, amount) {
   return data;
 }
 
-async function ctlDeleteIncome(unit_id, month) {
-  const y = window._ctrl.year;
+async function ctlDeleteIncome(unit_id, month, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was entered in
   const { error } = await _ctlSupa.from('ctrl_income_months').delete().eq('unit_id', unit_id).eq('year', y).eq('month', month);
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
@@ -348,15 +351,30 @@ async function ctlDeleteUnit(id) {
 
 /* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
 const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_castel_categories: 'categories' };
+/* C6: saves of one row go out one after the other (a slow first answer never lands after a quick correction), and the row
+   in memory shows them from the tap on: a drawing while they are on their way shows what you chose (it flashed back to the
+   old value), the next tap works from it (a 2nd month chip, the other First month). A save that fails is taken back out. */
+const _ctlRowW = {};                                         // table|id → { base: the row as saved, wait: saves on their way, last }
 async function ctlUpdateRow(table, id, fields) {
-  const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
-  if (error) throw error;
-  if (!data) throw new Error('row ' + id + ' not found');   // never replace the row with nothing
-  const list = window._ctrl[_CTL_MEM[table]] || [];
-  const i = list.findIndex(r => r.id === id);
-  if (i >= 0) list[i] = data;
-  if (typeof ctlSollReset === 'function') ctlSollReset();
-  return data;
+  const k = table + '|' + id, list = () => window._ctrl[_CTL_MEM[table]] || [];
+  const q = _ctlRowW[k] || (_ctlRowW[k] = { base: list().find(r => r.id === id), wait: [], last: null });
+  const w = { fields }, prev = q.last;
+  const show = () => {
+    const L = list(), i = L.findIndex(r => r.id === id);
+    if (i >= 0 && q.base) L[i] = q.wait.length ? Object.assign({}, q.base, ...q.wait.map(x => x.fields)) : q.base;
+    if (typeof ctlSollReset === 'function') ctlSollReset();
+  };
+  q.wait.push(w); show();
+  const run = q.last = (async () => {
+    if (prev) await prev.catch(() => null);
+    const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    if (!data) throw new Error('row ' + id + ' not found');   // never replace the row with nothing
+    q.base = data;
+    return data;
+  })();
+  try { return await run; }
+  finally { q.wait.splice(q.wait.indexOf(w), 1); show(); if (!q.wait.length && _ctlRowW[k] === q) delete _ctlRowW[k]; }
 }
 
 /* New property (a new purchase): added at the end, so the list stays in purchase order.
