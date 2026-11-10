@@ -153,10 +153,14 @@ function _cxSuLoanNow(L, y0, m0, later) {                   // the Kreditrate of
     : 'Kreditrate ' + cxEur(lm.rate) + since + ' · ' + _cxSuNb('≈ Zinsen ' + cxEur(lm.zinsen)) + ' · ' + _cxSuNb('≈ Tilgung ' + cxEur(lm.tilgung));
 }
 
-/* a field in host holds something other than what was drawn (typed, picked, ticked) — a field that only has the focus
-   is not filling: a drawing leaves the text of the field you are in as it is (cxPaint) */
+/* you are filling in host: a field there has the focus (a drawing matches fields by position — a card or tenant row
+   that came or went above it gave the field you are in to another property or tenant, or removed it, C5 review), a date
+   is being picked (cc-cal), or a field holds something other than what was drawn (typed, picked, ticked) */
 function _cxFilling(host) {
   if (!host) return false;
+  const a = document.activeElement;
+  if (a && host.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return true;
+  if (document.getElementById('ccCal')) return true;
   for (const e of host.querySelectorAll('input, select, textarea')) {
     if (e.type === 'file' || e.type === 'button' || e.type === 'submit') continue;
     if (e.tagName === 'SELECT') { if (e.multiple) continue; const d = [...e.options].findIndex(o => o.defaultSelected); if (e.selectedIndex !== (d < 0 ? 0 : d)) return true; }
@@ -165,6 +169,12 @@ function _cxFilling(host) {
   }
   return false;
 }
+/* a drawing put off while you were filling in (_cxSU.due) follows once you leave the field — after the tap that left it */
+if (typeof document !== 'undefined') document.addEventListener('focusout', e => {
+  const host = document.getElementById('tab-setup');
+  if (!_cxSU.due || !host || !host.contains(e.target)) return;
+  setTimeout(() => { if (_cxSU.due && CX.tab === 'setup' && !_cxFilling(host)) window.renderSetup(); }, 250);
+});
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
   if (!host) return;

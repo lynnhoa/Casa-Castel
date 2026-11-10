@@ -125,7 +125,9 @@
     if (failed) { note('Paid \u2713 did not reach Providers \u2013 try again'); return; }
     pv.paid = on; pv.changed = false;
   }
-  const writing = typeof ctlWriting === 'function' ? ctlWriting : f => f;   // C5 (#31): the Providers confirmation counts as part of the save
+  // C5 (#31): the Providers confirmation counts as part of the save — a save of month rows, as the one it wraps
+  // (ctlWriting rows: the reload after coming back is not read again for it — Casa Castel takes kept the old Soll)
+  const writing = typeof ctlWriting === 'function' ? f => ctlWriting(f, 1) : f => f;
   const _ups = ctlUpsertCastel;
   ctlUpsertCastel = writing(async function (category_id, month) {
     const pv = find(category_id, window._ctrl.year, month);
