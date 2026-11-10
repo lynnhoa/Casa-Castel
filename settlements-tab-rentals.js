@@ -105,9 +105,12 @@ async function _srLoadRowsNow() {
   SR.loading = true;
   try {
     if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
+    const saved = SR._rd = {};                          // C6: records saved while this read is on its way (it can be older)
     const { data, error } = await _ctlSupa.from(SR_TABLE).select('*');
+    if (SR._rd === saved) SR._rd = null;
     if (error) throw error;
-    SR.rows = data || []; SR.missing = false;
+    SR.rows = (data || []).map(r => saved[r.id] || r); SR.missing = false;
+    Object.values(saved).forEach(r => { if (!SR.rows.includes(r)) SR.rows.push(r); });
     try {                                               // letter archive (nk_letters) — for the History
       const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
       SR.letters = l.error ? [] : (l.data || []);
@@ -137,12 +140,16 @@ async function _srLoadRowsNow() {
 }
 /* C6: one save per Wohnung at a time — two on their way at once could land in the wrong order (the older one stayed),
    and a 2nd one sent before the 1st had made the record inserted it again (duplicate key: that change was lost).
-   from: the pop-up's draft the record was copied from — a save that waited updates the record the one before made */
-function srSaveRow(rec, from) {
+   from: the pop-up's draft the record was copied from — a save that waited updates the record the one before made.
+   only: the fields this save changes (tenants, asked_on) — when a save meanwhile stored a newer record, only these go
+   on top of it (was: the copy read before that save was sent and undid it, e.g. a Wasser just corrected) */
+function srSaveRow(rec, from, only) {
   SR._wq = SR._wq || {}; const k = String(rec.property_id);
   const p = Promise.resolve(SR._wq[k]).catch(() => {}).then(async () => {
     if (!rec.id && from && from.id) rec.id = from.id;
     if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
+    const now = only && rec.id && SR.rows.find(x => x.id === rec.id);
+    if (now && now !== rec) { only.forEach(f => { now[f] = rec[f]; }); rec = now; }
     const data = await _srSaveRowNow(rec);
     if (from && !from.id) from.id = data.id;
     return data;
@@ -171,6 +178,7 @@ async function _srSaveRowNow(rec) {
   if (error) throw error;
   const i = SR.rows.findIndex(x => x.id === data.id);
   if (i >= 0) SR.rows[i] = data; else SR.rows.push(data);
+  if (SR._rd) SR._rd[data.id] = data;                   // C6: a reload reading meanwhile keeps this copy
   return data;
 }
 /* Record of a Wohnung + Zeitraum (exact period, else the same end year — e.g. after the period start was changed) */
@@ -702,7 +710,7 @@ function _srCollectTenant() {
 }
 function _srQueueTenantSave(rec) {
   clearTimeout(_srTsTimer);
-  _srTsTimer = setTimeout(() => { srSaveRow(rec).catch(err => stSay('Speichern fehlgeschlagen — ' + (err.message || err))); }, 600);
+  _srTsTimer = setTimeout(() => { srSaveRow(rec, null, ['tenants']).catch(err => stSay('Speichern fehlgeschlagen — ' + (err.message || err))); }, 600);
 }
 
 /* 4 · PDF letter ─────────────────────────────────────────── */
@@ -863,7 +871,7 @@ async function _srSendNow(btn, got, key) {
   const date = ts.date || cxToday();
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
-  try { clearTimeout(_srTsTimer); await srSaveRow(rec); } catch (e) {}
+  try { clearTimeout(_srTsTimer); await srSaveRow(rec, null, ['tenants']); } catch (e) {}
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
                    direction: dir, amount: cxR(amountRec), result_date: date, due_date: dir ? _srAdd(date, _srNum(ts.days) ?? 30) : null,
@@ -880,7 +888,9 @@ async function _srSendNow(btn, got, key) {
     await _ctlSupa.from('ctrl_settlements').update(before).eq('id', row.id);
     Object.assign(row, before);
     stSay('Speichern fehlgeschlagen — ' + (err.message || err));
-    _srBusy.delete(key); if (btn) btn.disabled = false; ctlSettlementInvalidate(); stRenderRentals(); return;
+    _srBusy.delete(key); if (btn) btn.disabled = false; ctlSettlementInvalidate();
+    if (_srShowsTen(c.ck, it.r.id)) SR.modal.tid = String(row.id);   // C6: the line is stored now — its pop-up stays on it (was: 'Not found')
+    stRenderRentals(); return;
   }
   ctlSettlementInvalidate();
   await _srArchive(c, it, rec, ts, x, dir, cxR(amountRec));
@@ -1100,14 +1110,11 @@ function _srNkAutoSync(infos) {
     if ((i.rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) continue;            // a letter went out: the NK stays as it was sent
     if (SR.draft && SR.draft._ck === c.ck && SR.dirty) continue;                             // you are typing in it right now
     const next = _srNkAutoNext(c, rec); if (!next) continue;
-    jobs.push(async () => {
-      let cur = rec, nx = next;
-      const q = SR._wq && SR._wq[String(rec.property_id)];
-      if (q) {                                                  // C6: a save of this Wohnung is on its way: after it, from the record it saved
-        await q.catch(() => {});                                // (was: this older copy was written over it — a correction just typed was lost)
-        if (SR.draft && SR.draft._ck === c.ck && SR.dirty) return;
-        cur = SR.rows.find(x => x.id === rec.id) || rec; nx = _srNkAutoNext(c, cur); if (!nx) return;
-      }
+    jobs.push(async () => {                                     // C6: when it runs (the jobs go one Wohnung after the other) —
+      const k = String(rec.property_id);                         // after a save of this Wohnung on its way, from the record as
+      while (SR._wq && SR._wq[k]) await SR._wq[k].catch(() => {});   // it is stored by then (was: the copy read when the tab
+      if (SR.draft && SR.draft._ck === c.ck && SR.dirty) return;     // opened was written over a correction saved meanwhile)
+      const cur = SR.rows.find(x => x.id === rec.id) || rec, nx = _srNkAutoNext(c, cur); if (!nx) return;
       cur.positions = nx; await srSaveRow(cur); if (SR.draft && SR.draft._ck === c.ck && !SR.dirty) SR.draft = null;
     });
   }
@@ -2277,7 +2284,7 @@ function srIsRentalsLine() { return false; }
       const rec = _srRec(c.p, c.per) || _srBlankRec(c);
       const t = cxToday(), list = (rec.asked_on || []).map(_srD);
       if (!list.includes(t)) rec.asked_on = list.concat([t]);
-      setTimeout(async () => { try { await srSaveRow(rec); stRenderRentals(); } catch (err) { stSay('Not saved — ' + (err.message || err)); } }, 400);
+      setTimeout(async () => { try { await srSaveRow(rec, null, ['asked_on']); stRenderRentals(); } catch (err) { stSay('Not saved — ' + (err.message || err)); } }, 400);
       return;
     }
     if (a === 'history') { e.stopPropagation(); _srOpen({ ck: b.dataset.k, view: 'history', from: 'tracker' }); return; }

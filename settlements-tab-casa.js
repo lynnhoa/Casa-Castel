@@ -53,8 +53,10 @@ function scAv(room) {
 async function _scLoadRowsNow() {
   SC.loading = true;
   try {
+    const done = SC._rd = new Set();                       // C6: years saved while this read is on its way
     const r = await _ctlSupa.from(SC_TABLE).select('*').order('year');
-    if (r.error) { SC.missing = true; SC.rows = []; } else { SC.missing = false; SC.rows = r.data || []; }
+    if (SC._rd === done) SC._rd = null;
+    if (r.error) { SC.missing = true; SC.rows = []; } else { SC.missing = false; SC.rows = _scKeepSaved(r.data || [], done); }
     const l = await _ctlSupa.from(SC_LETTERS).select('*').order('sent_at', { ascending: false });
     if (l.error) { SC.lettersMissing = true; SC.letters = []; } else { SC.lettersMissing = false; SC.letters = l.data || []; }
     try {                                                  // B20: Kaution kept for the NK (Casa Castel › Tenants)
@@ -141,8 +143,21 @@ function scRecEnsure(y) {
 /* C6: one save of the record at a time — two on their way at once could land in the wrong order (the older one stayed
    in the database). A save asked for meanwhile waits and sends what is there when it starts */
 function scSaveRec(r) {
+  const y = Number(r.year), W = SC._wy || (SC._wy = {});
+  W[y] = (W[y] || 0) + 1;                                  // on its way (a reload meanwhile keeps this record, _scKeepSaved)
   const p = Promise.resolve(SC._saveP).catch(() => {}).then(() => _scSaveRecNow(r));
-  SC._saveP = p; return p;
+  SC._saveP = p;
+  p.catch(() => {}).then(() => { W[y]--; if (SC._rd) SC._rd.add(y); });
+  return p;
+}
+/* C6: the records read when the app comes back — a year saved while the read was on its way, or still saving, keeps the
+   record here (the read can be older than that save: an added tenant or a letter marked sent was gone, and the next save
+   wrote that old copy back) */
+function _scKeepSaved(read, done) {
+  const keep = y => (done.has(Number(y)) || (SC._wy || {})[Number(y)] > 0) && scRec(y);
+  const rows = read.map(x => keep(x.year) || x);
+  SC.rows.forEach(o => { if (keep(o.year) && !rows.includes(o)) rows.push(o); });   // made meanwhile, not in the read
+  return rows;
 }
 async function _scSaveRecNow(r) {
   const payload = { year: r.year, period_from: r.period_from, period_to: r.period_to, locked_at: r.locked_at || null,
@@ -500,7 +515,7 @@ function scModel(y) {
 }
 
 /* ── Overview ─────────────────────────────────────────────── */
-function stRenderCasa() {
+function stRenderCasa(keepModal) {                         // keepModal: only the page behind an open pop-up (C6)
   const el = document.getElementById('tab-casa'); if (!el) return;
   scEnsureHost();
   const B = scYearBounds();                                // D39 (bug 29): from the Casa period, not the calendar year
@@ -606,7 +621,7 @@ function stRenderCasa() {
     stSec('Rooms', nRooms) + roomsHtml + letters +
     (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>');   // B18: only what changed
   el._scShown = y;
-  scRenderModal();
+  if (!keepModal) scRenderModal();
 }
 /* The Casa Castel card: the same two lines as every Rentals apartment */
 const scSteps = (names, cur) => typeof _srSteps === 'function' ? _srSteps(names, cur) : '';
@@ -985,7 +1000,11 @@ function scEnsureHost() {
 function scRenderModal() {
   const h = document.getElementById('scModal'); if (!h) return;
   const m = SC.modal, M = SC.model;
-  if (!m || !M) { h.innerHTML = ''; h._scViewKey = null; document.body.classList.remove('st-panel-open'); return; }
+  if (!m || !M) {                                           // C6: the page behind a Rentals / Dashboard pop-up stays locked
+    h.innerHTML = ''; h._scViewKey = null;
+    if (!(typeof SR !== 'undefined' && SR.modal) && !(typeof SD !== 'undefined' && SD.modal)) document.body.classList.remove('st-panel-open');
+    return;
+  }
   if (M.loading) return;                                    // D39: the year is loading again → the pop-up stays as shown until it is back
   let inner = '';
   if (m.view === 'costs') inner = scCostsView(M);
@@ -1520,16 +1539,17 @@ function scJaCan(M) {
   if (M && M.locked) { stSay('House costs ' + SC.year + ' are locked – unlock them to change'); return false; }
   return true;
 }
-/* the bill as stored here — a Controlling booking or the empty block becomes a bill on the first change */
-function scJaOwn(k, bid) {
-  const r = scRecEnsure(SC.year), ja = (r.tenants.__ja = r.tenants.__ja || {}), list = (ja[k] = ja[k] || []);
+/* the bill as stored here — a Controlling booking or the empty block becomes a bill on the first change
+   (y: the year it was tapped in, C6 — a booking that ends after the owner went to another year stays in its own) */
+function scJaOwn(k, bid, y = SC.year) {
+  const r = scRecEnsure(y), ja = (r.tenants.__ja = r.tenants.__ja || {}), list = (ja[k] = ja[k] || []);
   let e = list.find(x => x.id === bid);
   if (e) return e;
   const id = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const o = String(bid).indexOf('ot:') === 0 ? scJaFindBk(String(bid).slice(3)) : null;
   e = o ? { id, recv: scD(o.invoice_date), dir: Number(o.direction) === 1 ? 1 : -1, amt: cxR(Number(o.amount) || 0), co: o.company || '', ot: o.id,
             pd: scD(o.invoice_date), pa: cxR(Number(o.amount) || 0) }
-        : { id, recv: null, dir: null, amt: null, co: scJaSupCo(SC.year, k), ot: null, pd: null, pa: null };
+        : { id, recv: null, dir: null, amt: null, co: scJaSupCo(y, k), ot: null, pd: null, pa: null };
   list.push(e);
   (SC.jaIds = SC.jaIds || {})[bid] = id;
   if (SC.open['ja:' + bid]) SC.open['ja:' + id] = true;
@@ -1570,7 +1590,7 @@ function scJaSync(row, goneId) {
 /* D39 (bug 26): a bill's NK line id changes when its money is booked ('ja:<bill>' → 'ot:<booking>') or undone —
    its "In the NK" (__hgOff) and Belegliste (__hgList) choices move with it, in every year that is not locked
    (a Zeitraum can touch two NK years). This year's record is saved by the caller; other years are saved here. */
-function scJaRekey(from, to) {
+function scJaRekey(from, to, y = SC.year) {
   if (!from || !to || from === to) return;
   for (const r of SC.rows) {
     if (r.locked_at) continue;
@@ -1579,7 +1599,7 @@ function scJaRekey(from, to) {
       const o = (r.tenants || {})[f];
       if (o && o[from] !== undefined) { if (o[to] === undefined) o[to] = o[from]; delete o[from]; ch = true; }
     }
-    if (ch && Number(r.year) !== Number(SC.year)) scSaveRec(r).catch(e => stSay('Saving failed — ' + (e.message || e)));
+    if (ch && Number(r.year) !== Number(y)) scSaveRec(r).catch(e => stSay('Saving failed — ' + (e.message || e)));
   }
 }
 function scJaAdd(k) {
@@ -1591,13 +1611,13 @@ function scJaAdd(k) {
   scQueueSave(r); scJaRefresh();
 }
 async function scJaAct(a, btn) {
-  const M = SC.model, k = btn.dataset.k, bid = btn.dataset.b;
-  const cur = scJaBills(SC.year, k).find(x => x.id === bid) || { id: bid, blank: true };
+  const M = SC.model, k = btn.dataset.k, bid = btn.dataset.b, y = SC.year;
+  const cur = scJaBills(y, k).find(x => x.id === bid) || { id: bid, blank: true };
   if (a === 'jaPay') {                                     // C6: one booking / undo per bill at a time — a redraw meanwhile
     if (scJaBusy(bid)) return;                             // (a field left, ⋯, the Abschlag read) must not give the button back
     const busy = SC.jaBusy || (SC.jaBusy = {});
     busy[bid] = true; btn.disabled = true;
-    try { return await (cur.paid ? scJaUnpay(k, bid, cur) : scJaPay(k, bid, cur, btn)); }
+    try { return await (cur.paid ? scJaUnpay(k, bid, cur, y) : scJaPay(k, bid, cur, btn, y)); }
     finally { delete busy[bid]; scJaRefresh(); }
   }
   if (!scJaCan(M)) return;
@@ -1667,7 +1687,7 @@ async function scJaRunSet(catId, ym, amount) {
   return row;
 }
 /* Money switch on: the one booking in Controlling › One-off (an identical one already there is used instead) */
-async function scJaPay(k, bid, cur, btn) {
+async function scJaPay(k, bid, cur, btn, y = SC.year) {
   const M = SC.model, c = scHgCat(k); if (!c) return;
   const dir = Number(cur.dir) === 1 ? 1 : Number(cur.dir) === -1 ? -1 : 0, amt = Number(cur.amt) || 0;
   if (!cur.recv || !dir || !(amt > 0)) { stSay('First add: ' + [!cur.recv ? 'received date' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ')); return; }
@@ -1692,7 +1712,7 @@ async function scJaPay(k, bid, cur, btn) {
                             Math.abs(Number(o.amount) - pay) < 0.005 && scD(o.invoice_date) === date && own[String(o.id)] === undefined && String(cur.id) !== 'ot:' + o.id &&
                             (!scJaMt(o) || (Number(o.direction) === 1 ? 1 : -1) === dir));
   if (dup && !(await stConfirm({ title: 'Already in Controlling', text: c.name + ' · ' + scE(pay) + ' · ' + stDate(date) + ' is already booked in Controlling › One-off. Use that entry instead of booking it twice?', ok: 'Use it' }))) return;
-  const e = scJaOwn(k, bid);
+  const e = scJaOwn(k, bid, y);
   e.pd = date; e.pa = pay; e.pab = pab || null;
   if (btn) btn.disabled = true;
   let row;
@@ -1712,37 +1732,37 @@ async function scJaPay(k, bid, cur, btn) {
     }
   } catch (err) { if (btn) btn.disabled = false; stSay('Could not book it in Controlling — ' + (err.message || err)); return; }
   e.ot = row.id; scJaSync(row);
-  scJaRekey('ja:' + e.id, 'ot:' + row.id);                 // D39 (bug 26): "In the NK" / Belegliste follow the new line id
+  scJaRekey('ja:' + e.id, 'ot:' + row.id, y);              // D39 (bug 26): "In the NK" / Belegliste follow the new line id
   if (dup && e.from && e.to) await scJaMirror(e);
   e.pabYm = pab ? ym : null; e.pabAdd = null;
   if (absAdd) {                                            // the Abschlag → the cost type's running cost of that month
     try { await scJaRunSet(c.id, ym, cxR(absBefore + absAdd)); e.pabAdd = absAdd; }
     catch (err) { stSay('Abschlag not added in Controlling › Expenses — ' + (err.message || err)); }
   }
-  try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
+  try { await scSaveRec(scRecEnsure(y)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
   stSay((dir > 0 ? 'Guthaben booked in Controlling' : 'Nachzahlung booked in Controlling') + (e.pabAdd ? ' · Abschlag added to ' + c.name : ''));
   scJaRefresh();
 }
 /* Money switch off: the booking goes (it is the same entry) — the bill stays as received */
-async function scJaUnpay(k, bid, cur) {
+async function scJaUnpay(k, bid, cur, y = SC.year) {
   const M = SC.model;
   if (M && M.locked && cur.pd && scD(cur.pd) <= M.per.to) { stSay('House costs ' + SC.year + ' are locked – unlock them to change'); return; }
-  const e0 = scJaOwn(k, bid), c = scHgCat(k), back = Number(e0.pabAdd) || 0;
+  const e0 = scJaOwn(k, bid, y), c = scHgCat(k), back = Number(e0.pabAdd) || 0;
   const mt = scJaMt(scJaFindBk(e0.ot));                   // D39 (bug 24): a Maintenance receipt is only unlinked — it stays in Maintenance and Controlling
   const absTxt = back && c && e0.pabYm ? ' The ' + scE(back) + ' Abschlag comes off ' + c.name + ' ' + SC_MONTHS_L[Number(e0.pabYm.slice(5, 7)) - 1] + ' ' + e0.pabYm.slice(0, 4) + ' in Controlling › Expenses.' : '';
   if (!(await stConfirm({ title: 'Remove the payment?', text: (mt ? 'The payment is a Maintenance receipt (' + stDate(cur.pd) + ' · ' + scE(cur.pa ?? cur.amt) + ') – it stays in Maintenance and Controlling, only the link to this bill goes.'
       : 'The booking in Controlling › One-off (' + stDate(cur.pd) + ' · ' + scE(cur.pa ?? cur.amt) + ') is deleted too – it is the same entry.') + absTxt, ok: 'Remove', danger: true }))) return;
-  const e = scJaOwn(k, bid), id = e.ot;
+  const e = scJaOwn(k, bid, y), id = e.ot;
   if (!mt) { try { await ctlDeleteOneTime(id); } catch (err) { stSay('Could not remove it in Controlling — ' + (err.message || err)); return; } }
   if (!mt) scJaSync(null, id);
   e.ot = null;
-  scJaRekey('ot:' + id, 'ja:' + e.id);                     // D39 (bug 26): the switches go back to the bill's own id
+  scJaRekey('ot:' + id, 'ja:' + e.id, y);                  // D39 (bug 26): the switches go back to the bill's own id
   if (back && c && e.pabYm) {                              // Nov 2026: the Abschlag added with it comes off again
     try { const now = await scJaRunAt(c.id, e.pabYm); await scJaRunSet(c.id, e.pabYm, cxR(Math.max(0, now - back))); }
     catch (err) { stSay('Abschlag not taken off in Controlling › Expenses — ' + (err.message || err)); }
   }
   e.pabAdd = null; e.pabYm = null;
-  try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
+  try { await scSaveRec(scRecEnsure(y)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
   scJaRefresh();
 }
 /* Nov 2026 · a gap without a bill (e.g. a supplier that sent none): the NK year counts as complete there */
@@ -2000,7 +2020,7 @@ function scTenView(M, m) {
   const s1 = { n: 1, state: sent ? 'done' : canSend ? 'open' : 'wait', title: 'Letter',
     sub: sent ? 'sent ' + stDate(res.date) : !M.sendable ? 'Frist passed' : !M.locked ? 'lock the house costs first' : 'not sent yet · Frist ' + stDate(M.frist),
     undo: sent && !done ? '<button type="button" class="tp-undo" data-sc="reopen" ' + kAttr + '>undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, SC.sending === t.key ? 'loader' : 'check', SC.sending === t.key ? 'Saving' : 'Mark as sent', true, !canSend || !!SC.sending) + '</div>' };   // C6: as it is while a letter saves
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, scSending(t.key) ? 'loader' : 'check', scSending(t.key) ? 'Saving' : 'Mark as sent', true, !canSend || scSending(t.key)) + '</div>' };   // C6: as it is while its letter saves
   let s2 = null;
   if (hasMoney) {
     const bk = t.st && t.st.booking;
@@ -2184,12 +2204,14 @@ async function scSetAmount(key, raw, btn, when) {
 /* Skip this NK (no letter, no result) – counts as done; "Undo skip" brings it back */
 const _scSkipBusy = new Set();                               // C6: a 2nd Skip of the same line while its save runs does nothing
 async function scSkip(key) {
-  if (_scSkipBusy.has(key)) return;
+  if (_scSkipBusy.has(key) || scSending(key)) return;        // C6: also not while its letter is on its way
   const M = SC.model, t = M && M.ten.find(x => x.key === key), m0 = SC.modal; if (!t || !t.line) return;
   if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result for ' + t.name + ' – it counts as done. You can undo it later.' }))) return;
-  if (_scSkipBusy.has(key)) return;
+  if (_scSkipBusy.has(key) || scSending(key)) return;
+  const t1 = SC.model && SC.model.y === M.y ? SC.model.ten.find(x => x.key === key) : t;   // its letter went out meanwhile → not skipped
+  if (!t1 || t1.k !== 'open' || !t1.line) return;
   _scSkipBusy.add(key);
-  try { await _stUpsertSettlement(t.line, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null }); }
+  try { await _stUpsertSettlement(t1.line, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null }); }
   catch (e) { stSay('Could not save — ' + (e.message || e)); return; }
   finally { _scSkipBusy.delete(key); }
   ctlSettlementInvalidate(); stSay('Skipped');
@@ -2496,7 +2518,7 @@ async function scClick(e) {
     const v = id => (document.getElementById(id) || {}).value || '';
     const name = v('scxName').trim(), from = scD(v('scxFrom')), to = scD(v('scxTo'));
     if (!name || !from) { stSay('Please enter the name and the move-in'); return; }
-    const y = SC.year, r = scRecEnsure(y), nk = cxParse(v('scxNk'));
+    const y = SC.year, m0 = SC.modal, r = scRecEnsure(y), nk = cxParse(v('scxNk'));
     const x = { id: Date.now().toString(36), name, room: v('scxRoom'), from, to: to || null, nk: nk === null ? 0 : cxR(nk),
       addr: v('scxAddr').split(/\s*,\s*/).filter(Boolean).join('\n') };
     (r.tenants.__extra = r.tenants.__extra || []).push(x);
@@ -2504,8 +2526,8 @@ async function scClick(e) {
     try { await scSaveRec(r); }
     catch (err) { r.tenants.__extra = r.tenants.__extra.filter(e => e !== x); stSay('Saving failed — ' + (err.message || err)); return; }   // not saved → not kept (a retry adds it once)
     finally { SC._xSaving = false; document.querySelectorAll('[data-sc="extraSave"]').forEach(e => { e.disabled = false; }); }
-    if (SC.modal && SC.modal.view === 'extra') SC.modal = null;   // a pop-up opened meanwhile stays
-    SC.model = scModel(SC.year); stRenderCasa(); stSay(name + ' added for ' + y); return;
+    if (SC.modal === m0) SC.modal = null;                      // a pop-up opened meanwhile stays (also another 'Add a tenant':
+    SC.model = scModel(SC.year); stRenderCasa(!!SC.modal && SC.modal.view === 'extra'); stSay(name + ' added for ' + y); return;   // not drawn again, what is typed there stays)
   }
   if (a === 'extraDel') {
     if (!(await stConfirm({ title: 'Remove this tenant?', text: 'Only from ' + stNkLabel(M.per.from, M.per.to) + ' – nothing changes in Casa Castel › Tenants.', ok: 'Remove', danger: true }))) return;
@@ -2700,17 +2722,25 @@ async function scListPdf(btn) {
 }
 
 /* Mark as sent: letter → archive, result → Controlling (same path as Rentals)
-   C6: one letter at a time — while it saves every 'Mark as sent' is drawn off (this one 'Saving'), so a redraw of the
-   pop-up meanwhile (Letter details, a fold) does not give the button back for a 2nd letter and result. Once done the
-   pop-up is drawn again (its end drew it while the letter still counted as saving) */
+   C6: one letter at a time (its PDF is drawn in one shared box, nk-letter.js) — Mark as sent of another tenant while a
+   letter saves waits for it and then runs. A letter on its way is drawn off ('Saving'), also when the pop-up is drawn
+   again meanwhile, so a redraw does not give the button back for a 2nd letter and result; the other tenants' buttons
+   stay as they are. Once done the pop-up is drawn again (its end drew it while the letter still counted as saving) */
+const scSending = key => !!(SC.sendQ && SC.sendQ.has(key));
 async function scSend(key, btn) {
-  if (SC.sending) return;
-  SC.sending = key;
-  try { return await _scSendNow(key, btn); }
-  finally { SC.sending = null; if (SC.modal) scRenderModal(); }
+  const Q = SC.sendQ || (SC.sendQ = new Set());
+  if (Q.has(key) || _scSkipBusy.has(key)) return;           // this letter is on its way, or this tenant is being skipped
+  const M = SC.model, m0 = SC.modal, wait = Q.size > 0;     // the year and pop-up of the tap
+  Q.add(key);
+  if (wait && btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
+  const run = () => _scSendNow(key, wait ? null : btn, M, m0);
+  const p = wait ? SC._sendP.catch(() => {}).then(run) : run();
+  SC._sendP = p;
+  try { return await p; }
+  finally { Q.delete(key); if (SC.modal) scRenderModal(); }
 }
-async function _scSendNow(key, btn) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key), m0 = SC.modal; if (!t) return;
+async function _scSendNow(key, btn, M, m0) {
+  const t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (!M.locked) { stSay('Lock the house costs first'); return; }
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   if (t.extra) return scSendExtra(M, t, btn, m0);
@@ -2754,8 +2784,10 @@ async function scSendExtra(M, t, btn, m0) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
   let pdf = null;
   try { pdf = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t)); } catch (e) { console.warn('[settlements] letter', e); }
+  const was = s.sent;                                        // C6: not saved → not sent (a later save must not write it)
   s.sent = { date, dir, amount: cxR(Math.abs(t.saldo)), via: dir ? scVia(t) : 'zahlung' };
-  try { await scSaveRec(scRecEnsure(M.y)); } catch (e) { stSay('Saving failed — ' + (e.message || e)); return; }
+  try { await scSaveRec(scRecEnsure(M.y)); }
+  catch (e) { if (was === undefined) delete s.sent; else s.sent = was; stSay('Saving failed — ' + (e.message || e)); return; }
   if (pdf) await scArchive(M, t, pdf, { dir, amount: s.sent.amount, addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
   stSay('Marked as sent');
   scSaveEnd(M.y, t.key, m0, 'next');
