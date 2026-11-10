@@ -670,13 +670,12 @@ function cxPaint(host, html) {
   else _cxMorphKids(host, tpl.content, _cxFocusPair(host, tpl.content));
   if (run) _cxRunKeep(host, run);                         // … then a button whose save is on its way stays off
 }
-/* C6: the field you are in (by its id, data-cx-in or data-cx-sel) and the same field in the new HTML, or null */
+/* C6: the field you are in (by its id, data-cx-in, data-cx-sel or data-h-date) and the same field in the new HTML, or null */
 function _cxFocusPair(host, frag) {
   const f = document.activeElement;
   if (!f || f === host || !host.contains(f) || !f.matches(_CX_CTRL)) return null;
-  for (const k of [f.id && '#' + CSS.escape(f.id), f.dataset.cxIn && '[data-cx-in="' + CSS.escape(f.dataset.cxIn) + '"]',
-                   f.dataset.cxSel && '[data-cx-sel="' + CSS.escape(f.dataset.cxSel) + '"]']) {
-    const n = k && frag.querySelector(k);
+  for (const at of ['id', 'data-cx-in', 'data-cx-sel', 'data-h-date']) {
+    const v = f.getAttribute(at), n = v && frag.querySelector('[' + at + '="' + CSS.escape(v) + '"]');
     if (n) return [f, n];
   }
   return null;
