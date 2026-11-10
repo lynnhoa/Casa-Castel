@@ -187,8 +187,9 @@ async function _cxHClick(ev, host) {
   const [app, tid] = key.split(':');
   try {
     if (a === 'delP') {
+      const pid = b.dataset.id;               // the entry tapped — a drawing under the question moves rows (C5 review)
       if (!(await ccConfirm('Delete this rent entry?', '', 'Delete', true))) return;
-      await ccRpDelete(db, b.dataset.id);
+      await ccRpDelete(db, pid);
     }
     if (a === 'confirm') {
       const t = _cxHTenant(app, tid); if (!t) return;

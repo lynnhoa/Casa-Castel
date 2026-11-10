@@ -169,11 +169,12 @@ function _cxFilling(host) {
   }
   return false;
 }
-/* a drawing put off while you were filling in (_cxSU.due) follows once you leave the field — after the tap that left it */
+/* a drawing put off while you were filling in (_cxSU.due) follows once you leave the field — after the tap that left it;
+   a save that tap started draws it itself when done (its button stays disabled until then: no second save) */
 if (typeof document !== 'undefined') document.addEventListener('focusout', e => {
   const host = document.getElementById('tab-setup');
   if (!_cxSU.due || !host || !host.contains(e.target)) return;
-  setTimeout(() => { if (_cxSU.due && CX.tab === 'setup' && !_cxFilling(host)) window.renderSetup(); }, 250);
+  setTimeout(() => { if (_cxSU.due && CX.tab === 'setup' && !(window._ctlBusy > 0) && !_cxFilling(host)) window.renderSetup(); }, 250);
 });
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
