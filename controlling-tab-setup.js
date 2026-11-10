@@ -153,18 +153,32 @@ function _cxSuLoanNow(L, y0, m0, later) {                   // the Kreditrate of
     : 'Kreditrate ' + cxEur(lm.rate) + since + ' · ' + _cxSuNb('≈ Zinsen ' + cxEur(lm.zinsen)) + ' · ' + _cxSuNb('≈ Tilgung ' + cxEur(lm.tilgung));
 }
 
+/* a field in host has the focus, or holds something other than what was drawn (typed, picked, ticked) */
+function _cxFilling(host) {
+  if (!host) return false;
+  const a = document.activeElement;
+  if (a && host.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return true;
+  for (const e of host.querySelectorAll('input, select, textarea')) {
+    if (e.type === 'file' || e.type === 'button' || e.type === 'submit') continue;
+    if (e.tagName === 'SELECT') { if (e.multiple) continue; const d = [...e.options].findIndex(o => o.defaultSelected); if (e.selectedIndex !== (d < 0 ? 0 : d)) return true; }
+    else if (e.type === 'checkbox' || e.type === 'radio') { if (e.checked !== e.defaultChecked) return true; }
+    else if (e.value !== e.defaultValue) return true;
+  }
+  return false;
+}
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
   if (!host) return;
   CX.tab = 'setup';
   // fixes made in Rentals / Casa Castel and the income of every year (Tenant history balances): reload when Setup or
-  // Tenant history is opened (a full read at most every 20 s) — drawn again unless you are typing in it
+  // Tenant history is opened (a full read at most every 20 s) — drawn again when something changed, unless you are
+  // filling in a field: a drawing puts every field back to its drawn value (a form being filled in kept nothing, C5
+  // review) — the figures follow with the next drawing (your save)
   if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - (window._src.fullAt || 0) > 20000) {
     _cxSU.refreshing = true;
     ctlRefreshSources(false, true).then(ch => {
       _cxSU.refreshing = false;
-      const h = document.getElementById('tab-setup'), a = document.activeElement;
-      if (ch && CX.tab === 'setup' && !(h && a && h.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) window.renderSetup();
+      if (ch && CX.tab === 'setup' && !_cxFilling(document.getElementById('tab-setup'))) window.renderSetup();
     });
   }
   if (CX.hist && typeof window.renderHistory === 'function') return window.renderHistory(host);   // Phase 3

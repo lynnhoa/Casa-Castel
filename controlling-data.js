@@ -423,12 +423,26 @@ async function ctlDeleteOneTime(id) {
    Every save of Controlling's own data counts here while it runs (_ctlBusy) and when it starts and ends
    (_ctlWriteSeq). The reload when the app comes back takes the year's rows over only if no save ran meanwhile —
    rows read before a save never hide it (and 'Book all' never books it again). Each save also tells the
-   Tenant history that the data changed (ctlDataChanged). ctlIdle() → once no save runs (at most max ms). */
+   Tenant history that the data changed (ctlDataChanged). ctlIdle() → once no save has run for CTL_QUIET ms (at most
+   max ms, default 90 s — a phone gives a request up after about 60 s): 'Book all' and its Undo save line after line,
+   and a read started between two lines was thrown away again and again (C5 review). */
 window._ctlBusy = 0; window._ctlWriteSeq = 0;
-let _ctlIdleW = [];
+const CTL_QUIET = 800;
+let _ctlIdleW = [], _ctlLastEnd = 0;
 function ctlIdle(max) {
-  if (!(window._ctlBusy > 0)) return Promise.resolve();
-  return new Promise(r => { const t = setTimeout(go, max || 20000); function go() { clearTimeout(t); r(); } _ctlIdleW.push(go); });
+  const end = Date.now() + (max || 90000);
+  return new Promise(done => {
+    let t = 0;
+    const go = () => {
+      clearTimeout(t);
+      const now = Date.now(), q = _ctlLastEnd + CTL_QUIET - now;
+      if (now >= end) return done();
+      if (window._ctlBusy > 0) { _ctlIdleW.push(go); t = setTimeout(go, end - now); return; }
+      if (q > 0) { t = setTimeout(go, Math.min(q, end - now)); return; }
+      done();
+    };
+    go();
+  });
 }
 function ctlWriting(fn) {
   if (typeof fn !== 'function' || fn._ctlWrite) return fn;
@@ -436,7 +450,7 @@ function ctlWriting(fn) {
     window._ctlBusy++; window._ctlWriteSeq++;
     try { return await fn.apply(this, arguments); }
     finally {
-      window._ctlBusy--; window._ctlWriteSeq++; ctlDataChanged();
+      window._ctlBusy--; window._ctlWriteSeq++; _ctlLastEnd = Date.now(); ctlDataChanged();
       if (!(window._ctlBusy > 0) && _ctlIdleW.length) { const w0 = _ctlIdleW; _ctlIdleW = []; w0.forEach(f => f()); }
     }
   };

@@ -242,17 +242,19 @@ async function _cxHChange(ev, host) {
   ev.stopPropagation();
   const [key, field] = el.dataset.hDate.split('|');
   const [app, tid] = key.split(':');
-  const t = _cxHTenant(app, tid); if (!t) return;
+  const t0 = _cxHTenant(app, tid); if (!t0) return;
   const iso = ccRpIso(el.value) || null;
   if (field === 'mietbeginn' && !iso) { ctlToast('Move-in can\'t be empty'); return window.renderHistory(host); }
   // #10: say what really happens — the rent follows the Contract start (default) or, with "Rent from: Move-in"
   // or no Contract start, the move-in. The rent entries keep their dates either way.
-  if (field === 'mietbeginn' && t.mietbeginn) {
-    const cs = t.rent_from === 'move' ? '' : _cxHCs(t);
+  if (field === 'mietbeginn' && t0.mietbeginn) {
+    const cs = t0.rent_from === 'move' ? '' : _cxHCs(t0);
     const what = cs ? 'The rent follows the contract start (' + cxFmtDate(cs) + ') – change it in Tenants.'
                     : 'The rent then starts on the new move-in, ' + cxFmtDate(iso) + '.';
     if (!(await ccConfirm('Change the move-in?', what, 'Change'))) return window.renderHistory(host);
   }
+  // C5 review: a read that landed while the question was open has new tenant rows — the date goes into those
+  const t = _cxHTenant(app, tid) || t0;
   const before = t[field];
   t[field] = iso;
   try {

@@ -313,6 +313,8 @@ async function ctlAbrStorno(res) {
   const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.db.id);
   if (error) throw error;
   res.db.status = 'storniert';
+  // C5 review: a reload that landed while the question was open has new rows — the result is cancelled there too
+  for (const x of (window._src.abr || [])) if (x !== res.db && String(x.id) === String(res.db.id)) x.status = 'storniert';
 }
 /* 3: one stored Settlements line back to open (a line Settlements only shows has nothing stored) */
 async function ctlSettleOpen(r) {
