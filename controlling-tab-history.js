@@ -14,7 +14,7 @@
 
 'use strict';
 
-const _cxH = { open: {}, add: {}, busy: {} };   // C6: busy = tenant key → the button tapped for a save of that tenant on its way
+const _cxH = { open: {}, add: {}, busy: {}, q: {} };   // C6: busy = tenant key → the buttons tapped for a save of that tenant still to end; q = its last save
 
 function _cxHTable(app) { return app === 'casa' ? 'tenant_records' : 'rnt_tenant_records'; }
 function _cxHTenant(app, id) {
@@ -68,8 +68,8 @@ function _cxHIssues(w) {
 
 function _cxHTenancyHTML(u, pid, w) {
   const key = w.app + ':' + w.id;
-  const bz = _cxH.busy[key];                                  // C6: the button whose save is on its way stays off in a drawing
-  const dis = (h, id) => bz && bz.h === h && (id === undefined || String(bz.id) === String(id)) ? ' disabled' : '';
+  const bz = _cxH.busy[key] || [];                            // C6: a button whose save is on its way stays off in a drawing
+  const dis = (h, id) => bz.some(x => x.h === h && (id === undefined || String(x.id) === String(id))) ? ' disabled' : '';
   const iss = _cxHIssues(w);
   const status = w.t.status === 'active' ? cxPill('ok', 'active') : cxPill('grey', 'former');
   const bal = w.balance || { saldo: 0, months: 0 };
@@ -196,22 +196,29 @@ async function _cxHClick(ev, host) {
   const rerender = () => window.renderHistory(host);
   if (a === 'back') { CX.hist = false; return window.renderSetup(); }
   if (a === 'fold') { _cxH.open[key] = b.getAttribute('aria-expanded') !== 'true'; return rerender(); }
-  if (a === 'addToggle') { if (_cxH.add[key] && _cxH.busy[key]) return; _cxH.add[key] = !_cxH.add[key]; return rerender(); }   // C6: no Cancel while it saves
+  const bz = _cxH.busy[key] || [];
+  if (a === 'addToggle') { if (_cxH.add[key] && bz.some(x => x.h === 'addSave')) return; _cxH.add[key] = !_cxH.add[key]; return rerender(); }   // C6: no Cancel while its Save runs
   const [app, tid] = key.split(':');
-  if (!key || _cxH.busy[key]) return;                    // C6: a 2nd tap while this tenant's save is on its way wrote the rent twice
-  _cxH.busy[key] = { h: a, id: b.dataset.id || '' }; b.disabled = true;   // the tapped button stays off until it is done
+  const job = { h: a, id: b.dataset.id || '' };
+  if (!key || bz.some(x => x.h === job.h && x.id === job.id)) return;   // C6: a 2nd tap on a button whose save is on its way wrote the rent twice
+  _cxH.busy[key] = bz.concat(job); b.disabled = true;   // the tapped button stays off until its save is done
+  // C6: another save of this tenant still on its way (Confirm, then Save) — this one runs after it and sees what it wrote
+  const wait = _cxH.q[key]; let done; const mine = _cxH.q[key] = new Promise(r => { done = r; });
   try {
     if (a === 'delP') {
       const pid = b.dataset.id;               // the entry tapped — a drawing under the question moves rows (C5 review)
       if (!(await ccConfirm('Delete this rent entry?', '', 'Delete', true))) return;
+      if (wait) await wait;
       await ccRpDelete(db, pid);
     }
     if (a === 'confirm') {
+      if (wait) await wait;
       const t = _cxHTenant(app, tid); if (!t) return;
-      await _cxHConfirmLegacy(db, app, t);                    // Pauschal keeps its NK part (Nov 2026 fix)
+      // Pauschal keeps its NK part (Nov 2026 fix). C6: a Save just before already wrote the rent from move-in — not again over it
+      if (!wait || !ccRpFor(app, t.id).length) await _cxHConfirmLegacy(db, app, t);
     }
     if (a === 'addSave') {
-      const t = _cxHTenant(app, tid); if (!t) return;
+      const t0 = _cxHTenant(app, tid); if (!t0) return;
       const v = id => document.getElementById(id + key);
       const fm = v('h-fm-').value, lm = v('h-lm-').value;   // C6: the whole form is read before the first write (after it, '‹ Setup' had removed it)
       const from = ccRpIso(v('h-from-').value);
@@ -222,6 +229,8 @@ async function _cxHClick(ev, host) {
       if (k === null || k === undefined || isNaN(k)) { ctlToast('Please enter an amount'); return; }
       const nkIn = mode === 'pauschal' && nk !== null && nk !== undefined && !isNaN(nk) && nk > 0 ? nk : null;   // Pauschal: the NK part inside it
       if (nkIn !== null && nkIn > k) { ctlToast('The NK part can’t be more than the Pauschale'); return; }
+      if (wait) await wait;
+      const t = _cxHTenant(app, tid) || t0;                   // as stored after the save before (a read meanwhile has new tenant rows)
       // the rent saved with the tenant becomes their first entry first — with its NK part (the engine's own
       // carry-over would drop it for a Pauschale); then the new rent from its date
       const ein = ccRpIso(t.mietbeginn);
@@ -236,7 +245,11 @@ async function _cxHClick(ev, host) {
   } catch (e) {
     if (typeof ccRpIsMissing === 'function' && ccRpIsMissing(e)) ctlToast('Please run the SQL update first');
     else cxToastErr(e);
-  } finally { delete _cxH.busy[key]; b.disabled = false; }
+  } finally {
+    done(); if (_cxH.q[key] === mine) delete _cxH.q[key];
+    _cxH.busy[key] = (_cxH.busy[key] || []).filter(x => x !== job); if (!_cxH.busy[key].length) delete _cxH.busy[key];
+    b.disabled = false;
+  }
   if (typeof ctlDataChanged === 'function') ctlDataChanged();   // C5: saved or not — the balances are worked out again
   _cxHDone(host);
 }

@@ -412,7 +412,7 @@ window.renderSetup = function () {
         const pid = Number(document.getElementById('cxPkProp-' + b.dataset.pk)?.value);
         const p = ctlProp(pid);
         if (!pk || !p) return;
-        if (window._ctrl.units.some(u => u.source_type === 'rentals_parking' && String(u.source_ref) === String(pk.id))) return;   // C6: added meanwhile (a 2nd tap)
+        if (ctlSetupLinkState().used.has('rentals_parking|' + String(pk.id))) return;   // C6: added meanwhile (a 2nd tap) — the same rule that lists it as missing
         b.disabled = true;
         // short name inside the property: "Studio One TG 3" in Studio One → "TG 3"
         const short = String(pk.name).toLowerCase().startsWith(String(p.name).toLowerCase() + ' ') ? String(pk.name).slice(p.name.length + 1) : pk.name;
