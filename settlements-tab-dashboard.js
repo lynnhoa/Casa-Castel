@@ -87,7 +87,7 @@ function sdCasa(Y) {
 const sdLeft = iso => iso ? Math.round((new Date(sdD(iso) + 'T12:00:00Z') - new Date(cxToday() + 'T12:00:00Z')) / 864e5) : null;
 
 /* ── Render ───────────────────────────────────────────────── */
-function stRenderDashboard() {
+function stRenderDashboard(keepModal) {          // keepModal: only the page behind an open pop-up (C6)
   const el = document.getElementById('tab-dashboard'); if (!el) return;
   sdEnsureHost();
   const YB = sdYearBounds();
@@ -126,7 +126,7 @@ function stRenderDashboard() {
 
   cxPaint(el, '<div class="st-page sc-page sd-page">' + create + draftsHtml + yearNav + sql + sdOverviewHTML(Y, O) + '</div>');   // B18: only what changed
   el._sdShown = Y;
-  sdRenderModal();
+  if (!keepModal) sdRenderModal();
 }
 
 
@@ -403,7 +403,7 @@ function sdBarHTML(d, miss) {
   const trash = d.id ? '<button class="cx-btn cx-btn--s sd-trash" data-sd="delDraft" aria-label="Delete draft"><i class="ti ti-trash" aria-hidden="true"></i></button>' : '';
   return '<div class="srm__bar srm__bar--2" id="sdBar" data-mode="' + (ready ? 'send' : 'pdf') + '">' + trash + (ready
     ? '<button class="cx-btn cx-btn--s" data-sd="pdf"><i class="ti ti-file-text" aria-hidden="true"></i> PDF</button><button class="cx-btn cx-btn--p" data-sd="send">Mark as sent</button>'
-    : '<button class="cx-btn cx-btn--s" data-sd="save">Save</button><button class="cx-btn cx-btn--p" id="sdPdfBtn" data-sd="pdf"' + (miss.length ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>') + '</div>';
+    : '<button class="cx-btn cx-btn--s" data-sd="save"' + (SD.saving && SD.saving === SD.d ? ' disabled' : '') + '>Save</button><button class="cx-btn cx-btn--p" id="sdPdfBtn" data-sd="pdf"' + (miss.length ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>') + '</div>';
 }
 function sdCalcView() {
   const d = SD.d, x = sdCalc(d), sent = d.status === 'sent', dis = sent ? ' disabled' : '', miss = sdMissing(d, x);
@@ -601,18 +601,28 @@ function sdTotals() {
 }
 
 /* ── Save / letter / send ── */
-async function sdSave(quiet) {
-  const d = SD.d; if (!d) return null;
-  const row = { property_id: d.property_id || null, unit_label: d.unit_label || null, title_name: (d.title_name || '').trim() || null, tenant_ref: d.tenant_ref || null,
+/* C6: one save at a time — Save stays off until its save ends; Create PDF or Mark as sent while one runs waits and then
+   updates the row it made (was: a 2nd identical draft). What is typed while a save runs stays (it is not saved yet) */
+let _sdSaveP = null;
+function sdSave(quiet) {
+  const d = SD.d; if (!d) return Promise.resolve(null);
+  const p = Promise.resolve(_sdSaveP).catch(() => {}).then(() => _sdSaveNow(d, quiet));
+  _sdSaveP = p; return p;
+}
+const sdRow = d => ({ property_id: d.property_id || null, unit_label: d.unit_label || null, title_name: (d.title_name || '').trim() || null, tenant_ref: d.tenant_ref || null,
                 tenant_name: d.tenant_name || null, address: d.address || null, iban: d.iban || null, former: !!d.former,
                 period_from: d.period_from || null, period_to: d.period_to || null, use_from: d.use_from || null, use_to: d.use_to || null,
                 lines: d.lines || [], vz: d.vz || [], settle_via: d.settle_via || 'zahlung', due_days: d.due_days ?? 30, letter_date: d.letter_date || null,
                 book: !!d.book, status: d.status || 'draft', sent_at: d.sent_at || null, updated_at: new Date().toISOString(),
-                tenant_app: d.tenant_ref && d.property_id ? (Number(d.property_id) === CASA_PROP_ID ? 'casa' : 'rentals') : null };
+                tenant_app: d.tenant_ref && d.property_id ? (Number(d.property_id) === CASA_PROP_ID ? 'casa' : 'rentals') : null });
+async function _sdSaveNow(d, quiet) {
+  const row = sdRow(d), sent = JSON.stringify(row);
   const q = d.id ? _ctlSupa.from(SD_TABLE).update(row).eq('id', d.id).select().single() : _ctlSupa.from(SD_TABLE).insert(row).select().single();
   const { data, error } = await q;
   if (error) { stSay(SD.missing ? 'Please run the SQL for the manual NK-Abrechnung first' : 'Saving failed — ' + (error.message || error)); return null; }
-  Object.assign(d, data); SD.dirty = false;
+  const was = JSON.parse(sent), now = sdRow(d), keep = {};   // typed meanwhile → kept (the saved copy would undo it)
+  Object.keys(was).forEach(k => { if (k !== 'updated_at' && k !== 'tenant_app' && JSON.stringify(was[k]) !== JSON.stringify(now[k])) keep[k] = d[k]; });
+  Object.assign(d, data, keep); if (SD.d === d) SD.dirty = Object.keys(keep).length > 0;
   const i = SD.drafts.findIndex(x => x.id === data.id); if (i >= 0) SD.drafts[i] = data; else SD.drafts.unshift(data);
   if (!quiet) stSay('Draft saved');
   return data;
@@ -744,7 +754,13 @@ async function sdSend(btn) {
   try { await _ctlSupa.from(SD_TABLE).update({ status: 'sent', sent_at: d.sent_at, letter_id: letterId }).eq('id', d.id); } catch (e) {}
   const i = SD.drafts.findIndex(z => z.id === d.id); if (i >= 0) SD.drafts[i] = Object.assign({}, SD.drafts[i], d);
   stSay('Marked as sent · saved in the archive');
-  SD.modal = null; SD.d = null; stRenderDashboard();
+  sdDone(d);
+}
+/* C6: a send / delete that ends after the owner closed this draft and opened another one closes only its own pop-up —
+   the other one stays as it is (what was typed, the keyboard); the list behind is drawn again */
+function sdDone(d) {
+  if (SD.d && (SD.d === d || (d.id && String(SD.d.id) === String(d.id)))) { SD.modal = null; SD.d = null; SD.dirty = false; }
+  stRenderDashboard(!!SD.modal);
 }
 
 /* ── Clicks ── */
@@ -788,15 +804,23 @@ async function sdClick(e) {
   }
   if (a === 'tg') { d[b.dataset.f] = b.type === 'checkbox' ? b.checked : b.getAttribute('aria-pressed') !== 'true'; SD.dirty = true; return sdRenderModal(); }
   if (a === 'perMonth') { SD.perMonth = !SD.perMonth; if (!SD.perMonth) { const um = sdUseMonths(d), v = um.map(ym => sdNum(sdVzOf(d, ym))).find(z => z !== null); d.vz = v === undefined ? [] : um.map(ym => ({ ym, amount: v })); SD.dirty = true; } return sdRenderModal(); }
-  if (a === 'save') { await sdSave(); return sdRenderModal(); }
+  if (a === 'save') {                                             // C6: off (also when drawn again) until its save ends
+    SD.saving = d; b.disabled = true;
+    try { await sdSave(); } finally { if (SD.saving === d) SD.saving = null; }
+    return sdRenderModal();
+  }
   if (a === 'preview') return sdPdf(b);                            // older callers: the preview screen is gone
   if (a === 'pdf') return sdPdf(b);
   if (a === 'send') return sdSend(b);
   if (a === 'delDraft') {
     if (!(await stConfirm({ title: 'Delete this draft?', ok: 'Delete', danger: true }))) return;
+    if (_sdSaveP) await _sdSaveP.catch(() => {});                 // C6: a save still on its way ends first (else it writes the deleted row again)
     const { error } = await _ctlSupa.from(SD_TABLE).delete().eq('id', d.id);
     if (error) { stSay('Could not delete — ' + error.message); return; }
-    SD.drafts = SD.drafts.filter(x => x.id !== d.id); SD.modal = null; SD.d = null; stRenderDashboard();
+    SD.drafts = SD.drafts.filter(x => x.id !== d.id); sdDone(d);
   }
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && SD.modal && !SD.dirty) { SD.modal = null; SD.d = null; sdRenderModal(); } });
+
+/* C6: Mark as sent of an own NK-Abrechnung is one save (settlements-tab-tracking.js) */
+if (typeof ctlWriting === 'function') sdSend = ctlWriting(sdSend);
