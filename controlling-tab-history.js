@@ -266,5 +266,5 @@ async function _cxHChange(ev, host) {
 
 /* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
 window.renderHistory = ctlScope(window.renderHistory);
-/* C5: a rent entry saved or deleted here counts as a save — a return read running meanwhile keeps it (_CX_ABR_OWN) */
+/* C5: a rent entry saved or deleted here counts as a save — a read running meanwhile is read again after it (ctlSollLoad) */
 if (typeof ccRpInsert === 'function') { ccRpInsert = ctlWriting(ccRpInsert); ccRpUpdate = ctlWriting(ccRpUpdate); ccRpDelete = ctlWriting(ccRpDelete); }

@@ -120,24 +120,35 @@ async function ctlReadAll(first, query, label) {
    every year (large; the year on screen comes with the return, the rest with a full read) and the meter readings
    (Settlements only). Without it: everything, as before.
    A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review).
-   An Abrechnung booked, cancelled or reopened, or a tenancy / rent entry changed in Tenant history, while a later
-   read runs (_CX_ABR_OWN): the answer was asked for before that save and would hide it (the row showed open again,
-   the move-out went blank) → its rows stay as they are; the next return reads them. */
-const _CX_ABR_OWN = new Set(['abr', 'settle', 'abrPay', 'rntTen', 'casaTen', 'rentP']);
+   A save of your own while a later read runs (an Abrechnung booked, a rent entered, a move-out typed …): the answer
+   may have been read before that save and would hide it (the row showed open again, the move-out went blank), while
+   keeping the old rows would hide what the other apps changed → that read is not used; it is read again once the
+   save is done (at most 3 times — then the rows you have stay and the next return reads everything). */
 const _CX_LIVE = new Set(_CX_SRC.map(([k]) => k).filter(k => k !== 'incAll' && k !== 'readings').concat('abrPay', 'knkAll'));
 const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
 const _cxLost = new Set();
+const _CX_ABR_Q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
+const _CX_KNK_Q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
+async function _cxReadSources(SRC, abr, knk) {
+  const one = (q, t) => q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
+  return Promise.all([Promise.all(SRC.map(([, t]) => one(() => _ctlSupa.from(t).select('*'), t))),
+    abr ? one(_CX_ABR_Q, 'ctrl_expense_one_time (Abrechnungen)') : null,
+    knk ? one(_CX_KNK_Q, 'ctrl_expense_one_time (Kaufnebenkosten)') : null]);
+}
 async function ctlSollLoad(only) {
   const had = !!window._src.loaded, lost = k => !had || _cxLost.has(k);
   const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
-  const ws = window._ctlWriteSeq, busy = window._ctlBusy > 0;     // a save on its way / made before the answer comes
-  const keepOwn = k => had && _CX_ABR_OWN.has(k) && (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws);
-  const res = await Promise.all(SRC.map(([, t]) => {
-    const q = () => _ctlSupa.from(t).select('*');
-    return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
-  }));
+  const abr = !only || only.has('abrPay'), knk = !only || only.has('knkAll');
+  let got = null;
+  for (let i = 0; i < 3 && !got; i++) {
+    if (had && typeof ctlIdle === 'function') await ctlIdle();          // a save on its way: read after it
+    const ws = window._ctlWriteSeq;
+    const r = await _cxReadSources(SRC, abr, knk);
+    if (!had || (window._ctlWriteSeq === ws && !(window._ctlBusy > 0))) got = r;
+  }
+  if (!got) { if (!only) window._src.fullAt = 0; return; }             // saves all the while: the rows you have stay
+  const [res, ra, rk] = got;
   SRC.forEach(([k, t], i) => {
-    if (keepOwn(k)) return;                              // a save came meanwhile: the rows you have stay
     if (res[i].error) {
       console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
       if (!lost(k)) return;                              // keep what was loaded before
@@ -146,19 +157,15 @@ async function ctlSollLoad(only) {
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
-  if (!only || only.has('abrPay')) try {
-    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
-    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
-    if (r.error) throw r.error;
-    if (!keepOwn('abrPay')) { window._src.abrPay = r.data || []; _cxLost.delete('abrPay'); }
-  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!keepOwn('abrPay') && lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
+  if (ra) {
+    if (!ra.error) { window._src.abrPay = ra.data || []; _cxLost.delete('abrPay'); }
+    else { console.warn('[controlling] Abrechnungen bookings:', ra.error.message || ra.error); if (lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
+  }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
-  if (!only || only.has('knkAll')) try {
-    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
-    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
-    if (r.error) throw r.error;
-    window._src.knkAll = r.data || []; _cxLost.delete('knkAll');
-  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (lost('knkAll')) { window._src.knkAll = []; _cxLost.add('knkAll'); } }
+  if (rk) {
+    if (!rk.error) { window._src.knkAll = rk.data || []; _cxLost.delete('knkAll'); }
+    else { console.warn('[controlling] Kaufnebenkosten:', rk.error.message || rk.error); if (lost('knkAll')) { window._src.knkAll = []; _cxLost.add('knkAll'); } }
+  }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
   if (!only) window._src.fullAt = window._src.loadedAt;
@@ -211,14 +218,7 @@ async function ctlRefreshSources(force, full, year) {
   _cxRefreshing = (async () => {
     try {
       if (all) {
-        const log = window._ctlIncLog = [];
-        try { await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]); } finally { window._ctlIncLog = null; }
-        // income saved or deleted meanwhile ('Book all' …) may have been read before it: those months as saved —
-        // the other rows as just read (money booked on another device stays)
-        for (const [u, y, m, row] of log) {
-          S.incAll = (S.incAll || []).filter(r => !(r.unit_id === u && r.year === y && r.month === m));
-          if (row) S.incAll.push(row);
-        }
+        await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]);
         if (typeof ctlSollReset === 'function') ctlSollReset();
         return true;
       }
@@ -238,15 +238,7 @@ async function _ctlReloadYear() {
   let mine = null;
   const ok = seq => { if (seq !== undefined) mine = seq; return mine === _ctlLoadSeq && C.year === y && calm(); };
   if (!calm()) return false;
-  const inc0 = window._src.incAll;
   try { await ctlLoadAll(y, { ok, quiet: true }); } catch (e) { return false; }
-  // the all-years copy (balances): this year's rows as just read — the others stay where they are
-  if (Array.isArray(inc0) && window._src.incAll === inc0 && C.year === y) {
-    const key = r => r.unit_id + '|' + r.month, fresh = new Map(C.income.filter(r => r.year === y).map(r => [key(r), r]));
-    const out = [];
-    for (const r of inc0) { if (r.year !== y) out.push(r); else if (fresh.has(key(r))) { out.push(fresh.get(key(r))); fresh.delete(key(r)); } }
-    window._src.incAll = out.concat([...fresh.values()]);
-  }
   return true;
 }
 async function _ctlReloadLive(year) {
@@ -453,7 +445,8 @@ const _cxUnitCache = new Map();
 /* Year export only (bucket 3, Oct 2026): '' = every tenant whose rent window covers a day pays (the app) ·
    'old' | 'new' = one rent per day and unit on double-rent days (the previous / the new tenant) */
 let _cxOneRent = '';
-function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlDataChanged === 'function') ctlDataChanged(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
+const _cxLearnedU = new Set();                            // units whose Soll used a rent learned from the loaded year
+function ctlSollReset() { _cxUnitCache.clear(); _cxLearnedU.clear(); if (typeof ctlDataChanged === 'function') ctlDataChanged(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
 /* x6 (Nov 2026) · an Income entry was saved or deleted: forget the Soll of that ONE unit — a tenant without a saved rent
    learns it from these entries (_cxLearned reads only this unit's rows), so its other months follow at once, as after a
    reload. Keys: v2 'v2|pid|unit|y|m|…' · v1 'pid|unit|y|m|…' */
@@ -461,6 +454,13 @@ function ctlSollDropUnit(unitId) {
   if (unitId === null || unitId === undefined) return;
   const id = String(unitId);
   for (const k of [..._cxUnitCache.keys()]) { const s = k.split('|'); if ((s[0] === 'v2' ? s[2] : s[1]) === id) _cxUnitCache.delete(k); }
+}
+/* C5 · another year loaded: a rent learned from entries (_cxLearned reads the loaded year) is worked out anew —
+   the same figure a freshly opened page shows; every other unit keeps its worked-out Soll */
+function ctlSollDropLearned() {
+  for (const id of _cxLearnedU) ctlSollDropUnit(id);
+  _cxLearnedU.clear();
+  ctlSettlementInvalidate();
 }
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
@@ -470,6 +470,7 @@ function ctlSollDropUnit(unitId) {
      3 today's room / apartment price — flagged if the tenant is no longer there   */
 function _cxLearned(u, t, y, m) {
   if (u.id == null) return null;
+  _cxLearnedU.add(String(u.id));
   const count = new Map(), P = ctlProp(u.property_id);
   for (const r of (window._ctrl.income || [])) {
     if (r.unit_id !== u.id || (r.year === y && r.month === m)) continue;

@@ -34,6 +34,7 @@ window._ctrl = {
 let _ctlLoadSeq = 0;
 async function ctlLoadAll(year, opt) {
   const y = year || window._ctrl.year, seq = ++_ctlLoadSeq;
+  const inc0 = window._src && window._src.incAll;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -52,8 +53,15 @@ async function ctlLoadAll(year, opt) {
   const yearChanged = window._ctrl.year !== y;
   for (const k in rows) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
-  // C5: a tenant without a saved rent learns it from the loaded year's entries — another year, Soll worked out anew
-  if (yearChanged && typeof ctlSollReset === 'function') ctlSollReset();
+  // C5: the all-years copy (balances) gets this year's rows as just read — unless a newer read of it came meanwhile
+  if (Array.isArray(inc0) && window._src.incAll === inc0) {
+    const key = r => r.unit_id + '|' + r.month, fresh = new Map(window._ctrl.income.filter(r => r.year === y).map(r => [key(r), r]));
+    const out = [];
+    for (const r of inc0) { if (r.year !== y) out.push(r); else if (fresh.has(key(r))) { out.push(fresh.get(key(r))); fresh.delete(key(r)); } }
+    window._src.incAll = out.concat([...fresh.values()]);
+  }
+  // C5: a tenant without a saved rent learns it from the loaded year's entries — another year, that Soll anew
+  if (yearChanged && typeof ctlSollDropLearned === 'function') ctlSollDropLearned();
   ctlDataChanged();                                          // C5: new rows → the Tenant history works its balances out again
   await probe;
 }
@@ -91,12 +99,9 @@ function _ctlIncChanged(old, kalt, nk, split) {
   for (const k of ks) if (_ctlR2(old.split[k]) !== _ctlR2(split[k]) || (k in split) !== (k in old.split)) return true;
   return false;
 }
-/* C5: income saved or deleted while a full read runs — laid over the rows it read (ctlRefreshSources) */
-function _ctlIncNote(u, y, m, row) { if (window._ctlIncLog) window._ctlIncLog.push([u, y, m, row]); }
 function _ctlIncCache(data) {
   ctlDataChanged();                                                // C5: the Tenant history balances follow
   const y = data.year, m = data.month, u = data.unit_id;
-  _ctlIncNote(u, y, m, data);
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
   const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
@@ -306,7 +311,6 @@ async function ctlDeleteIncome(unit_id, month) {
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
   if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
-  _ctlIncNote(unit_id, y, month, null);
   ctlDataChanged();                                                  // C5: the Tenant history balances follow
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
@@ -419,14 +423,22 @@ async function ctlDeleteOneTime(id) {
    Every save of Controlling's own data counts here while it runs (_ctlBusy) and when it starts and ends
    (_ctlWriteSeq). The reload when the app comes back takes the year's rows over only if no save ran meanwhile —
    rows read before a save never hide it (and 'Book all' never books it again). Each save also tells the
-   Tenant history that the data changed (ctlDataChanged). */
+   Tenant history that the data changed (ctlDataChanged). ctlIdle() → once no save runs (at most max ms). */
 window._ctlBusy = 0; window._ctlWriteSeq = 0;
+let _ctlIdleW = [];
+function ctlIdle(max) {
+  if (!(window._ctlBusy > 0)) return Promise.resolve();
+  return new Promise(r => { const t = setTimeout(go, max || 20000); function go() { clearTimeout(t); r(); } _ctlIdleW.push(go); });
+}
 function ctlWriting(fn) {
   if (typeof fn !== 'function' || fn._ctlWrite) return fn;
   const w = async function () {
     window._ctlBusy++; window._ctlWriteSeq++;
     try { return await fn.apply(this, arguments); }
-    finally { window._ctlBusy--; window._ctlWriteSeq++; ctlDataChanged(); }
+    finally {
+      window._ctlBusy--; window._ctlWriteSeq++; ctlDataChanged();
+      if (!(window._ctlBusy > 0) && _ctlIdleW.length) { const w0 = _ctlIdleW; _ctlIdleW = []; w0.forEach(f => f()); }
+    }
   };
   w._ctlWrite = true;
   return w;

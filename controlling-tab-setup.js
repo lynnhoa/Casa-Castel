@@ -157,6 +157,16 @@ window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
   if (!host) return;
   CX.tab = 'setup';
+  // fixes made in Rentals / Casa Castel and the income of every year (Tenant history balances): reload when Setup or
+  // Tenant history is opened (a full read at most every 20 s) — drawn again unless you are typing in it
+  if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - (window._src.fullAt || 0) > 20000) {
+    _cxSU.refreshing = true;
+    ctlRefreshSources(false, true).then(ch => {
+      _cxSU.refreshing = false;
+      const h = document.getElementById('tab-setup'), a = document.activeElement;
+      if (ch && CX.tab === 'setup' && !(h && a && h.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) window.renderSetup();
+    });
+  }
   if (CX.hist && typeof window.renderHistory === 'function') return window.renderHistory(host);   // Phase 3
   const S = window._src;
   const props = window._ctrl.properties.filter(p => p.active);
@@ -165,11 +175,6 @@ window.renderSetup = function () {
   // × on the suggestions hides exactly this set — a new suggestion brings the card back
   const suggKey = 'sug:' + sugg.map(([t, id, f]) => t + '#' + id + '#' + JSON.stringify(f)).sort().join(';');
   ctlPruneDismissed('sug:', sugg.length ? [suggKey] : []);
-  // fixes made in Rentals / Casa Castel: reload their data when Setup is opened (a full read at most every 20 s)
-  if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - (window._src.fullAt || 0) > 20000) {
-    _cxSU.refreshing = true;
-    ctlRefreshSources(false, true).then(ch => { _cxSU.refreshing = false; if (ch && CX.tab === 'setup' && !CX.hist) window.renderSetup(); });
-  }
 
   /* ── Objekte ── */
   const propCards = props.map(p => {

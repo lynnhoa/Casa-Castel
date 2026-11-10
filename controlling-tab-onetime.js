@@ -756,7 +756,7 @@ async function _cxOtBonusSave(btn) {
       company: b.source === 'check24' ? 'CHECK24' : (k.provider || null), amount: cxR(amt), kind: 'Sonstiges', direction: 1,
       nk_umlage: nk, nk_category_id: nkCat, source_ref: 'bonus:' + b.id });
     const f = { status: 'received', status_on: date, in_nk: nk, onetime_id: saved ? String(saved.id) : null };
-    const { error } = await _ctlSupa.from('house_contract_bonuses').update(f).eq('id', b.id);
+    const { error } = await ctlWriting(() => _ctlSupa.from('house_contract_bonuses').update(f).eq('id', b.id))();   // C5: a save
     if (error) throw error;
     Object.assign(b, f);
   } catch (e) {
