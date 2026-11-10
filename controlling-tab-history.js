@@ -202,8 +202,11 @@ async function _cxHClick(ev, host) {
   const job = { h: a, id: b.dataset.id || '' };
   if (!key || bz.some(x => x.h === job.h && x.id === job.id)) return;   // C6: a 2nd tap on a button whose save is on its way wrote the rent twice
   _cxH.busy[key] = bz.concat(job); b.disabled = true;   // the tapped button stays off until its save is done
-  // C6: another save of this tenant still on its way (Confirm, then Save) — this one runs after it and sees what it wrote
-  const wait = _cxH.q[key]; let done; const mine = _cxH.q[key] = new Promise(r => { done = r; });
+  // C6: another save of this tenant still on its way (Confirm, then Save) — this one runs after it and sees what it wrote.
+  // Its turn ends only once the save before it has ended too (a Save stopped at a check let the next one run at once)
+  const wait = _cxH.q[key]; let done; const mine = _cxH.q[key] = new Promise(r => { done = r; }).then(() => wait);
+  mine.then(() => { if (_cxH.q[key] === mine) delete _cxH.q[key]; });
+  let wrote = true;
   try {
     if (a === 'delP') {
       const pid = b.dataset.id;               // the entry tapped — a drawing under the question moves rows (C5 review)
@@ -216,6 +219,7 @@ async function _cxHClick(ev, host) {
       const t = _cxHTenant(app, tid); if (!t) return;
       // Pauschal keeps its NK part (Nov 2026 fix). C6: a Save just before already wrote the rent from move-in — not again over it
       if (!wait || !ccRpFor(app, t.id).length) await _cxHConfirmLegacy(db, app, t);
+      else wrote = false;                                     // nothing written — no 'Saved' over that save's own message
     }
     if (a === 'addSave') {
       const t0 = _cxHTenant(app, tid); if (!t0) return;
@@ -241,12 +245,12 @@ async function _cxHClick(ev, host) {
       _cxH.add[key] = false;
     }
     _cxHSync();
-    ctlToast('Saved');
+    if (wrote) ctlToast('Saved');
   } catch (e) {
     if (typeof ccRpIsMissing === 'function' && ccRpIsMissing(e)) ctlToast('Please run the SQL update first');
     else cxToastErr(e);
   } finally {
-    done(); if (_cxH.q[key] === mine) delete _cxH.q[key];
+    done();
     _cxH.busy[key] = (_cxH.busy[key] || []).filter(x => x !== job); if (!_cxH.busy[key].length) delete _cxH.busy[key];
     b.disabled = false;
   }
