@@ -140,12 +140,11 @@ window.renderExpenses = function () {
           if (window._ctrl.year !== u.y) break;                // x8: never clear a month of another year
           if (cxTouchedSince(it.id, u.y, u.m, s1)) continue;   // C6: an amount you enter while Undo runs stays
           try {
-            await cxRowQ(_cxExpQ(it.catId, it.pid, u.y, u.m), async () => {   // C6: after a save of this row on its way
-              if (window._ctrl.year !== u.y) return;
-              if (it.catId) await ctlDeleteCastel(it.catId, u.m);
-              else if (it.key === 'rate') await ctlUpsertApt(it.pid, u.m, { rate: null, zinsen: null, tilgung: null });
-              else if (it.key === 'zinsen' || it.key === 'tilgung') await _cxAptLoanPart(it.pid, u.m, it.key, null);
-              else await ctlUpsertApt(it.pid, u.m, { [it.key]: null });
+            await cxRowQ(_cxExpQ(it.catId, it.pid, u.y, u.m), async () => {   // C6: after a save of this row on its way · into its own year
+              if (it.catId) await ctlDeleteCastel(it.catId, u.m, u.y);
+              else if (it.key === 'rate') await ctlUpsertApt(it.pid, u.m, { rate: null, zinsen: null, tilgung: null }, u.y);
+              else if (it.key === 'zinsen' || it.key === 'tilgung') await _cxAptLoanPart(it.pid, u.m, it.key, null, u.y);
+              else await ctlUpsertApt(it.pid, u.m, { [it.key]: null }, u.y);
             });
           } catch (err) { cxToastErr(err); }
         }
@@ -157,9 +156,8 @@ window.renderExpenses = function () {
     // CP2 (#10): "On purpose" — Casa Castel: the cost type's month row · apartments: this line only (diff_marks)
     mark: async (id, mark) => {
       const e = _cxExpIndex[id]; if (!e) return;
-      const y = window._ctrl.year, m = CX.month;              // C6: after a save of this row on its way (two marks of one apartment)
-      await cxRowQ(_cxExpQ(e.row.catId, e.p.id, y, m), () => window._ctrl.year !== y ? null
-        : e.row.catId ? ctlSetCastelMark(e.row.catId, m, mark) : ctlSetAptMark(e.p.id, m, e.row.key, mark));
+      const y = window._ctrl.year, m = CX.month;              // C6: after a save of this row on its way (two marks of one apartment) · into its own year
+      await cxRowQ(_cxExpQ(e.row.catId, e.p.id, y, m), () => e.row.catId ? ctlSetCastelMark(e.row.catId, m, mark, y) : ctlSetAptMark(e.p.id, m, e.row.key, mark, y));
     },
   });
 };
@@ -178,46 +176,48 @@ function _cxExpBulkList() {
 }
 
 /* Zinsen or Tilgung debited separately: save that part, the Kreditrate is always their sum */
-async function _cxAptLoanPart(pid, m, key, val) {
-  const y = window._ctrl.year;
-  const row = window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m) || {};
+async function _cxAptLoanPart(pid, m, key, val, y = window._ctrl.year) {
+  // C6: y = the year it was typed in — a save that waited while another year was opened reads its row (not in memory any more)
+  const row = (y === window._ctrl.year ? window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m)
+    : await _ctlExpRead('ctrl_expense_apartments', 'property_id', pid, y, m)) || {};
   const other = key === 'zinsen' ? row.tilgung : row.zinsen;
   const parts = [val, other].filter(x => x !== null && x !== undefined);
-  await ctlUpsertApt(pid, m, { [key]: val, rate: parts.length ? cxR(parts.reduce((a, b) => a + Number(b), 0)) : null });
+  await ctlUpsertApt(pid, m, { [key]: val, rate: parts.length ? cxR(parts.reduce((a, b) => a + Number(b), 0)) : null }, y);
 }
 
 /* C6: the queue of a month row — a Casa Castel cost type's, or an apartment's (all its lines are one row) */
 const _cxExpQ = (catId, pid, y, m) => (catId ? 'cst|' + catId : 'apt|' + pid) + '|' + y + '|' + m;
 /* Save one cost line (null = empty → "offen").
    x8: y / m = the month the amount belongs to (Book all passes them: the month arrow can be tapped while it saves).
-   The data layer writes into the year on screen → nothing is written once another year is open.
-   C6: one save at a time per month row — Tilgung typed while Zinsen saves reads the Zinsen saved (the rate was Tilgung only) */
+   Another year open already when it is called (Book all) → nothing is written.
+   C6: one save at a time per month row — Tilgung typed while Zinsen saves reads the Zinsen saved (the rate was Tilgung only).
+   A save whose turn comes after another year was opened still goes into its own year (it was dropped) */
 async function _cxExpSave(e, v, y = window._ctrl.year, m = CX.month) {
   const r = e.row;
   if (window._ctrl.year !== y) return;
   try {
-    await cxRowQ(_cxExpQ(r.catId, e.p.id, y, m), () => window._ctrl.year === y && _cxExpSaveNow(e, v, m));
+    await cxRowQ(_cxExpQ(r.catId, e.p.id, y, m), () => _cxExpSaveNow(e, v, y, m));
     r.ist = v === null || v === undefined ? null : cxR(v);
   } catch (err) { cxToastErr(err); }
 }
-async function _cxExpSaveNow(e, v, m) {
+async function _cxExpSaveNow(e, v, y, m) {
   const r = e.row;
   if (r.catId) {
-    if (v === null || v === undefined) await ctlDeleteCastel(r.catId, m);
-    else await ctlUpsertCastel(r.catId, m, cxR(v));
+    if (v === null || v === undefined) await ctlDeleteCastel(r.catId, m, y);
+    else await ctlUpsertCastel(r.catId, m, cxR(v), y);
   } else if (r.key === 'zinsen' || r.key === 'tilgung') {
-    await _cxAptLoanPart(e.p.id, m, r.key, v === null || v === undefined ? null : cxR(v));
+    await _cxAptLoanPart(e.p.id, m, r.key, v === null || v === undefined ? null : cxR(v), y);
   } else if (r.key === 'rate') {
-    if (v === null || v === undefined) await ctlUpsertApt(e.p.id, m, { rate: null, zinsen: null, tilgung: null });
+    if (v === null || v === undefined) await ctlUpsertApt(e.p.id, m, { rate: null, zinsen: null, tilgung: null }, y);
     else {
-      if (!r.split) await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen: null, tilgung: null });   // #7: split unknown
+      if (!r.split) await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen: null, tilgung: null }, y);   // #7: split unknown
       else {
         const zinsen = Math.min(cxR(r.split.zinsen), cxR(v));
-        await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen, tilgung: cxR(v - zinsen) });
+        await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen, tilgung: cxR(v - zinsen) }, y);
       }
     }
   } else {
-    await ctlUpsertApt(e.p.id, m, { [r.key]: v === null || v === undefined ? null : cxR(v) });
+    await ctlUpsertApt(e.p.id, m, { [r.key]: v === null || v === undefined ? null : cxR(v) }, y);
   }
 }
 

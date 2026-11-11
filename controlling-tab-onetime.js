@@ -204,7 +204,7 @@ function _cxOtMaintFormHTML(o) {
         '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
       _cxOtNkCatHTML(o, nk, pid) +
       '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-        '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+        '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + _cxOt.formN + '">Save</button></div>' +   // C6: each opened form has its own Save (cxWire's busy key)
       '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
     : _cxOtWhoHTML(o) +                                      // cx-ot-mtbtns: "Open in Maintenance" gets the room (one line on phones)
       '<div class="cx-grid2 cx-ot-mtbtns"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
@@ -304,7 +304,7 @@ function _cxOtFormHTML(o) {
       '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + _cxOt.formN + '">Save</button></div>' +   // C6: each opened form has its own Save (cxWire's busy key)
     (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Delete invoice</button>' : '') +
   '</div>';
 }

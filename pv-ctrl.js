@@ -19,6 +19,9 @@
   window._pvCtl = st;
   const same = (a, b) => String(a) === String(b);
   const find = (catId, y, m) => (st.y === y ? st.rows.find(r => same(r.category_id, catId) && r.month === m) : null);
+  // C6: a Controlling save that waited while another year was opened still goes into its own year — that year's months are kept
+  const take = (y, rows) => { if (st.y !== y) st.was = { y: st.y, rows: st.rows }; st.y = y; st.rows = rows; };
+  const findFor = (catId, y, m) => find(catId, y, m) || (st.was && st.was.y === y ? st.was.rows.find(r => same(r.category_id, catId) && r.month === m) || null : null);
   const catOf = id => (window._ctrl.categories || []).find(c => same(c.id, id));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const eur = n => (typeof cxEur === 'function' ? cxEur(Number(n) || 0) : (Number(n) || 0).toFixed(2).replace('.', ',') + ' €');
@@ -47,8 +50,8 @@
     const opt = arguments[1], live = !!(opt && typeof opt.ok === 'function');
     try {
       const { data, error } = await _ctlSupa.rpc('pv_ctrl_year', { p_year: window._ctrl.year });
-      if (!live || (!error && opt.ok())) { st.y = window._ctrl.year; st.rows = !error && Array.isArray(data) ? data : []; }
-    } catch (e) { if (!live) { st.y = window._ctrl.year; st.rows = []; } }
+      if (!live || (!error && opt.ok())) take(window._ctrl.year, !error && Array.isArray(data) ? data : []);
+    } catch (e) { if (!live) take(window._ctrl.year, []); }
     try {                                                    /* Fix 6: which cost types Providers owns, and since when */
       const { data: cl, error: e2 } = await _ctlSupa.rpc('pv_ctrl_claimed', {});
       if (!live || (!e2 && opt.ok())) st.claimed = !e2 && Array.isArray(cl) ? cl : [];
@@ -129,15 +132,15 @@
   // (ctlWriting rows: the reload after coming back is not read again for it — Casa Castel takes kept the old Soll)
   const writing = typeof ctlWriting === 'function' ? f => ctlWriting(f, 1) : f => f;
   const _ups = ctlUpsertCastel;
-  ctlUpsertCastel = writing(async function (category_id, month) {
-    const pv = find(category_id, window._ctrl.year, month);
+  ctlUpsertCastel = writing(async function (category_id, month, amount, year) {
+    const pv = findFor(category_id, year || window._ctrl.year, month);   // C6: year = the year it was typed in
     const res = await _ups.apply(this, arguments);
     await paid(pv, true);
     return res;
   });
   const _del = ctlDeleteCastel;
-  ctlDeleteCastel = writing(async function (category_id, month) {
-    const pv = find(category_id, window._ctrl.year, month);
+  ctlDeleteCastel = writing(async function (category_id, month, year) {
+    const pv = findFor(category_id, year || window._ctrl.year, month);
     const res = await _del.apply(this, arguments);
     await paid(pv, false);
     return res;

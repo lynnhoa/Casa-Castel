@@ -252,7 +252,9 @@ async function _cxHClick(ev, host) {
   } finally {
     done();
     _cxH.busy[key] = (_cxH.busy[key] || []).filter(x => x !== job); if (!_cxH.busy[key].length) delete _cxH.busy[key];
-    b.disabled = false;
+    // C6: this entry's button turns on again wherever it is now — a drawing under the question moved rows, and after
+    // Cancel no drawing follows (the tapped button may hold another entry by now, and this one stayed off)
+    host.querySelectorAll('[data-h="' + job.h + '"]').forEach(x => { if ((x.dataset.k || '') === key && (x.dataset.id || '') === job.id) x.disabled = false; });
   }
   if (typeof ctlDataChanged === 'function') ctlDataChanged();   // C5: saved or not — the balances are worked out again
   _cxHDone(host);

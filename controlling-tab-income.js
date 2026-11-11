@@ -147,8 +147,8 @@ window.renderIncome = function () {
     // CP2 (#10): "On purpose" — the mark belongs to the unit's month row (a tenant change: both lines); amounts stay
     mark: async (id, mark) => {
       const e = _cxIncIndex[id]; if (!e || e.u.id == null) return;
-      const y = window._ctrl.year, m = CX.month;              // C6: after a save of this row on its way (a new amount clears it)
-      await cxRowQ('inc|' + e.u.id + '|' + y + '|' + m, () => window._ctrl.year === y ? ctlSetIncomeMark(e.u.id, m, mark) : null);
+      const y = window._ctrl.year, m = CX.month;              // C6: after a save of this row on its way (a new amount clears it) · into its own year
+      await cxRowQ('inc|' + e.u.id + '|' + y + '|' + m, () => ctlSetIncomeMark(e.u.id, m, mark, y));
     },
   });
 };
