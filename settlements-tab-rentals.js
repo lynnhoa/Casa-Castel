@@ -264,6 +264,18 @@ function _srKeyText(rec, pos, apt) {
    A Hausgeld cost goes into the NK when it is umlagefähig and not unticked ('nk' false). */
 const _srIsNkOnly = p => p.origin === 'nk';
 const _srInNk = p => (_srIsNkOnly(p) || p.u) && p.nk !== false;      // Nov 2026: NK-only costs can be switched off too
+/* Gewerbe: the Gewerbemietvertrag says "Verwaltungskosten sind im Gewerbemietverhältnis umlagefähig" — the Verwaltung of a
+   Gewerbefläche goes into the tenants' NK, from the first Abrechnung with no letter sent yet on. An Abrechnung with a letter
+   sent stays as it was sent. Flats: unchanged (Wohnraum: Verwaltung is not umlagefähig). */
+function _srGewOn(c) {
+  if (!c || !c.apt || c.apt.zimmer_type !== 'Gewerbefläche') return false;
+  return !(c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res); });
+}
+const _srKindU = (k, gew) => k.u || (!!gew && k.k === 'verwaltung');
+function _srGewUp(c, rec) {                              // in memory — the next save of the record keeps it
+  if (!rec || !_srGewOn(c)) return;
+  for (const p of rec.positions || []) if (p.kind === 'verwaltung' && !_srIsNkOnly(p) && !p.u) p.u = true;
+}
 function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
   for (const pos of (rec && rec.positions) || []) {
@@ -784,7 +796,7 @@ function _srLetterData(c, it, rec, x, ts) {
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
-    isGewerbe: apt.zimmer_type === 'Gewerbefläche',   // n47: a Gewerbe unit's letter says Gewerbefläche (amounts unchanged)
+    isGewerbe: apt.zimmer_type === 'Gewerbefläche',   // n47: a Gewerbe unit's letter says Gewerbefläche · its Verwaltung: _srGewOn
     objekt: [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
     footer: apt.adresse ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '') : (apt.plz_ort || ''),
     ort: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // the city of the property
@@ -831,9 +843,9 @@ function srLetterHtml(d) {
     bank: d.bank, verwendung: d.verwendung, tenantIban: d.tenantIban, former: d.former, du: false,
     extraHtml: vzNew,
     // n47: §§ 556 / 560 BGB are Wohnraum law, and a Gewerbe contract makes Verwaltung umlagefähig — the Gewerbe letter
-    // neither cites them nor calls Verwaltung "nicht umlagefähig" (whether Verwaltung is billed: owner decision, amounts unchanged)
+    // neither cites them nor calls Verwaltung "nicht umlagefähig" · Gewerbe: Verwaltung is billed (_srGewOn), then only the Rücklage is left out
     hints: [(d.hasVerbrauch ? 'Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung (siehe Anlage). ' : '')
-              + (d.isGewerbe ? 'Verwaltungskosten und Rücklage sind nicht enthalten.' : 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.'),
+              + (d.isGewerbe ? (d.lines.some(l => l.pos.kind === 'verwaltung') ? 'Die Rücklage ist nicht enthalten.' : 'Verwaltungskosten und Rücklage sind nicht enthalten.') : 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.'),
             'Die Belege können nach Terminabsprache eingesehen werden.' + (d.isGewerbe ? '' : ' Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).')],
     closing: 'Mit freundlichen Grüßen', anlagen: d.anlagen, extra: null,
   });
@@ -979,6 +991,7 @@ function _srYearModel(Y) {
     const c = { ck: _srCk(p.id, per.from), p, per, year: Y, apt, verw, items: [], weg: null, before: false, running: per.to >= cxToday() };
     if (since && per.to < since) { c.before = true; return c; }
     const x = _srItemsFor(p, per); c.items = x.items; c.weg = x.weg;
+    _srGewUp(c, _srRec(p, per));                            // Gewerbe: Verwaltung into the NK (not once a letter is sent)
     return c;
   });
 }
@@ -1522,6 +1535,7 @@ function _srMakeDraft(c) {
     if (prev && (prev.positions || []).length) d.positions = prev.positions.map(p => Object.assign({}, p, { id: _srUid(), total: null, amount: null, key: 'direkt', ku: null, kt: null }));
     else d.positions = SR_STD_U.concat(SR_STD_NU).map(k => _srNewPos(k, d));
   }
+  _srGewUp(c, d);                                          // Gewerbe: Verwaltung umlagefähig (also when taken from last year)
   return d;
 }
 
@@ -1664,7 +1678,7 @@ async function _srAutoFlush() { if (_srAutoT) { clearTimeout(_srAutoT); await _s
 function _srCleanRec(d, c) {
   const clean = JSON.parse(JSON.stringify(d)); delete clean._ck;
   clean.positions = (clean.positions || []).filter(p => p.kind && (_srNum(p.amount) !== null || _srUnitAmt(clean, Object.assign({}, p, { amount: null }), c.apt) !== null))
-    .map(p => { if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = k.u; p.label = null; } } return p; });
+    .map(p => { if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = _srKindU(k, _srGewOn(c)); p.label = null; } } return p; });
   if (!clean.weg_direction) { clean.weg_amount = null; clean.weg_due = null; }
   if (clean.weg_direction && !clean.weg_via) clean.weg_via = 'zahlung';
   clean.keys = Object.assign({}, clean.keys || {}, { ja_v: 2 });
@@ -2162,7 +2176,7 @@ async function _srHvSave4(btn, thenView) {
   // custom rows: match a catalogue name, else keep as "Sonstige"
   d.positions = (d.positions || []).filter(p => p.kind && (_srNum(p.amount) !== null || _srUnitAmt(d, Object.assign({}, p, { amount: null }), c.apt) !== null))
     .map(p => {
-      if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = k.u; p.label = null; } }
+      if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = _srKindU(k, _srGewOn(c)); p.label = null; } }
       return p;
     });
   if (!d.period_from || !d.period_to || d.period_to < d.period_from) { stSay('Period: “to” is before “from”'); return; }
