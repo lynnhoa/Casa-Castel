@@ -105,7 +105,7 @@ function _cckRo(v) { return `<div class="cck-ro">${_cckEsc(v)}</div>`; }
    type the refund → "Kept · other reasons" is calculated. "Settled on" filled = the refund is paid
    (Settled); empty = not paid yet (the Kaution is still held). After the move-out the form opens by itself.
    K1 (Nov 2026): "Refunded on" is now "Settled on"; everything kept (refund 0) settles on Save as well.
-   A refund you typed stays when you type the NK amount after it — only the field the app filled follows.
+   A refund you typed stays when you type the NK amount or "other" after it — only the field the app filled follows.
    "Kept · for NK-Abrechnung" only for a tenant who gets one (adapter hasNkAbr: not parking / Pauschal).
    Same rows in every state — only values change.                                                       */
 const _cckR2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -185,8 +185,17 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? cell('Refund to tenant', money('cck-ref', decided ? P.ret : ''), 'cck-ref') +
       cell('Settled on', _cckDate(`cck-fd-${pfx}`, dv('fd', refDate), onIn, dis), 'cck-fd')
     : cell('Refund to tenant', val(P.ret, decided)) + cell('Settled on', P.settled && k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
-  const note = KBV && decided ? KBV.note(oth, nkv) : !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
+  let note = KBV && decided ? KBV.note(oth, nkv) : !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
     : hasNk ? `${f(P.recv)} received − ${f(oth)} other − ${f(nkv)} for NK` : `${f(P.recv)} received − ${f(ded)} kept`;
+  let noteBad = false;
+  if (D) {   // K1: typed values from the draft (pop-up opened again, a "Not saved") — the note follows the fields
+    const shown = { [`cck-r-${pfx}`]: dv('r', P.recv || ''), [`cck-d-${pfx}`]: dv('d', decided ? oth : ''),
+      [`cck-ref-${pfx}`]: dv('ref', decided ? P.ret : '') };
+    if (hasNk) shown[`cck-nk-${pfx}`] = dv('nk', decided && nkv ? nkv : '');
+    if (KBV && KBV.shown) Object.assign(shown, KBV.shown);                // K1b: Rent owed · Damage as drawn
+    const F = _cckForm(pfx, k, null, ui.typed, ui.tk, id => (id in shown ? { value: String(shown[id] == null ? '' : shown[id]) } : null));
+    note = _cckNoteText(A, F); noteBad = F.bad;
+  }
 
   // Buttons (same place in every state): form → Cancel · Save · otherwise Edit
   const B = (label, act, kind) =>
@@ -214,7 +223,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ${r3}
     <div class="cck-refund${editing || P.phase === 5 ? '' : ' cck-dim'}">
       <div class="cck-grid" style="margin-bottom:0;align-items:end">${refRow}</div>
-      <div class="cck-note" id="cck-rn-${pfx}">${note}</div>
+      <div class="cck-note${noteBad ? ' cck-err' : ''}" id="cck-rn-${pfx}">${note}</div>
     </div>`}
   </div>
   <div class="${foot} cck-foot" style="gap:6px">${_cckFootOrder('', slot)}</div>
@@ -232,24 +241,36 @@ function _cckFootOrder(btns, slot) {
 /* The form as typed → { recv, d (other), n (NK), rf (refund), any, bad } — refund and "other" follow each other:
    typing the refund → other = received − refund − NK · typing "other" → refund = received − other − NK.
    K1 (KAU-10): typing the NK amount (or Received) recalculates the one of the two you did not type last
-   (typed: 'ref' | 'd') — a refund you typed stays; was: the refund always changed (1.050 → 750) */
-function _cckForm(pfx, k, src, typed) {
-  const $ = id => document.getElementById(id);
+   (typed: 'ref' | 'd') — a refund you typed stays; was: the refund always changed (1.050 → 750).
+   K1 (C9c): refund and "other" both typed, "Kept · for NK" not (tk: the fields you typed) → the NK amount takes
+   the difference, so a refund you typed also stays when you type "other" after it (was: 1.000 → 1.300) */
+function _cckForm(pfx, k, src, typed, tk, get) {
+  const $ = get || (id => document.getElementById(id));             // get: the fields as drawn from the draft
   const rIn = $(`cck-r-${pfx}`), dIn = $(`cck-d-${pfx}`), nIn = $(`cck-nk-${pfx}`), fIn = $(`cck-ref-${pfx}`);
   const has = el => !!el && el.value !== '';
   const recv = rIn ? _cckNum(rIn.value) : _cckNum(k && k.received);
   // K1b: Rent owed + Damage count like the NK part (kb.sum) — without the new rows kb is all 0 / false
-  const kb = typeof ccKauFormSum === 'function' ? ccKauFormSum(pfx) : { on: false, sum: 0, any: false, neg: false };
+  const kb = typeof ccKauFormSum === 'function' ? ccKauFormSum(pfx, get) : { on: false, sum: 0, any: false, neg: false };
   let d = has(dIn) ? _cckNum(dIn.value) : 0, n = has(nIn) ? _cckNum(nIn.value) : 0, rf = has(fIn) ? _cckNum(fIn.value) : 0;
   const any = has(dIn) || has(nIn) || has(fIn) || kb.any;
   const fromRefund = !!(src && fIn && src === fIn) || (!(src && dIn && src === dIn) && typed === 'ref' && has(fIn))
     || (!has(dIn) && !has(nIn) && !kb.any && has(fIn));
+  const nkFollows = !!nIn && !!tk && !!tk.ref && !!tk.d && !tk.nk;
   if (any) {
-    if (fromRefund) { d = _cckR2(recv - rf - n - kb.sum); if (src && dIn) dIn.value = d >= 0 ? String(d) : ''; }
+    if (nkFollows) { n = _cckR2(recv - rf - d - kb.sum); if (src) nIn.value = n >= 0 ? String(n) : ''; }
+    else if (fromRefund) { d = _cckR2(recv - rf - n - kb.sum); if (src && dIn) dIn.value = d >= 0 ? String(d) : ''; }
     else { rf = _cckR2(recv - d - n - kb.sum); if (src && fIn) fIn.value = String(rf); }
   }
   const bad = any && (d < -0.004 || n < -0.004 || rf < -0.004 || kb.neg);
   return { recv, d: Math.max(0, d), n, rf, any, bad, rIn, dIn, nIn, fIn, kb };
+}
+
+/* The note under "Refund to tenant" for the form as typed */
+function _cckNoteText(A, F) {
+  if (F.kb && F.kb.on && F.any && !F.bad && typeof ccKauLiveNote === 'function') return ccKauLiveNote(A, F);   // K1b: "… − 1.000,00 € rent − 400,00 € damage …"
+  return F.bad ? `Kept + refund can be at most ${A.fmt(F.recv)}`
+    : !F.any ? 'Type what you keep, or the refund · empty = all still held'
+    : F.nIn ? `${A.fmt(F.recv)} received − ${A.fmt(F.d)} other − ${A.fmt(F.n)} for NK` : `${A.fmt(F.recv)} received − ${A.fmt(F.d)} kept`;
 }
 
 /* ── live typing: pill, bar, caption, the refund ↔ kept amounts; SAVE turns dark ── */
@@ -260,11 +281,16 @@ function ccKautionInput(app, pfx, tid, src) {
   const info = A.soll(tid ? A.rec(tid) : null);
   const soll = info ? _cckNum(info.amount) : null;
   const ui = tid ? (A.ui[tid] = A.ui[tid] || {}) : {};
-  if (src && src.id === `cck-ref-${pfx}`) ui.typed = 'ref';          // K1: which of refund / "other" you typed last
-  else if (src && src.id === `cck-d-${pfx}`) ui.typed = 'd';
-  const F = _cckForm(pfx, k, src, ui.typed);
+  const tk = ui.tk = ui.tk || {};                                     // K1: the fields you typed (refund · other · NK)
+  const nkFollows = !!$(`cck-nk-${pfx}`) && tk.ref && !tk.nk;          // "other" typed now: the NK amount follows
+  if (src && src.id === `cck-ref-${pfx}`) { tk.ref = 1; ui.typed = 'ref'; }   // K1: which of refund / "other" stays
+  else if (src && src.id === `cck-d-${pfx}`) { tk.d = 1; if (!nkFollows) ui.typed = 'd'; }
+  else if (src && src.id === `cck-nk-${pfx}`) tk.nk = 1;
+  const F = _cckForm(pfx, k, src, ui.typed, tk);
   if (F.rIn && !k.settled) {                           // received → pill / bar / caption
-    const P = { phase: F.recv <= 0 ? 1 : (soll == null || F.recv >= soll - 0.005) ? 3 : 2, recv: F.recv, ret: 0, soll, open: soll != null ? Math.max(0, soll - F.recv) : 0 };
+    // K1: the move-out form stays "Settle · … held · settled once "Settled on" is filled" while you type
+    const mo = ccKautionPhase(k, soll, tid ? A.rec(tid) : null, ui).movedOut;
+    const P = { phase: F.recv <= 0 ? 1 : mo ? 4 : (soll == null || F.recv >= soll - 0.005) ? 3 : 2, recv: F.recv, ret: 0, soll, open: soll != null ? Math.max(0, soll - F.recv) : 0 };
     const L = _cckLook(P, A, k);
     const pill = $(`cck-pill-${pfx}`); if (pill) { pill.className = 'tnp ' + L.pill[1]; pill.textContent = L.pill[0]; }
     const bar = $(`cck-bar-${pfx}`); if (bar) { bar.style.width = L.bar[0] + '%'; bar.style.background = L.bar[1]; }
@@ -274,10 +300,7 @@ function ccKautionInput(app, pfx, tid, src) {
   const rn = $(`cck-rn-${pfx}`);
   if (rn) {
     rn.classList.toggle('cck-err', F.bad);
-    rn.textContent = F.bad ? `Kept + refund can be at most ${A.fmt(F.recv)}`
-      : !F.any ? 'Type what you keep, or the refund · empty = all still held'
-      : F.nIn ? `${A.fmt(F.recv)} received − ${A.fmt(F.d)} other − ${A.fmt(F.n)} for NK` : `${A.fmt(F.recv)} received − ${A.fmt(F.d)} kept`;
-    if (F.kb.on && F.any && !F.bad) rn.textContent = ccKauLiveNote(A, F);              // K1b: "… − 1.000,00 € rent − 400,00 € damage …"
+    rn.textContent = _cckNoteText(A, F);
   }
   const save = $(`cck-save-${pfx}`);
   if (save && typeof ccSaveSet === 'function') ccSaveSet(save, 'dirty');
@@ -293,8 +316,8 @@ async function ccKautionAct(app, pfx, tid, act) {
   const redraw = () => { _cckRedraw(app, pfx); A.afterChange(tid); };
 
   if (act === 'edit' && typeof ccKauOn === 'function' && ccKauOn(A, tid)) return ccKauEdit(app, tid, ui, redraw);   // K1b
-  if (act === 'edit')   { ui.mode = 'edit'; ui.draft = null; ui.typed = null; return redraw(); }
-  if (act === 'cancel') { ui.mode = '';     ui.draft = null; ui.typed = null; return redraw(); }
+  if (act === 'edit')   { ui.mode = 'edit'; ui.draft = null; ui.typed = null; ui.tk = null; return redraw(); }
+  if (act === 'cancel') { ui.mode = '';     ui.draft = null; ui.typed = null; ui.tk = null; return redraw(); }
   if (act !== 'save') return;
 
   // B25 (5): an unfinished date (e.g. 15.01.202) is never saved as "no date" — say so and stop
@@ -315,13 +338,15 @@ async function ccKautionAct(app, pfx, tid, act) {
     const nv = sv.value === '' ? null : Number(sv.value);
     if (nv !== cur && (nv === null || nv >= 0)) await A.saveSoll(tid, nv);
   }
-  const F = _cckForm(pfx, k0, null, ui.typed);
+  const F = _cckForm(pfx, k0, null, ui.typed, ui.tk);
   if (F.bad) { (F.fIn || F.dIn)?.focus(); return; }
   const fd = $(`cck-fd-${pfx}`), refDate = fd ? (fd.value || '') : '';
   // nothing kept and no refund typed: still held (0) — or, with a "Settled on" date, all of it went back
   const returned = F.any ? _cckR2(F.rf) : (refDate ? _cckR2(F.recv) : 0);
-  // K1 (KAU-8): everything kept, nothing to refund → settled on Save (on the date typed, else today)
-  const keptAll = F.any && Math.abs(returned) < 0.005 && _cckR2(F.d + F.n + F.kb.sum) > 0;
+  // K1 (KAU-8): everything kept, nothing to refund → settled on Save (on the date typed, else today) — only after
+  // the move-out; while the tenant still lives there it stays a plan, like a planned refund
+  const movedOut = !!ccKautionPhase(k0, null, A.rec(tid), ui).movedOut;
+  const keptAll = movedOut && F.any && Math.abs(returned) < 0.005 && _cckR2(F.d + F.n + F.kb.sum) > 0;
   // K1b: rent owed / damage are booked in Controlling — its unit is looked up before anything is written
   const KB = F.kb.on ? await ccKauPrep(app, pfx, tid, !!refDate || keptAll, refDate || (keptAll ? _cckToday() : null)) : null;
   if (KB && KB.stop) return redraw();
@@ -350,7 +375,7 @@ async function ccKautionAct(app, pfx, tid, act) {
     Object.assign(k, before); if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel);
     return redraw();
   }
-  ui.mode = ''; ui.draft = null; ui.typed = null;
+  ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
 }
 function _cckToday() {

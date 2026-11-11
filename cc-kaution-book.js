@@ -139,7 +139,7 @@ function ccKauBeforeOpen(app, tid, open) {
 async function ccKauEdit(app, tid, ui, redraw) {
   const A = _CCK[app], k = A.map()[tid];
   await ccKauReceiptsLoad(app, tid);
-  ui.mode = 'edit'; ui.draft = null; ui.typed = k && k.settled ? 'ref' : null; delete ui.kbN;
+  ui.mode = 'edit'; ui.draft = null; ui.typed = k && k.settled ? 'ref' : null; ui.tk = null; delete ui.kbN;
   return redraw();
 }
 
@@ -158,7 +158,7 @@ html body #tab-tenants .cck .cck-f select,html body .cck .cck-f select{flex:1;mi
 `;
   (document.head || document.documentElement).appendChild(s);
 }
-/* → null (K1: nothing new) or { rows, keptSum, note(oth, nkv) } for ccKautionSectionHTML */
+/* → null (K1: nothing new) or { rows, keptSum, note(oth, nkv), shown (form only: the amounts as drawn) } for ccKautionSectionHTML */
 function ccKauView(A, app, tid, R, k, P, editing, pfx, ui) {
   if (!P.movedOut || !ccKauOn(A, tid, R)) return null;
   _ckbStyles();
@@ -204,7 +204,9 @@ function ccKauView(A, app, tid, R, k, P, editing, pfx, ui) {
       list.map(x => `<option value="${_cckEsc(x.id)}"${x.id === picked ? ' selected' : ''}>${_cckEsc(_ckbFmtD(x.date) + ' · ' + x.text + ' · ' + f(x.net))}</option>`).join('')}</select></div>`, 'cckb-kr')}</div>`;
   const dmg = `<div class="cck-grid">${cell('Damage', _cckMoney(`cckb-ka-${pfx}`, dv('ka', K.dmg.a > 0 ? K.dmg.a : ''), on, ''), 'cckb-ka')}${
     cell('Reason', _cckText(`cckb-kg-${pfx}`, dv('kg', K.dmg.r), on, ''), 'cckb-kg')}</div>`;
-  return { rows: [0, 1, 2].map(rentRow).join('') + more + rcp + dmg, keptSum, note };
+  const shown = { [`cckb-ka-${pfx}`]: dv('ka', K.dmg.a > 0 ? K.dmg.a : '') };   // the amounts as drawn (the note of a draft)
+  [0, 1, 2].forEach(i => { shown[`cckb-k${i}-${pfx}`] = amt(i); });
+  return { rows: [0, 1, 2].map(rentRow).join('') + more + rcp + dmg, keptSum, note, shown };
 }
 /* "+ month": the next Rent owed | Month row (at most three) — shown at once, nothing moves while typing */
 function ccKauMore(app, pfx, tid) {
@@ -226,9 +228,10 @@ function ccKauPick(app, pfx, tid, sel) {
   if (x && g) g.value = x.text + ' · ' + _ckbFmtD(x.date);
   ccKautionInput(app, pfx, tid, a || sel);
 }
-/* the form as typed → { on, sum, any, neg, rent, dmg } (rent and damage count like the NK part) */
-function ccKauFormSum(pfx) {
-  const $ = id => document.getElementById(id);
+/* the form as typed → { on, sum, any, neg, rent, dmg } (rent and damage count like the NK part)
+   get: the fields as drawn from the draft (pop-up opened again, a "Not saved") — else the page */
+function ccKauFormSum(pfx, get) {
+  const $ = get || (id => document.getElementById(id));
   if (!$(`cckb-k0-${pfx}`)) return { on: false, sum: 0, any: false, neg: false, rent: 0, dmg: 0 };
   let rent = 0, any = false, neg = false;
   for (let i = 0; i < 3; i++) { const el = $(`cckb-k${i}-${pfx}`); if (el && el.value !== '') { any = true; const v = _cckNum(el.value); if (v < 0) neg = true; rent += v; } }
