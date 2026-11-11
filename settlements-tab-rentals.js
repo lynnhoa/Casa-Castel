@@ -155,7 +155,11 @@ function srSaveRow(rec, from, only) {
     if (!rec.id && from && from.id) rec.id = from.id;
     if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
     const now = only && rec.id && SR.rows.find(x => x.id === rec.id);
-    if (now && now !== rec) { only.forEach(f => { if (f === 'keys.gv') now.keys = Object.assign({}, now.keys, { gv: rec.keys.gv }); else now[f] = rec[f]; }); rec = now; }
+    if (!only && rec.id) {                              // K1 (R5): a Jahresabrechnung draft made before the first letter keeps the split it went out with
+      const cur = SR.rows.find(x => x.id === rec.id);
+      if (cur && cur !== rec && cur.keys && cur.keys.hz !== undefined && !(rec.keys && rec.keys.hz !== undefined)) rec.keys = Object.assign({}, rec.keys, { hz: cur.keys.hz });
+    }
+    if (now && now !== rec) { only.forEach(f => { if (/^keys\./.test(f)) now.keys = Object.assign({}, now.keys, { [f.slice(5)]: rec.keys[f.slice(5)] }); else now[f] = rec[f]; }); rec = now; }
     const data = await _srSaveRowNow(rec);
     if (from && !from.id) from.id = data.id;
     return data;
@@ -279,9 +283,11 @@ const _srInNk = (p, rec) => (_srIsNkOnly(p) || _srU(p, rec)) && p.nk !== false; 
    (keys.gv) when its first letter goes out. Flats: unchanged (Wohnraum: Verwaltung is not umlagefähig).
    rec._gv: worked out for the drawing / letter (not stored) — _srGewMark. */
 const _srIsGew = c => !!(c && c.apt && c.apt.zimmer_type === 'Gewerbefläche');
+/* a tenant letter of this Abrechnung went out (a result, an older tracking status) */
+const _srLetterOut = c => (c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res) || (it.type === 'row' && ['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status)); });
 function _srGewSent(c) {
   if (!SR.lettersRead) return true;                        // archive not read: as sent (nothing changes)
-  if ((c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res) || (it.type === 'row' && ['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status)); })) return true;
+  if (_srLetterOut(c)) return true;
   const cy = Number(c.per.to.slice(0, 4));
   return (SR.letters || []).some(l => (l.app === 'rentals' || l.app === 'manual') && Number(l.property_id) === Number(c.p.id) && Number(l.year) === cy);
 }
@@ -289,8 +295,23 @@ function _srGewMark(c, rec) {
   if (!rec) return rec;
   const k = rec.keys || {};
   rec._gv = _srIsGew(c) && (k.gv !== undefined ? !!k.gv : !_srGewSent(c));   // a flat is never billed Verwaltung
+  return _srHzMark(c, rec);
+}
+/* K1 (R5, Nov 2026): Heizkosten / Warmwasser are split as the Heizkostenverordnung allows and as is best for you — 30 %
+   Grundkosten by days (the empty days carry only these, by law), 70 % by consumption among the stays only: by the
+   Zählerstände when they are entered, else by the days each one lived there (_srConsSplit). From the first Abrechnung with
+   no tenant letter out yet on (was: only for a cost saved with the key 'Verbrauch', which no screen sets — the costs were
+   split by days, the Leerstand carried its consumption share). 'per tenant' (Zwischenablesung) still wins. An Abrechnung
+   with a letter out stays as it went out: the choice is kept with the record (keys.hz) when its first letter goes out.
+   rec._hz: worked out for the drawing / letter (not stored). */
+const _srHeat = p => !!p && ['heizung', 'warmwasser'].includes(p.kind);
+function _srHzMark(c, rec) {
+  if (!rec) return rec;
+  const k = rec.keys || {};
+  rec._hz = k.hz !== undefined ? !!k.hz : !_srLetterOut(c);
   return rec;
 }
+const _srHz = (c, rec) => { if (rec && rec._hz === undefined) _srHzMark(c, rec); return !!(rec && rec._hz); };
 /* the pop-up was drawn with another Gewerbe Verwaltung choice than worked out now (e.g. the archive was read meanwhile):
    draw it again and do nothing — the next tap sends / prints what is then shown */
 function _srGewDrawnOff(c, rec) {
@@ -321,7 +342,7 @@ function _srCalc(c, it, rec) {
   const perDays = _srDays(per.from, per.to), tDays = Math.max(0, _srDays(from, to));
   const t = _srTenantOf(r), apt = _srAptOf(c, t);
   const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {};
-  const lines = []; let sum = 0, missing = 0, direct = false;
+  const lines = [], hz = _srHz(c, rec); let sum = 0, missing = 0, direct = false;
   for (const pos of (rec && rec.positions) || []) {
     if (!_srInNk(pos, rec)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
@@ -330,7 +351,7 @@ function _srCalc(c, it, rec) {
     if (pos.split === 'mieter') {
       const d = _srNum(ts.direct && ts.direct[pos.id]);
       if (d !== null) { amt = cxR(_srSgn(pos, d)); direct = true; } else missing++;
-    } else if (unit !== null && _srIsCons(pos)) {
+    } else if (unit !== null && _srIsCons(pos, hz)) {
       const sp = _srConsSplit(c, rec, pos, unit), id = String(it.r.id);
       if (sp.g[id] !== undefined) { amt = cxR(sp.g[id] + (sp.v[id] || 0)); cons = sp.active ? { text: _srConsText(sp, id, true), en: _srConsText(sp, id, false), how: sp.how } : null; }
       else amt = cxR(unit * tDays / perDays);
@@ -364,7 +385,7 @@ function _srCalc(c, it, rec) {
   const vz = vzOv !== null ? vzOv : (vzIst !== null ? vzIst : (vzSoll || 0));
   const f = { istPartial: vzPartialFlag };
   sum = cxR(sum);
-  const kauAvail = _srEinbehalt(r);                                 // B20: Kaution kept for this NK
+  const kauAvail = _srEinbehalt(r, ts.date || cxToday());          // B20: Kaution kept for this NK (K1: by the letter date)
   const kau = kauAvail > 0 ? { amount: kauAvail } : null;
   const einbehalt = kauAvail;                                       // K1: always offset — no choice (an old draft's 'via' is not read)
   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
@@ -380,7 +401,7 @@ function _srCalc(c, it, rec) {
                   in the NK window), else by the days lived.
    One stay for the whole period → the same amounts as before. "per tenant" (Zwischenablesung) still wins. */
 const SR_METER_RX = { heizung: /^(heizung|w(ä|ae)rme)/i, warmwasser: /^warmwasser/i, wasser: /^(kaltwasser|warmwasser)/i, abwasser: /^(kaltwasser|warmwasser)/i };
-const _srIsCons = pos => !!pos && pos.key === 'verbrauch' && pos.split !== 'mieter';
+const _srIsCons = (pos, hz) => !!pos && pos.split !== 'mieter' && (pos.key === 'verbrauch' || (!!hz && _srHeat(pos)));   // hz: _srHz
 const _srGk = pos => { const v = _srNum(pos.gk); return v !== null ? Math.max(0, Math.min(100, v)) : (['heizung', 'warmwasser'].includes(pos.kind) ? 30 : 0); };
 /* The stays of the period (Kalt + NK tenants and Pauschal stays) with their days */
 function _srStays(c, rec) {
@@ -466,13 +487,13 @@ function _srSpanShare(c, rec, from, to, apt, stayId) {
   const per = _srPer(c, rec), perDays = _srDays(per.from, per.to);
   const a = from > per.from ? from : per.from, b = to < per.to ? to : per.to;
   const days = a <= b ? _srDays(a, b) : 0;
-  const leerDays = stayId ? 0 : _srVacancies(c, rec).reduce((s, x) => s + _srDays(x.from, x.to), 0) || 1;
+  const leerDays = stayId ? 0 : _srVacancies(c, rec).reduce((s, x) => s + _srDays(x.from, x.to), 0) || 1, hz = _srHz(c, rec);
   let fixed = 0, cons = 0, missing = 0;
   for (const pos of (rec && rec.positions) || []) {
     if (!_srInNk(pos, rec)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null) { if (pos.split === 'mieter') missing++; continue; }   // typed per tenant only: unknown here
-    if (_srIsCons(pos)) {                                                     // Grundkosten by days · Verbrauch only where someone lived
+    if (_srIsCons(pos, hz)) {                                                 // Grundkosten by days · Verbrauch only where someone lived
       const sp = _srConsSplit(c, rec, pos, unit);
       if (stayId) { fixed += sp.g[stayId] || 0; cons += sp.v[stayId] || 0; }
       else { fixed += sp.leerG * days / leerDays; cons += sp.leerV * days / leerDays; }
@@ -656,9 +677,10 @@ const _srSign = x => x.missing ? 'm' : String(Math.sign(x.saldo));
    once the Kaution is settled). K1 (Nov 2026): it is always offset — there is no choice any more — and only once:
    by the tenant's first NK result settled with it (settle_via 'kaution') dated on or after the day the Kaution was
    settled. An older NK settled 'via Kaution' long before the move-out does not use it (it blocked the hold for good).
-   A line sent another way (or before the Kaution was settled) keeps its letter without the hold.
+   A line sent another way (or before the Kaution was settled) keeps its letter without the hold — so does a letter not sent
+   yet whose date (date: the letter date, its result date once sent) is before that day.
    Controlling gets the NK result itself (the kept part ± the transfer, booked on the Money step); the Kaution never shows there. */
-function _srEinbehalt(r) {
+function _srEinbehalt(r, date) {
   const k = SR.kaution && r && r.tenant_id != null ? SR.kaution[String(r.tenant_id)] : null;
   const E = k && k.settled ? cxR(Number(k.nk_einbehalt) || 0) : 0;
   if (!(E > 0)) return 0;
@@ -668,6 +690,7 @@ function _srEinbehalt(r) {
   const uses = a => a.settle_via === 'kaution' && (!since || _srD(a.result_date) >= since);
   const mine = all.find(a => String(a.period_from || '').slice(0, 10) === from) || null;
   if (mine && !uses(mine)) return 0;
+  if (!mine && since && date && _srD(date) < since) return 0;
   const before = a => !mine || _srD(a.result_date) < _srD(mine.result_date) || (_srD(a.result_date) === _srD(mine.result_date) && String(a.id) < String(mine.id));
   const used = all.some(a => a !== mine && String(a.period_from || '').slice(0, 10) !== from && uses(a) && before(a));
   return used ? 0 : E;
@@ -923,6 +946,9 @@ async function _srSendNow(btn, got, key) {
   _srGewMark(c, rec);
   if (gvKeep && _srGewDrawnOff(c, rec)) { if (btn) btn.disabled = false; return; }   // the screen first shows what goes out
   if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
+  // K1 (R5): the first letter out keeps how Heizkosten / Warmwasser are split (the other tenants' letters follow it)
+  const hzKeep = !(rec.keys && rec.keys.hz !== undefined) && (rec.positions || []).some(_srHeat);
+  if (hzKeep) rec.keys = Object.assign({}, rec.keys, { hz: rec._hz });
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
@@ -936,10 +962,10 @@ async function _srSendNow(btn, got, key) {
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
-  try { await srSaveRow(rec, null, gvKeep ? ['tenants', 'keys.gv'] : ['tenants']); }   // another tenant's: it is still saved
+  try { await srSaveRow(rec, null, ['tenants'].concat(gvKeep ? ['keys.gv'] : [], hzKeep ? ['keys.hz'] : [])); }   // another tenant's: it is still saved
   catch (err) {                                              // Gewerbe: the Verwaltung this letter bills must be kept with the record
-    if (gvKeep && rec._gv) {                                 // the choice was not stored: not kept in memory either (also on a newer copy)
-      for (const r of [rec, SR.rows.find(z => z.id === rec.id)]) if (r && r.keys && r.keys.gv !== undefined) { r.keys = Object.assign({}, r.keys); delete r.keys.gv; }
+    if ((gvKeep && rec._gv) || (hzKeep && rec._hz)) {        // the choice was not stored: not kept in memory either (also on a newer copy)
+      for (const r of [rec, SR.rows.find(z => z.id === rec.id)]) for (const k of ['gv', 'hz']) if (r && r.keys && r.keys[k] !== undefined && (k === 'gv' ? gvKeep : hzKeep)) { r.keys = Object.assign({}, r.keys); delete r.keys[k]; }
       stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
@@ -1041,6 +1067,11 @@ function _srYearModel(Y) {
     const c = { ck: _srCk(p.id, per.from), p, per, year: Y, apt, verw, items: [], weg: null, before: false, running: per.to >= cxToday() };
     if (since && per.to < since) { c.before = true; return c; }
     const x = _srItemsFor(p, per); c.items = x.items; c.weg = x.weg;
+    // K1 (rentals-flow-1): an own Abrechnung period ("This Abrechnung from/to") — a tenant who lived there only outside it
+    // has nothing to settle: no line (was: an open line, 'Zeitraum 01.09.2025 – 31.08.2025'). A line already sent / settled stays.
+    const own = _srPer(c, _srRec(p, per));
+    if (own.custom) c.items = c.items.filter(it => !it.r.tenant_id || (_srD(it.r.period_to) >= own.from && _srD(it.r.period_from) <= own.to) ||
+      ['verschickt', 'bezahlt', 'erledigt', 'nicht durchgeführt'].includes(it.r.status) || !!_srLine(c, it).state.res);
     _srGewMark(c, _srRec(p, per));                          // Gewerbe: its Verwaltung in the NK (_srGewSent)
     return c;
   });
@@ -1102,12 +1133,15 @@ function _srSettledTxt(ti, weg) {
   const st = ti.st;
   if (ti.skipped) return 'skipped' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '');
   if (!st.res) return '';
-  const E = !weg && st.res.via === 'kaution' && ti.r ? _srEinbehalt(ti.r) : 0;
-  if (E > 0 && (st.booking || !st.res.amount || !st.res.dir)) {   // K1: the part of the Kaution kept · what really moved by bank
-    const B = st.booking ? st.res.dir * Number(st.booking.amount) : 0, tr = cxR(B - E), exp = cxR(st.res.dir * st.res.amount - E);
-    const kept = cxR(Math.max(0, Math.min(E, B))), when = _srD(st.booking ? st.booking.invoice_date : ti.r.paid_date);
-    const moved = Math.abs(tr) >= 0.005 || Math.abs(exp) >= 0.005 ? ((tr || exp) > 0 ? 'received ' : 'paid back ') + stEur(Math.abs(tr)) +
-      (Math.abs(tr - exp) >= 0.005 ? ' (instead of ' + stEur(Math.abs(exp)) + ')' : '') : '';
+  const kt = !weg ? _srKauOf({ st, it: ti.it }) : null;
+  if (kt && (st.booking || !st.res.amount || !st.res.dir)) {     // K1: the part of the Kaution kept · what really moved by bank
+    // the transfer comes back from the booking exactly (held part ± transfer, its sign kept); the other way round than the
+    // letter named (e.g. typed as the Ist in Controlling) → said so: 'paid back 150,00 € (instead of receiving 150,00 €)'
+    const B = st.booking ? _cxAbrDir(st.booking) * (Number(st.booking.amount) || 0) : 0, tr = _srKauT(kt, st.booking), exp = kt.T;
+    const kept = cxR(Math.max(0, Math.min(kt.E, B))), when = _srD(st.booking ? st.booking.invoice_date : ti.r.paid_date);
+    const way = Math.abs(tr) >= 0.005 ? tr : exp, turned = Math.abs(tr) >= 0.005 && Math.abs(exp) >= 0.005 && (tr > 0) !== (exp > 0);
+    const moved = Math.abs(tr) >= 0.005 || Math.abs(exp) >= 0.005 ? (way > 0 ? 'received ' : 'paid back ') + stEur(Math.abs(tr)) +
+      (Math.abs(tr - exp) >= 0.005 ? ' (instead of ' + (turned ? (exp > 0 ? 'receiving ' : 'paying back ') : '') + stEur(Math.abs(exp)) + ')' : '') : '';
     return [kept > 0.004 ? 'kept ' + stEur(kept) + ' of the Kaution' : '', moved, when ? stDM(when) : ''].filter(Boolean).join(' · ');
   }
   if (st.booking && Number(st.booking.amount) < 0.005) return (weg ? 'nothing moved' : st.res.dir > 0 ? 'let go ' + stEur(st.res.amount) : 'kept ' + stEur(st.res.amount)) + ' · ' + stDM(st.booking.invoice_date);
@@ -1884,7 +1918,7 @@ function _srNkView(c) {
 function _srConsCard(c, d) {
   const stays = _srStays(c, d), per = _srPer(c, d), perDays = _srDays(per.from, per.to);
   const occ = stays.reduce((a, x) => a + x.days, 0);
-  const cons = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srInNk(p, d) && _srIsCons(p) && _srUnitAmt(d, p, c.apt) !== null);
+  const hz = _srHz(c, d), cons = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srInNk(p, d) && _srIsCons(p, hz) && _srUnitAmt(d, p, c.apt) !== null);
   if (!cons.length || (stays.length <= 1 && occ >= perDays)) return '';
   const rows = cons.map(([p, i]) => {
     const U = _srUnitAmt(d, p, c.apt), sp = _srConsSplit(c, d, p, U);
@@ -1987,12 +2021,13 @@ const _srPayVal = f => { const el = document.querySelector('#srPanel [data-srpay
 async function _srPayEdit(el) {
   const weg = el.dataset.w === '1', x = _srSetCtx(el.dataset.k, weg ? null : el.dataset.id, weg);
   if (!x || !x.st || !x.st.res || x.st.k !== 'erledigt') return;                 // not settled yet: used when you flip the switch
-  const date = _srD(_srPayVal('date')) || cxToday(), res = x.st.res;
-  if (!weg && res.via && res.via !== 'zahlung' && !(res.via === 'kaution' && x.st.booking)) {
+  const date = _srD(_srPayVal('date')) || cxToday(), res = x.st.res, kt = weg ? null : _srKauOf(x);
+  if (!weg && res.via && res.via !== 'zahlung' && !kt && !(res.via === 'kaution' && x.st.booking)) {
     try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
     ctlSettlementInvalidate(); stSay('Date saved'); _srAfterSettle(x); return;
   }
-  await _srSetAmount(el.dataset.k, weg ? null : el.dataset.id, weg, _srKauBook(x, _srPayVal('amt') ?? cxE2(res.amount)), null, date);
+  // K1: with the part of the Kaution held back the amount is the transfer (_srSetAmount books held part ± transfer)
+  await _srSetAmount(el.dataset.k, weg ? null : el.dataset.id, weg, _srPayVal('amt') ?? cxE2(kt ? Math.abs(_srKauT(kt, x.st.booking)) : res.amount), null, date);
 }
 
 function _srTenView(c) {
@@ -2036,7 +2071,8 @@ function _srTenView(c) {
   let s2 = null;
   if (hasMoney) {
     const resVia = resVia0, b = ti.st.booking;
-    const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || (resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';   // balanced: nothing is booked, the date only
+    // K1: with a held part (a balanced result too) the date and the amount of the one real transfer, prefilled
+    const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || kau || (resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';
     const kauSay = !kau ? '' : T < -0.004 ? 'You pay back ' + stEur(-T) : T > 0.004 ? first + ' transfers ' + stEur(T) : 'You keep ' + stEur(x.einbehalt) + ' of the Kaution';
     s2 = { n: 2, state: settledT ? 'done' : sent ? 'open' : 'wait', title: 'Money',
       sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc(kau ? kauSay : (v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
@@ -2057,7 +2093,8 @@ function _srTenView(c) {
   let lines = '';
   for (const ln of x.lines) {
     const label = ln.pos.label || _srKind(ln.pos.kind).l, direct = ln.pos.split === 'mieter';
-    const small = direct ? 'per tenant · Zwischenablesung' : x.partial ? stEur(ln.unit ?? 0) + ' × ' + x.tDays + '/' + x.perDays + ' days' : 'Kosten der Wohnung';
+    const small = direct ? 'per tenant · Zwischenablesung' : ln.cons ? stEur(ln.unit ?? 0) + ' · ' + ln.cons.en   // K1 (R5): how it was split
+      : x.partial ? stEur(ln.unit ?? 0) + ' × ' + x.tDays + '/' + x.perDays + ' days' : 'Kosten der Wohnung';
     lines += '<div class="sr-cl"><span class="sr-cl__t">' + stEsc(label) + '<small>' + stEsc(small) + '</small></span>' +
       (direct && !sent ? '<label class="cx-f sr-in-s"><input type="text" inputmode="decimal" data-srt="direct.' + stEsc(ln.pos.id) + '" value="' + stEsc(_srE2in(ts.direct && ts.direct[ln.pos.id])) + '" aria-label="' + stEsc(label) + ' for this tenant"><span>€</span></label>'
                        : '<span class="sr-cl__v">' + (ln.amt === null ? '<em class="sr-miss">missing</em>' : stEur(ln.amt)) + '</span>') + '</div>';
@@ -2142,18 +2179,21 @@ function _srSetObj(c, st, ti, weg, idx) {
     ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? _srD(b.invoice_date) : null,
     note: done && !b && SR.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent', hausgeld: 'Settled with the Hausgeld' }[res.via] || null) : null });
 }
-/* K1 (C11): a result settled with the Kaution books ONE line, the NK result as it really happened: the part held back
-   plus what the tenant transferred, minus what you paid back (typed: the transfer the Money step names, prefilled).
-   300 held · Nachzahlung 200, 100 paid back → +200 · Nachzahlung 450, 150 received → +450 (100 → +400, 0 → +300) ·
-   Guthaben 50, 350 paid back → −50. Booked in the result's direction (never below 0). Anything else: as typed. */
-function _srKauBook(x, raw) {
-  const res = x && x.st && x.st.res, E = x && x.ti && x.it ? _srEinbehalt(x.it.r) : 0;
-  if (!res || res.via !== 'kaution' || !(E > 0) || !res.amount || !res.dir) return raw;
-  const t = cxParse(String(raw === null || raw === undefined ? '' : raw).trim());
-  if (String(raw === null || raw === undefined ? '' : raw).trim() === '' || t === null || isNaN(t)) return raw;
-  const T = cxR(res.dir * res.amount - E), sT = T > 0.004 ? 1 : T < -0.004 ? -1 : res.dir;
-  return cxE2(Math.max(0, res.dir * (E + sT * Math.abs(t))));
+/* K1 (C11, R2): a result settled with the part of the Kaution held back → { E: the held part, T: the bank transfer the
+   letter names (+ the tenant transfers the rest · − you pay back) }, else null */
+function _srKauOf(x) {
+  const res = x && x.st && x.st.res;
+  if (!res || res.via !== 'kaution' || !x.it || !x.it.r || !x.it.r.tenant_id) return null;
+  const E = _srEinbehalt(x.it.r);
+  return E > 0 ? { E, T: cxR((res.dir || 0) * (res.amount || 0) - E) } : null;
 }
+/* … and the ONE booking it makes, the NK result as it really happened (+ income · − expense, never clamped or turned):
+   the part held back + what the tenant transferred − what you paid back (t: the transfer typed on the Money step).
+   300 held · Nachzahlung 200, 100 paid back → +200 · Nachzahlung 450, 150 received → +450 (100 → +400, 0 → +300) ·
+   Guthaben 50, 350 paid back → −50 (200 → +100, nothing → +300) · balanced, 300 paid back → 0 (nothing booked) */
+const _srKauB = (k, t) => cxR(k.E + (k.T < -0.004 ? -1 : 1) * t);
+/* The transfer that really moved, back from a booking (signed as T) — the done text is built from it */
+const _srKauT = (k, b) => cxR((b ? _cxAbrDir(b) * (Number(b.amount) || 0) : 0) - k.E);
 /* K1 (C4): an older WEG result "with the Hausgeld" booked as received → its record keeps 'zahlung' (and the open draft) */
 async function _srWegViaPaid(x) {
   const rec = x.rec; if (!rec || rec.weg_via !== 'hausgeld') return;
@@ -2164,12 +2204,17 @@ async function _srWegViaPaid(x) {
 /* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
 async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const x = _srSetCtx(ck, tid, weg); if (!x) return;
-  const res = x.st.res; if (!res || !res.amount) { stSay('Nothing to settle'); return; }
+  const res = x.st.res, kt = weg ? null : _srKauOf(x);       // K1: with the part of the Kaution held back (a balanced result too)
+  if (!res || (!res.amount && !kt)) { stSay('Nothing to settle'); return; }
   const s = String(raw === null || raw === undefined ? '' : raw).trim();
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
-  const amt = cxR(Math.abs(parsed)), b = x.st.booking;
+  // K1 (R2): with a held part the typed amount is the transfer → the booking = held part ± transfer, its sign kept: in the
+  // result's direction (a minus amount when the money went the other way); a balanced result: where the money went
+  const kv = kt ? _srKauB(kt, parsed) : null, bdir = kt && !res.dir ? (kv < 0 ? -1 : 1) : res.dir;
+  const amt = kt ? cxR(res.dir ? res.dir * kv : Math.abs(kv)) : cxR(Math.abs(parsed)), b = x.st.booking;
+  const own = !kt || (!!res.dir && amt > 0);                 // your own entry in Controlling: never for a minus / balanced one
   let date = _srD(when) || cxToday(), linkedManual = null, took = null;
   if (btn) btn.disabled = true;
   const kau = res.via === 'kaution';                         // K1 (C6): a Kaution result stays one — it is booked as it is
@@ -2180,28 +2225,30 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
       if (weg && res.via === 'hausgeld') await _srWegViaPaid(x);   // K1 (C4): the record says so too — the next autosave keeps it
     }
     const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
-                      : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
+                      : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : res.dir ? 'Guthaben' : 'balanced');
     let mine = null;
-    if (b && amt && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
+    if (b && amt && own && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
       // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
       // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
       await ctlDeleteOneTime(b.id);
       window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
     }
-    if (b && !mine) {
+    if (kt && !res.dir && Math.abs(kv) < 0.005) {
+      if (b) await _stUndoBooking(b);                        // K1: balanced and the held part went back in full → nothing is booked
+    } else if (b && !mine) {
       // Nov 2026 fix: the result changed direction since it was paid → its booking turns too (it kept the old one:
       // Controlling counted the money the wrong way and showed it on both sides)
       const f = { amount: amt, invoice_date: date };
-      if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: label });
+      if ((Number(b.direction) === 1 ? 1 : -1) !== bdir) Object.assign(f, { direction: bdir, item: label });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (amt && (took = await _stTakeOwnEntry(x.c.p.id, res, amt, weg, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking
+    } else if (amt && own && (took = await _stTakeOwnEntry(x.c.p.id, res, amt, weg, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking
       // C3c: the WEG line too — your own entry (also one you unlinked before, as Controlling's Soll does) · other years too
       linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
       if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
       const d = await ctlAbrAdd({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
-        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: bdir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
       date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(x.l, kau ? 'kaution' : 'zahlung', date);
@@ -2218,10 +2265,14 @@ async function _srSetUndo(ck, tid, weg) {
   try {
     if (skipped) await _stUpsertSettlement(x.l, { status: 'offen' });
     else {
+      // K1: a Kaution result's line goes back to sent FIRST, then its booking — a failed second write never leaves it
+      // 'settled' without its booking (it read as an older one confirmed 'via Kaution': a 0 € information row)
+      const kauLine = !!(x.st.res && x.st.res.via === 'kaution');
+      if (kauLine) await _stUpsertSettlement(x.l, { status: 'verschickt' });
       if (b) await _stUndoBooking(b);                                // own booking removed · your own entry only unlinked
       // K1 (C6): the way stays as stored — with the Kaution / with the rent is never turned into a bank transfer of the
       // full amount (the held part stays used once, nothing is counted twice)
-      await _stUpsertSettlement(x.l, { status: 'verschickt' });                 // back to sent: waiting again
+      if (!kauLine) await _stUpsertSettlement(x.l, { status: 'verschickt' });   // back to sent: waiting again
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
   SR.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
@@ -2374,13 +2425,14 @@ function srIsRentalsLine() { return false; }
       const weg = a === 'payOnW', x = _srSetCtx(b.dataset.k, weg ? null : b.dataset.id, weg);
       if (!x || !x.st || !x.st.res) { stSay(weg ? 'Add the result of the Jahresabrechnung first' : 'Send the letter first'); return; }
       const res = x.st.res, date = _srD(_srPayVal('date')) || cxToday();   // the day the money moved (default today)
-      // settled with the rent: confirm, no booking · K1: with the Kaution and balanced: the held part went back — nothing is counted
-      if (!weg && res.via && res.via !== 'zahlung' && (res.via !== 'kaution' || !res.amount || !res.dir)) {
+      const kt = weg ? null : _srKauOf(x);                         // K1: part of the Kaution held back → the typed transfer is booked as held part ± it
+      // settled with the rent: confirm, no booking (an older result 'via Kaution' with nothing held back too)
+      if (!weg && res.via && res.via !== 'zahlung' && !kt && (res.via !== 'kaution' || !res.amount || !res.dir)) {
         b.disabled = true;
         try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
         ctlSettlementInvalidate(); stSay('Settled'); _srAfterSettle(x); return;
       }
-      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, _srKauBook(x, _srPayVal('amt') ?? cxE2(res.amount)), b, date); return;
+      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, _srPayVal('amt') ?? cxE2(kt ? Math.abs(kt.T) : res.amount), b, date); return;
     }
     if (a === 'tick') {
       e.preventDefault(); e.stopPropagation();

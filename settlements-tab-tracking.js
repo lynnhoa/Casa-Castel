@@ -70,8 +70,13 @@ function _stState(line) {
   const res = _stResultOf(line.p, r);
   if (res) {
     const txt = _stResultText(res, weg);
-    // K1: a balanced Rentals result with part of the Kaution held back waits until that part went back (Money step, nothing counted)
-    if (!res.amount || !res.dir) return _stKauBack(res) && !_stConfirmed(r) ? { k: 'verschickt', pill: ['beige', 'sent'], res, text: txt } : { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
+    // K1: a balanced result with part of the Kaution held back (Rentals and Casa Castel) waits until that part went back
+    // (Money step 'Paid back': nothing counted — booked only when less or more went back than held: held − paid back)
+    if (!res.amount || !res.dir) {
+      const kb = _stKauBack(res) ? ctlAbrBooking(res) : null;
+      if (kb) return { k: 'erledigt', pill: ['ok', 'paid'], res, booking: kb, text: txt };
+      return _stKauBack(res) && !_stConfirmed(r) ? { k: 'verschickt', pill: ['beige', 'sent'], res, text: txt } : { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
+    }
     // K1: a Kaution result is paid like a transfer (its booking: the kept part ± the transfer); an older one confirmed without
     // a booking stays settled as it was. Only rent / Hausgeld wait for your Confirm (no booking)
     const b = res.via === 'zahlung' || res.via === 'kaution' ? ctlAbrBooking(res) : null;
@@ -84,8 +89,9 @@ function _stState(line) {
   if (r.status === 'bezahlt' || r.status === 'erledigt') return { k: 'erledigt', pill: ['ok', 'settled'], text: '' };   // older tracking
   return { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist soon'] : ['open', 'open'], text: '' };
 }
-/* K1: a balanced Rentals NK result settled with the Kaution: the held part still goes back by transfer (Settlements' Money step) */
-const _stKauBack = res => res.via === 'kaution' && (!res.db || !res.db.app || res.db.app === 'rentals');
+/* K1: a balanced NK result settled with the Kaution (Rentals or Casa Castel): the held part still goes back by transfer
+   (the Money step's 'Paid back') — an own NK keeps its rule */
+const _stKauBack = res => res.via === 'kaution' && (!res.db || !res.db.app || res.db.app === 'rentals' || res.db.app === 'casa');
 function _stResultText(res, weg) {
   if (!res.dir || !res.amount) return 'balanced';
   const nach = weg ? res.dir < 0 : res.dir > 0;
@@ -399,7 +405,10 @@ async function _stSyncStatus() {
     const p = (window._ctrl.properties || []).find(x => x.id === Number(r.property_id)); if (!p) continue;
     const res = _stResultOf(p, r); if (!res) continue;
     let paid = null;
-    if (!res.amount || !res.dir) { if (!_stKauBack(res)) paid = res.date || cxToday(); }       // K1: the held part goes back first
+    if (!res.amount || !res.dir) {                                                              // K1: the held part goes back first
+      if (!_stKauBack(res)) paid = res.date || cxToday();
+      else { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
+    }
     else if (res.via === 'zahlung' || res.via === 'kaution') { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
     if (!paid) continue;
     try {
