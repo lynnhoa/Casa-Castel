@@ -289,6 +289,14 @@ function _srGewMark(c, rec) {
   rec._gv = _srIsGew(c) && (k.gv !== undefined ? !!k.gv : !_srGewSent(c));   // a flat is never billed Verwaltung
   return rec;
 }
+/* the pop-up was drawn with another Gewerbe Verwaltung choice than worked out now (e.g. the archive was read meanwhile):
+   draw it again and do nothing — the next tap sends / prints what is then shown */
+function _srGewDrawnOff(c, rec) {
+  const d = SR._gvDrawn;
+  if (!d || d.ck !== c.ck || d.gv === !!(rec && rec._gv)) return false;
+  if (typeof ST !== 'undefined' && ST.tab === 'rentals') stRenderRentals();
+  return true;
+}
 const _srU = (p, rec) => !!p.u || (!!(rec && rec._gv) && p.kind === 'verwaltung' && !_srIsNkOnly(p));
 function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
@@ -690,6 +698,7 @@ function _srCheckHtml(c, it, rec, x) {
 /* Live update of sum, result and check while typing (no re-render → the keyboard stays) */
 function _srRefreshTenant() {
   const got = _srCollectTenant(); if (!got) return null;
+  SR._gvDrawn = { ck: got.c.ck, gv: !!got.rec._gv };
   const x = _srCalc(got.c, got.it, got.rec), ts = got.ts;
   const sumEl = document.querySelector('#srPanel [data-sr-sum]'); if (sumEl) sumEl.textContent = stEur(x.sum);
   const resEl = document.querySelector('#srPanel [data-sr-res]'); if (resEl) resEl.textContent = x.missing ? '\u2014' : stEur(Math.abs(x.saldo));   // Nov 2026: the amount in the right-hand column
@@ -743,6 +752,7 @@ function _srQueueTenantSave(rec) {
 async function _srPdf(btn) {
   const got = _srCollectTenant(); if (!got) return;
   const { c, it, rec, ts } = got;
+  if (_srGewDrawnOff(c, rec)) return;
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -900,6 +910,7 @@ async function _srSendNow(btn, got, key) {
     return;
   }
   _srGewMark(c, rec);
+  if (gvKeep && _srGewDrawnOff(c, rec)) { if (btn) btn.disabled = false; return; }   // the screen first shows what goes out
   if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -1952,6 +1963,7 @@ async function _srPayEdit(el) {
 function _srTenView(c) {
   // Oct 2026 · one level: amount on top · "Letter sent" and "Paid back / Received" as switches · details below
   const rec = _srGewMark(c, _srRec(c.p, c.per)), sum = _srRecSummary(rec, c.apt);
+  SR._gvDrawn = { ck: c.ck, gv: !!(rec && rec._gv) };      // Gewerbe Verwaltung as this pop-up shows it (_srGewDrawn)
   const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid));
   if (!it) return stMHead('Tenant', '', 'calc', 'data-sr="close"') + '<div class="srm__b mx-b"><p class="cx-empty">Not found.</p></div>';
   const ti = _srTenInfo(c, it, rec, sum.ok && (_srJaDone(rec, sum) || !!_srLine(c, it).state.res)), x = ti.x;
