@@ -101,6 +101,13 @@ function _srPerLabel(from, to) { return stPer(from, to); }
 /* ── Data: own table ──────────────────────────────────────── */
 /* B18: one load at a time — a second caller waits for the running one */
 function srLoadRows() { return SR._p || (SR._p = _srLoadRowsNow().finally(() => { SR._p = null; })); }
+async function _srReadLetters() {
+  try {
+    const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
+    if (!l.error) { SR.letters = l.data || []; SR.lettersRead = true; } else { SR.letters = SR.letters || []; SR.lettersErr = l.error.message || String(l.error); }
+  } catch (e) { SR.letters = SR.letters || []; SR.lettersErr = e.message || String(e); }
+  return !!SR.lettersRead;
+}
 async function _srLoadRowsNow() {
   SR.loading = true;
   try {
@@ -109,12 +116,11 @@ async function _srLoadRowsNow() {
     const { data, error } = await _ctlSupa.from(SR_TABLE).select('*');
     if (SR._rd === saved) SR._rd = null;
     if (error) throw error;
+    const was = {}; (SR.rows || []).forEach(r => { if (r && r.id && r._gv !== undefined) was[r.id] = r._gv; });
     SR.rows = (data || []).map(r => saved[r.id] || r); SR.missing = false;
+    SR.rows.forEach(r => { if (r._gv === undefined && was[r.id] !== undefined) r._gv = was[r.id]; });   // Gewerbe Verwaltung: as drawn until the next drawing
     Object.values(saved).forEach(r => { if (!SR.rows.includes(r)) SR.rows.push(r); });
-    try {                                               // letter archive (nk_letters) — for the History
-      const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
-      SR.letters = l.error ? [] : (l.data || []);
-    } catch (e) { SR.letters = []; }
+    await _srReadLetters();                             // letter archive (nk_letters) — for the History
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
     try {                                               // #11: Hausgeld Ist per month (Controlling) — read only, for the hint
       // every year of every apartment: past Supabase's 1000 rows per request it is read in pages (ctlReadAll, controlling-soll.js)
@@ -149,7 +155,7 @@ function srSaveRow(rec, from, only) {
     if (!rec.id && from && from.id) rec.id = from.id;
     if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
     const now = only && rec.id && SR.rows.find(x => x.id === rec.id);
-    if (now && now !== rec) { only.forEach(f => { now[f] = rec[f]; }); rec = now; }
+    if (now && now !== rec) { only.forEach(f => { if (f === 'keys.gv') now.keys = Object.assign({}, now.keys, { gv: rec.keys.gv }); else now[f] = rec[f]; }); rec = now; }
     const data = await _srSaveRowNow(rec);
     if (from && !from.id) from.id = data.id;
     return data;
@@ -176,6 +182,7 @@ async function _srSaveRowNow(rec) {
     if (!error) stSay('Saved – run the latest SQL to also store the received date and the WEG result');
   }
   if (error) throw error;
+  if (rec._gv !== undefined) data._gv = rec._gv;           // Gewerbe Verwaltung as worked out (not stored)
   const i = SR.rows.findIndex(x => x.id === data.id);
   if (i >= 0) SR.rows[i] = data; else SR.rows.push(data);
   if (SR._rd) SR._rd[data.id] = data;                   // C6: a reload reading meanwhile keeps this copy
@@ -263,7 +270,34 @@ function _srKeyText(rec, pos, apt) {
 /* A cost belongs to the Hausgeld-Jahresabrechnung (origin 'hv', the default) or only to the NK (origin 'nk').
    A Hausgeld cost goes into the NK when it is umlagefähig and not unticked ('nk' false). */
 const _srIsNkOnly = p => p.origin === 'nk';
-const _srInNk = p => (_srIsNkOnly(p) || p.u) && p.nk !== false;      // Nov 2026: NK-only costs can be switched off too
+const _srInNk = (p, rec) => (_srIsNkOnly(p) || _srU(p, rec)) && p.nk !== false;      // Nov 2026: NK-only costs can be switched off too
+/* Gewerbe: the Gewerbemietvertrag says "Verwaltungskosten sind im Gewerbemietverhältnis umlagefähig" — a Gewerbefläche's
+   Verwaltung goes into the tenants' NK, from the first Abrechnung with no letter out yet on. An Abrechnung with a letter out
+   (a result, an older tracking status, the letter archive) stays as it went out; the choice is kept with the record
+   (keys.gv) when its first letter goes out. Flats: unchanged (Wohnraum: Verwaltung is not umlagefähig).
+   rec._gv: worked out for the drawing / letter (not stored) — _srGewMark. */
+const _srIsGew = c => !!(c && c.apt && c.apt.zimmer_type === 'Gewerbefläche');
+function _srGewSent(c) {
+  if (!SR.lettersRead) return true;                        // archive not read: as sent (nothing changes)
+  if ((c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res) || (it.type === 'row' && ['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status)); })) return true;
+  const cy = Number(c.per.to.slice(0, 4));
+  return (SR.letters || []).some(l => (l.app === 'rentals' || l.app === 'manual') && Number(l.property_id) === Number(c.p.id) && Number(l.year) === cy);
+}
+function _srGewMark(c, rec) {
+  if (!rec) return rec;
+  const k = rec.keys || {};
+  rec._gv = _srIsGew(c) && (k.gv !== undefined ? !!k.gv : !_srGewSent(c));   // a flat is never billed Verwaltung
+  return rec;
+}
+/* the pop-up was drawn with another Gewerbe Verwaltung choice than worked out now (e.g. the archive was read meanwhile):
+   draw it again and do nothing — the next tap sends / prints what is then shown */
+function _srGewDrawnOff(c, rec) {
+  const d = SR._gvDrawn;
+  if (!d || d.ck !== c.ck || d.gv === !!(rec && rec._gv)) return false;
+  if (typeof ST !== 'undefined' && ST.tab === 'rentals') stRenderRentals();
+  return true;
+}
+const _srU = (p, rec) => !!p.u || (!!(rec && rec._gv) && p.kind === 'verwaltung' && !_srIsNkOnly(p));
 function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
   for (const pos of (rec && rec.positions) || []) {
@@ -271,7 +305,7 @@ function _srRecSummary(rec, apt) {                     // the Hausgeld side only
     n++;
     const a = _srUnitAmt(rec, pos, apt);
     if (a === null) { if (pos.split !== 'mieter') missing++; continue; }
-    if (pos.u) u += a; else nu += a;
+    if (_srU(pos, rec)) u += a; else nu += a;
   }
   const ok = !!rec && n > 0 && !missing && !!rec.hv_date;
   return { u: cxR(u), nu: cxR(nu), missing, n, ok };
@@ -287,7 +321,7 @@ function _srCalc(c, it, rec) {
   const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {};
   const lines = []; let sum = 0, missing = 0, direct = false;
   for (const pos of (rec && rec.positions) || []) {
-    if (!_srInNk(pos)) continue;
+    if (!_srInNk(pos, rec)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null && pos.split !== 'mieter') continue;          // no amount typed yet → not part of the NK
     let amt = null, cons = null;
@@ -433,7 +467,7 @@ function _srSpanShare(c, rec, from, to, apt, stayId) {
   const leerDays = stayId ? 0 : _srVacancies(c, rec).reduce((s, x) => s + _srDays(x.from, x.to), 0) || 1;
   let fixed = 0, cons = 0, missing = 0;
   for (const pos of (rec && rec.positions) || []) {
-    if (!_srInNk(pos)) continue;
+    if (!_srInNk(pos, rec)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null) { if (pos.split === 'mieter') missing++; continue; }   // typed per tenant only: unknown here
     if (_srIsCons(pos)) {                                                     // Grundkosten by days · Verbrauch only where someone lived
@@ -665,6 +699,8 @@ function _srCheckHtml(c, it, rec, x) {
 function _srRefreshTenant() {
   const got = _srCollectTenant(); if (!got) return null;
   const x = _srCalc(got.c, got.it, got.rec), ts = got.ts;
+  const gd = SR._gvDrawn;                                    // Gewerbe Verwaltung changed since the pop-up was drawn: draw all of it again
+  if (gd && gd.ck === got.c.ck && gd.gv !== !!got.rec._gv) { _srRerenderPanel(); return { got, x }; }
   const sumEl = document.querySelector('#srPanel [data-sr-sum]'); if (sumEl) sumEl.textContent = stEur(x.sum);
   const resEl = document.querySelector('#srPanel [data-sr-res]'); if (resEl) resEl.textContent = x.missing ? '\u2014' : stEur(Math.abs(x.saldo));   // Nov 2026: the amount in the right-hand column
   const chk = document.querySelector('#srPanel [data-sr-check]'); if (chk) chk.innerHTML = _srCheckHtml(got.c, got.it, got.rec, x);
@@ -688,7 +724,7 @@ let _srTsTimer = null;
 function _srCollectTenant() {
   const c = _srCards[SR.sel && SR.sel.ck]; if (!c) return null;
   const it = c.items.find(x => x.type === 'row' && String(x.r.id) === String(SR.sel.tid)); if (!it) return null;
-  const rec = _srRec(c.p, c.per); if (!rec) return null;
+  const rec = _srGewMark(c, _srRec(c.p, c.per)); if (!rec) return null;   // (also a record read again since the drawing)
   const tid = String(it.r.tenant_id);
   rec.tenants = rec.tenants || {};
   const ts = rec.tenants[tid] = rec.tenants[tid] || {};
@@ -717,6 +753,7 @@ function _srQueueTenantSave(rec) {
 async function _srPdf(btn) {
   const got = _srCollectTenant(); if (!got) return;
   const { c, it, rec, ts } = got;
+  if (_srGewDrawnOff(c, rec)) return;
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -784,7 +821,7 @@ function _srLetterData(c, it, rec, x, ts) {
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
-    isGewerbe: apt.zimmer_type === 'Gewerbefläche',   // n47: a Gewerbe unit's letter says Gewerbefläche (amounts unchanged)
+    isGewerbe: apt.zimmer_type === 'Gewerbefläche',   // n47: a Gewerbe unit's letter says Gewerbefläche · its Verwaltung: _srGewMark
     objekt: [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
     footer: apt.adresse ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '') : (apt.plz_ort || ''),
     ort: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // the city of the property
@@ -831,9 +868,9 @@ function srLetterHtml(d) {
     bank: d.bank, verwendung: d.verwendung, tenantIban: d.tenantIban, former: d.former, du: false,
     extraHtml: vzNew,
     // n47: §§ 556 / 560 BGB are Wohnraum law, and a Gewerbe contract makes Verwaltung umlagefähig — the Gewerbe letter
-    // neither cites them nor calls Verwaltung "nicht umlagefähig" (whether Verwaltung is billed: owner decision, amounts unchanged)
+    // neither cites them nor calls Verwaltung "nicht umlagefähig" · Gewerbe Verwaltung billed (_srGewMark): only the Rücklage is left out
     hints: [(d.hasVerbrauch ? 'Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung (siehe Anlage). ' : '')
-              + (d.isGewerbe ? 'Verwaltungskosten und Rücklage sind nicht enthalten.' : 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.'),
+              + (d.isGewerbe ? (d.lines.some(l => l.pos.kind === 'verwaltung') ? 'Die Rücklage ist nicht enthalten.' : 'Verwaltungskosten und Rücklage sind nicht enthalten.') : 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.'),
             'Die Belege können nach Terminabsprache eingesehen werden.' + (d.isGewerbe ? '' : ' Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).')],
     closing: 'Mit freundlichen Grüßen', anlagen: d.anlagen, extra: null,
   });
@@ -867,6 +904,15 @@ async function _srSendNow(btn, got, key) {
     const now = SR.rows.find(r => r.id === rec.id);          // before it — the old amount was sent, the record kept the new costs)
     if (now && now !== rec) { now.tenants = rec.tenants; rec = now; }
   }
+  const gvKeep = _srIsGew(c) && !(rec.keys && rec.keys.gv !== undefined);   // Gewerbe: the first letter out keeps its Verwaltung choice
+  if (gvKeep && !SR.lettersRead) {                           // its choice needs the archive: not read → nothing is sent; read again, then drawn
+    stSay('Speichern fehlgeschlagen — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false;
+    _srReadLetters().then(ok => { if (ok && typeof ST !== 'undefined' && ST.tab === 'rentals') stRenderRentals(); });
+    return;
+  }
+  _srGewMark(c, rec);
+  if (gvKeep && _srGewDrawnOff(c, rec)) { if (btn) btn.disabled = false; return; }   // the screen first shows what goes out
+  if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
@@ -879,7 +925,12 @@ async function _srSendNow(btn, got, key) {
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
-  try { await srSaveRow(rec, null, ['tenants']); } catch (e) {}   // another tenant's: it is still saved
+  try { await srSaveRow(rec, null, gvKeep ? ['tenants', 'keys.gv'] : ['tenants']); }   // another tenant's: it is still saved
+  catch (err) {                                              // Gewerbe: the Verwaltung this letter bills must be kept with the record
+    if (gvKeep && rec._gv) {                                 // the choice was not stored: not kept in memory either (also on a newer copy)
+      for (const r of [rec, SR.rows.find(z => z.id === rec.id)]) if (r && r.keys && r.keys.gv !== undefined) { r.keys = Object.assign({}, r.keys); delete r.keys.gv; }
+      stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+  }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
                    direction: dir, amount: cxR(amountRec), result_date: date, due_date: dir ? _srAdd(date, _srNum(ts.days) ?? 30) : null,
@@ -979,6 +1030,7 @@ function _srYearModel(Y) {
     const c = { ck: _srCk(p.id, per.from), p, per, year: Y, apt, verw, items: [], weg: null, before: false, running: per.to >= cxToday() };
     if (since && per.to < since) { c.before = true; return c; }
     const x = _srItemsFor(p, per); c.items = x.items; c.weg = x.weg;
+    _srGewMark(c, _srRec(p, per));                          // Gewerbe: its Verwaltung in the NK (_srGewSent)
     return c;
   });
 }
@@ -1051,7 +1103,7 @@ function _srSettledTxt(ti, weg) {
   return '';
 }
 function _srCardInfo4(c) {
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
+  const rec = _srGewMark(c, _srRec(c.p, c.per)), sum = _srRecSummary(rec, c.apt);
   if (c.before) return { c, rec, sum, rows: [], hv: null, k: 'before' };
   const hv = _srHvState(c, rec, sum);
   const sumOk = sum.ok && _srJaDone(rec, sum);
@@ -1366,7 +1418,7 @@ function _srCard5(info) {
 function _srNkCostTotal(rec, apt) {
   let t = 0;
   for (const p of (rec && rec.positions) || []) {
-    if (!_srInNk(p)) continue;
+    if (!_srInNk(p, rec)) continue;
     const a = _srAmtOf(rec, p, apt); if (a === null || a === undefined) continue;
     t += _srSigned(p, a);
   }
@@ -1522,7 +1574,7 @@ function _srMakeDraft(c) {
     if (prev && (prev.positions || []).length) d.positions = prev.positions.map(p => Object.assign({}, p, { id: _srUid(), total: null, amount: null, key: 'direkt', ku: null, kt: null }));
     else d.positions = SR_STD_U.concat(SR_STD_NU).map(k => _srNewPos(k, d));
   }
-  return d;
+  return _srGewMark(c, d);
 }
 
 /* Shared by both windows: the draft of this Wohnung's record */
@@ -1546,7 +1598,7 @@ function _srHvView(c) {
   const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt), hv = _srHvState(c, rec, sum);
   const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
   const U = [], N = [];
-  (d.positions || []).forEach((p, i) => { if (!_srIsNkOnly(p)) (p.u ? U : N).push([p, i]); });
+  (d.positions || []).forEach((p, i) => { if (!_srIsNkOnly(p)) (_srU(p, d) ? U : N).push([p, i]); });
   const tot = arr => cxR(arr.reduce((t, [p]) => t + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
   const tu = tot(U), tn = tot(N), tt = cxR(tu + tn);
   const wDir = d.weg_direction === null || d.weg_direction === undefined ? null : Number(d.weg_direction);
@@ -1588,7 +1640,7 @@ function _srHvView(c) {
   const mx = Math.max(Math.abs(tu) + Math.abs(tn), 1);
   let costs = '<div class="mx-mini"><i style="flex:' + Math.max(1, Math.abs(tu) / mx * 100) + ';background:#9DBF7A"></i><i style="flex:' + Math.max(1, Math.abs(tn) / mx * 100) + ';background:#E8C98F"></i></div>' +
     '<div class="mx-dr"><span class="mx-d" style="background:#9DBF7A"></span><span>Umlagefähig<small>goes into the tenants’ NK</small></span><span class="mx-a" data-sr-tot="u">' + stEur(tu) + '</span></div>' +
-    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Nicht umlagefähig<small>Verwaltung, Rücklage …</small></span><span class="mx-a" data-sr-tot="n">' + stEur(tn) + '</span></div>' +
+    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Nicht umlagefähig<small>' + (U.some(([p]) => p.kind === 'verwaltung') ? 'Rücklage …' : 'Verwaltung, Rücklage …') + '</small></span><span class="mx-a" data-sr-tot="n">' + stEur(tn) + '</span></div>' +
     '<div class="mx-dr is-b"><span class="mx-d"></span><span>Total</span><span class="mx-a" data-sr-tot="t">' + stEur(tt) + '</span></div>';
   if (SR.costsOpen) {
     const row = ([p, i]) => {
@@ -1719,7 +1771,7 @@ function _srNkView(c) {
   const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
   const change = _srTenantChange(c);
   const HV = [], X = [];
-  (d.positions || []).forEach((p, i) => { if (_srIsNkOnly(p)) X.push([p, i]); else if (p.u) HV.push([p, i]); });
+  (d.positions || []).forEach((p, i) => { if (_srIsNkOnly(p)) X.push([p, i]); else if (_srU(p, d)) HV.push([p, i]); });
   const hvReady = _srJaDone(rec, sum) && HV.some(([p]) => _srAmtOf(d, p, c.apt) !== null);
   let costCard;
   if (!hvReady) {
@@ -1798,7 +1850,7 @@ function _srNkView(c) {
 function _srConsCard(c, d) {
   const stays = _srStays(c, d), per = _srPer(c, d), perDays = _srDays(per.from, per.to);
   const occ = stays.reduce((a, x) => a + x.days, 0);
-  const cons = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srInNk(p) && _srIsCons(p) && _srUnitAmt(d, p, c.apt) !== null);
+  const cons = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srInNk(p, d) && _srIsCons(p) && _srUnitAmt(d, p, c.apt) !== null);
   if (!cons.length || (stays.length <= 1 && occ >= perDays)) return '';
   const rows = cons.map(([p, i]) => {
     const U = _srUnitAmt(d, p, c.apt), sp = _srConsSplit(c, d, p, U);
@@ -1875,7 +1927,7 @@ function _srRefreshTotals() {
   const d = SR.draft, t = { u: 0, n: 0, hvnk: 0, x: 0 };
   (d.positions || []).forEach(p => {
     const v = _srSigned(p, _srAmtOf(d, p, c.apt));
-    if (_srIsNkOnly(p)) { if (p.nk !== false) t.x += v; } else { if (p.u) t.u += v; else t.n += v; if (p.u && p.nk !== false) t.hvnk += v; }
+    if (_srIsNkOnly(p)) { if (p.nk !== false) t.x += v; } else { if (_srU(p, d)) t.u += v; else t.n += v; if (_srU(p, d) && p.nk !== false) t.hvnk += v; }
   });
   const set = (k, v) => { const el = document.querySelector('#srPanel [data-sr-tot="' + k + '"]'); if (el) el.textContent = stEur(cxR(v)); };
   set('u', t.u); set('n', t.n); set('t', t.u + t.n); set('hvnk', t.hvnk); set('x', t.x); set('nk', t.hvnk + t.x);
@@ -1911,7 +1963,8 @@ async function _srPayEdit(el) {
 
 function _srTenView(c) {
   // Oct 2026 · one level: amount on top · "Letter sent" and "Paid back / Received" as switches · details below
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
+  const rec = _srGewMark(c, _srRec(c.p, c.per)), sum = _srRecSummary(rec, c.apt);
+  SR._gvDrawn = { ck: c.ck, gv: !!(rec && rec._gv) };      // Gewerbe Verwaltung as this pop-up shows it (_srGewDrawn)
   const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid));
   if (!it) return stMHead('Tenant', '', 'calc', 'data-sr="close"') + '<div class="srm__b mx-b"><p class="cx-empty">Not found.</p></div>';
   const ti = _srTenInfo(c, it, rec, sum.ok && (_srJaDone(rec, sum) || !!_srLine(c, it).state.res)), x = ti.x;
