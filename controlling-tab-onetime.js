@@ -824,7 +824,7 @@ function _cxOtDirty() {
   const o = om;
   const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
   if (!o) return !!(amt || text || co);
-  return cxParse(amt) !== cxR(o.amount) || (text || co || o._kind || o.kind) !== String(o.item || '') || co !== String(o.company || '') ||   // empty description → company or kind is written
+  return cxParse(amt) !== cxR(o.amount) || (text || co || o._kind || o.kind) !== String(o.item || o.company || o.kind || '') || co !== String(o.company || '') ||   // empty description → company or kind is written
     String(g('cxOtDate')?.value || '') !== String(o.invoice_date).slice(0, 10) || Number(g('cxOtProp')?.value) !== Number(o.property_id) ||
     (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1)) ||
     (o._nk !== undefined && o._nk !== !!o.nk_umlage) ||
