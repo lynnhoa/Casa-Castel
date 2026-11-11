@@ -346,7 +346,7 @@ function _cxdCss() {
 
 window.renderDashboard = function () {
   const host = document.getElementById('tab-dashboard');
-  if (!host) return;
+  if (!host || cxOffScreen(host)) return;   // C6: a save that ends after you left the Dashboard draws the screen you are on
   CX.tab = 'dashboard';
   _cxdCss();
   const isYear = CX.dashView === 'y';

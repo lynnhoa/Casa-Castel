@@ -489,7 +489,10 @@ async function _cxAbrRun(e, amount, take) {
 async function cxAbrClick(a, b, rerender) {
   if (a === 'take' && /^abr/.test(b.dataset.id || '')) {
     const e = _cxAbrIndex[b.dataset.id];
-    if (e && !e.info && e.ist === null) { b.disabled = true; try { await _cxAbrRun(e, e.soll, true); } catch (err) { cxToastErr(err); } }
+    // C6: a save of this result still on its way (the Ist just cleared): the row drawn is not its state yet — the tap waits
+    // in the queue and _cxAbrRun decides once that save has landed (the tap was dropped)
+    const busy = !!e && !e.legacy && !!e.res && !!_cxAbrQ[e.res.key];
+    if (e && !e.info && (e.ist === null || busy)) { b.disabled = true; try { await _cxAbrRun(e, e.soll, true); } catch (err) { cxToastErr(err); } }
     rerender(); return true;
   }
   if (a === 'abrDup') {                                  // #1: booked twice → one goes; an entry you typed yourself is never deleted (only unlinked)

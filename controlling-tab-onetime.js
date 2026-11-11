@@ -48,6 +48,9 @@ let _cxOt = {
   nkCat: '',                                           // new entry: Casa cost type for the NK ('' = general house costs)
   knkType: '', knkPart: '',                            // new entry: Kaufnebenkosten type · Kauf / Grundschuld
   bonus: null, bonusNk: null,                          // Bonuses to confirm: the bonus being confirmed · its NK switch
+  saving: {}, boSaving: null,                          // C6: the invoices / bonus being saved (by id), with what was typed (drawn into its form)
+  draft: null,                                         // C6: an invoice opened again while its save failed: what failed, for that form only
+  formN: 0,                                            // C6: counts the forms opened — the same invoice opened again is another form
 };
 const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_prop')) || null; } catch (e) { return null; } };
 
@@ -202,7 +205,7 @@ function _cxOtMaintFormHTML(o) {
         '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
       _cxOtNkCatHTML(o, nk, pid) +
       '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-        '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+        '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + cxEsc(o.id) + '">Save</button></div>' +   // C6: each invoice has its own Save (cxWire's busy key)
       '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
     : _cxOtWhoHTML(o) +                                      // cx-ot-mtbtns: "Open in Maintenance" gets the room (one line on phones)
       '<div class="cx-grid2 cx-ot-mtbtns"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
@@ -247,24 +250,27 @@ function _cxOtKnkFormHTML(o) {
 async function _cxOtSaveMaint(o, b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   if (_cxOtNkFixed(o)) return;                               // D39: Casa Castel's NK is set in Maintenance › Who pays (no Save there)
-  const pid = Number(o.property_id);
-  const nkOn = o._nk !== undefined ? o._nk : !!o.nk_umlage;
+  const pid = Number(o.property_id), os = _cxOtShown(o);   // C6: what the form shows (a save on its way / a failed one)
+  const nkOn = o._nk !== undefined ? o._nk : !!os.nk_umlage;
   const nk_umlage = !!nkOn;                                  // Nov 2026: every property can mark a cost for its NK
   const catV = document.getElementById('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;
   b.disabled = true;
+  const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_umlage, nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
-    delete o._nk;
+    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id); else delete o._nk;   // C6: opened again meanwhile → its own switch stays
+    if (_cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     if (saved) _cxOt.flash = saved.id;
-    _cxOt.form = null; _cxOt.formAt = null;
+    if (_cxOt.formN === sv.n) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
     say('Saved');
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
+    if (String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: its form (also opened again) keeps showing (and saving) what failed — a drawing put the stored row back
     b.disabled = false; return;
-  }
-  window.renderOneTime();
+  } finally { if (_cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
+  _cxOtAfterSave();
 }
 
 function _cxOtFormHTML(o) {
@@ -301,15 +307,36 @@ function _cxOtFormHTML(o) {
       '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + (o ? cxEsc(o.id) : 'new' + _cxOt.formN) + '">Save</button></div>' +   // C6: each invoice / new form has its own Save (cxWire's busy key)
     (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Delete invoice</button>' : '') +
   '</div>';
 }
 
+/* C6: the invoice being saved is drawn with what you typed (a drawing during its save put the old values back) */
+/* C6: an invoice opened again while its save ran: the saved row replaced it in memory — the chips its form shows
+   (kind, Raus / Rein, NK) are kept on the new row, so the form and its next Save stay as you see them
+   (a form not drawn just now — search, Casa / Rentals — keeps what was tapped in it) */
+function _cxOtChipsKeep(id) {
+  const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id)), f = document.querySelector('#tab-onetime .cx-ot-form[data-edit="' + CSS.escape(String(id)) + '"]');
+  if (!o) return;
+  if (!f) { const t = _cxOt.tap; if (t && t.n === _cxOt.formN && String(t.id) === String(id)) Object.assign(o, t.c); return; }
+  const k = f.querySelector('[data-cx="otKind"].on'), d = f.querySelector('[data-cx="otDir"].on'), nk = f.querySelector('#cxOtNkRow');
+  if (k) o._kind = k.dataset.v;
+  if (d) o._dir = Number(d.dataset.v);
+  if (nk) o._nk = nk.classList.contains('on');
+}
+/* C6: a chip tapped in an invoice form: on its row, and kept for that form too (a reload or a save replaces the row) */
+function _cxOtTap(o, k, v) {
+  o[k] = v;
+  const t = _cxOt.tap;
+  (t && t.n === _cxOt.formN && String(t.id) === String(o.id) ? t : (_cxOt.tap = { id: o.id, n: _cxOt.formN, c: {} })).c[k] = v;
+}
+const _cxOtDraftOn = o => { const d = _cxOt.draft; return !!(o && d && d.n === _cxOt.formN && String(d.id) === String(o.id)); };
+const _cxOtShown = o => { const s = _cxOt.saving[o.id] || (_cxOtDraftOn(o) ? _cxOt.draft : null); return s ? Object.assign({}, o, s.f) : o; };
 /* One invoice = one row, same pattern as Income / Expenses:
    label (Beschreibung) · pill │ amount (bold) │ date · Firma — tap to edit */
 function _cxOtRowHTML(o) {
-  if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
+  if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(_cxOtShown(o)) + '</div>';
   const inn = Number(o.direction) === 1;
   const mt = _cxOtIsMaint(o), refund = mt && _cxOtIsRefund(o);
   const ten = mt ? _cxOtTenants(o) : null;                           // D39: Kleinreparatur / Schaden that tenants pay
@@ -513,6 +540,7 @@ function _cxOtSumFigs(inPer, q) {                                     // inPer: 
 window.renderOneTime = function () {
   const host = document.getElementById('tab-onetime');
   if (!host) return;
+  if (cxOffScreen(host)) { _cxOt.flash = null; return; }   // C6: a save that ends after you left One-off draws the screen you are on
   if (!document.getElementById('cx-ot-knk-css')) {                    // Kaufnebenkosten block (own look, set apart from the invoices)
     const st = document.createElement('style'); st.id = 'cx-ot-knk-css';
     st.textContent = '.cx-ot-knk{margin:10px 0 6px;padding:8px 10px 2px;border-radius:10px;background:#F5F2ED;border:.5px dashed #D9CFC0}' +
@@ -553,7 +581,10 @@ window.renderOneTime = function () {
     document.head.appendChild(st);
   }
   const at = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
-  if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
+  if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) {   // the form closes — what was tapped in it goes too (as Cancel)
+    const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; delete o._nk; }
+    _cxOt.form = null; _cxOt.formAt = null;
+  }
   CX.tab = 'onetime';
   const flash = _cxOt.flash;
   cxPaint(host, '<div class="cx-page">' +
@@ -590,10 +621,11 @@ window.renderOneTime = function () {
   cxWire(host, {
     render: () => window.renderOneTime(),
     click: async (a, b) => {
-      if (a === 'otView') { if (!(await _cxOtClose())) return; _cxOt.view = b.dataset.v; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
+      const id = b.dataset.id, v = b.dataset.v;                // C6: read before the first await (a drawing under a question moves rows)
+      if (a === 'otView') { if (!(await _cxOtClose())) return; _cxOt.view = v; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
       if (a === 'otYear') {
         if (!(await _cxOtClose())) return;
-        const y = window._ctrl.year + Number(b.dataset.v);
+        const y = window._ctrl.year + Number(v);
         if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
         try { await ctlLoadAll(y); } catch (e) { cxToastLoad(y, e); }    // C1 #17: a failed load keeps the year shown
         if (typeof ctlShowLoading === 'function') ctlShowLoading(false);
@@ -627,7 +659,7 @@ window.renderOneTime = function () {
         const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true';
         return cxKeepPlace(b, () => window.renderOneTime(), () => [...document.querySelectorAll('#tab-onetime [data-cx="otMonth"]')].find(x => x.dataset.k === k));
       }
-      if (a === 'otEdit') { if (!(await _cxOtClose())) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
+      if (a === 'otEdit') { if (!(await _cxOtClose())) return; _cxOtOpen(id, null); return window.renderOneTime(); }
       if (a === 'otMaint') {                                                      // D8: that entry, at that receipt
         const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
         if (!o || !(await _cxOtClose())) return;
@@ -655,22 +687,22 @@ window.renderOneTime = function () {
       if (a === 'otKind') {
         _cxOt.kind = b.dataset.v;
         return _cxOtKeep(() => {
-          const o = _cxOtEditing(); if (o) o._kind = b.dataset.v;
+          const o = _cxOtEditing(); if (o) _cxOtTap(o, '_kind', b.dataset.v);
           // Hausgeld = the yearly Strom/Gas/Wasser result → always part of the Casa Castel NK
           const pid = Number(document.getElementById('cxOtProp')?.value);
-          if (b.dataset.v === 'Versorger' && pid === CASA_PROP_ID) { if (o) o._nk = true; else _cxOt.nk = true; }
-          if (b.dataset.v === 'Kaufnebenkosten') { if (o) o._nk = false; else _cxOt.nk = false; }
+          if (b.dataset.v === 'Versorger' && pid === CASA_PROP_ID) { if (o) _cxOtTap(o, '_nk', true); else _cxOt.nk = true; }
+          if (b.dataset.v === 'Kaufnebenkosten') { if (o) _cxOtTap(o, '_nk', false); else _cxOt.nk = false; }
         });
       }
-      if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
+      if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) _cxOtTap(o, '_dir', Number(b.dataset.v)); }); }
       if (a === 'otNk') {
         const o = _cxOtEditing();
-        const cur = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
-        if (o) o._nk = !cur; else _cxOt.nk = !cur;
+        const cur = o ? (o._nk !== undefined ? o._nk : !!_cxOtShown(o).nk_umlage) : _cxOt.nk;   // C6: the switch as shown
+        if (o) _cxOtTap(o, '_nk', !cur); else _cxOt.nk = !cur;
         return _cxOtKeep(() => {});
       }
       if (a === 'otSave') return _cxOtSave(b);
-      if (a === 'otBoOpen') { if (!(await _cxOtClose())) return; _cxOt.bonus = b.dataset.id; _cxOt.bonusNk = null; return window.renderOneTime(); }
+      if (a === 'otBoOpen') { if (!(await _cxOtClose())) return; _cxOt.bonus = id; _cxOt.bonusNk = null; return window.renderOneTime(); }
       if (a === 'otBoCancel') { _cxOt.bonus = null; _cxOt.bonusNk = null; return window.renderOneTime(); }
       if (a === 'otBoNk') { const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); _cxOt.bonusNk = on; return; }
       if (a === 'otBoSave') return _cxOtBonusSave(b);
@@ -719,9 +751,10 @@ function _cxOtBonusHTML() {
     if (!open) return head;
     const nk = _cxOt.bonusNk !== null ? _cxOt.bonusNk : !!b.in_nk;
     const inNk = c && c.code !== 'RATE' && c.nk_key !== 'none';
+    const sv = _cxOt.boSaving && _cxOt.boSaving.id === String(b.id) ? _cxOt.boSaving : null;   // C6: being saved → what you typed
     return head + '<div class="cx-form" style="margin:0 0 8px">' +
-      '<div class="cx-grid2"><label class="cx-f"><input type="text" inputmode="decimal" id="cxBoAmt" aria-label="Amount received" value="' + cxE2(b.amount) + '"><span>€</span></label>' +
-      '<label class="cx-f cx-f--l"><input type="date" id="cxBoDate" value="' + cxToday() + '" aria-label="Date received"></label></div>' +
+      '<div class="cx-grid2"><label class="cx-f"><input type="text" inputmode="decimal" id="cxBoAmt" aria-label="Amount received" value="' + (sv ? cxEsc(sv.amt) : cxE2(b.amount)) + '"><span>€</span></label>' +
+      '<label class="cx-f cx-f--l"><input type="date" id="cxBoDate" value="' + (sv ? sv.date : cxToday()) + '" aria-label="Date received"></label></div>' +
       (!casa ? '' : '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" data-cx="otBoNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +
         '<span class="cx-ot-nk__sw" aria-hidden="true"></span><span class="cx-ot-nk__t"><b>Show in Settlements</b><small>' +
         cxEsc(inNk ? 'lowers ' + c.name + ' in the NK-Abrechnung' : 'lowers the house costs in the NK-Abrechnung') + '</small></span></button>') +
@@ -750,6 +783,7 @@ async function _cxOtBonusSave(btn) {
   const c = casa ? (window._ctrl.categories || []).find(cc => Number(cc.id) === Number(k.category_id)) : null;
   const nkCat = nk && c && c.code !== 'RATE' && c.nk_key !== 'none' ? Number(c.id) : null;
   btn.disabled = true;
+  const sv = _cxOt.boSaving = { id: String(b.id), amt: g('cxBoAmt')?.value || '', date };   // C6
   let saved = null;
   try {
     saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: (b.kind || 'Bonus') + (k.provider ? ' · ' + k.provider : ''),
@@ -762,11 +796,11 @@ async function _cxOtBonusSave(btn) {
   } catch (e) {
     if (saved) { try { await ctlDeleteOneTime(saved.id); } catch (e2) { console.warn('[controlling] bonus rollback', e2); } }   // no booking without the bonus marked
     cxToastErr(e); btn.disabled = false; return;
-  }
-  _cxOt.bonus = null; _cxOt.bonusNk = null;
+  } finally { if (_cxOt.boSaving === sv) _cxOt.boSaving = null; }
+  if (String(_cxOt.bonus) === String(b.id)) { _cxOt.bonus = null; _cxOt.bonusNk = null; }   // C6: another bonus opened meanwhile stays open
   if (saved) { _cxOt.flash = saved.id; _cxOtKeepOpen(pid, saved); }
   say(Number(date.slice(0, 4)) !== window._ctrl.year ? 'Saved in ' + date.slice(0, 4) : 'Bonus booked · ' + cxEur(amt));
-  window.renderOneTime();
+  _cxOtAfterSave();
 }
 
 function _cxOtEditing() {
@@ -774,20 +808,23 @@ function _cxOtEditing() {
 }
 function _cxOtOpen(form, pid) {
   _cxOt.form = form; _cxOt.pid = pid; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1; _cxOt.nk = false; _cxOt.knkType = ''; _cxOt.knkPart = '';
+  _cxOt.formN++;
   _cxOt.formAt = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
 }
 /* Something typed that would be lost? (new: any field · edit: anything changed) */
 function _cxOtDirty() {
-  if (_cxOt.form === null) return false;
+  if (_cxOt.form === null || Object.values(_cxOt.saving).some(s => s.n === _cxOt.formN)) return false;   // C6: this form is being saved
   const g = id => document.getElementById(id);
-  const om = _cxOtEditing();
+  // C6: opened again while it saves → it shows what is being saved · after that save failed → what failed counts as typed (against the stored row)
+  const raw = _cxOtEditing(), d = _cxOtDraftOn(raw) ? _cxOt.draft.f : null;
+  const om = raw && (d ? Object.assign({}, raw, { _kind: raw._kind || d.kind, _dir: raw._dir || d.direction, _nk: raw._nk !== undefined ? raw._nk : d.nk_umlage }) : _cxOtShown(raw));
   if (_cxOtIsMaint(om)) return (om._nk !== undefined && om._nk !== !!om.nk_umlage) ||
     (!!g('cxOtNkCat') && String(g('cxOtNkCat').value || '') !== String(om.nk_category_id || ''));
   if (!g('cxOtAmt')) return false;
-  const o = _cxOtEditing();
+  const o = om;
   const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
   if (!o) return !!(amt || text || co);
-  return cxParse(amt) !== cxR(o.amount) || text !== String(o.item || '') || co !== String(o.company || '') ||
+  return cxParse(amt) !== cxR(o.amount) || (text || co || o._kind || o.kind) !== String(o.item || o.company || o.kind || '') || co !== String(o.company || '') ||   // empty description → company or kind is written
     String(g('cxOtDate')?.value || '') !== String(o.invoice_date).slice(0, 10) || Number(g('cxOtProp')?.value) !== Number(o.property_id) ||
     (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1)) ||
     (o._nk !== undefined && o._nk !== !!o.nk_umlage) ||
@@ -816,6 +853,14 @@ function _cxOtKeep(fn) {
   if (keep.cat !== undefined && g('cxOtNkCat')) g('cxOtNkCat').value = keep.cat;
   _cxOtNkShow();   // NK switch follows the (kept) property and Raus / Rein
 }
+/* C6: a save is done — an invoice or bonus you opened meanwhile stays open with what you typed (it was closed, or reset) */
+function _cxOtAfterSave() {
+  if (_cxOt.form === null && !_cxOt.bonus) return window.renderOneTime();
+  const g = id => document.getElementById(id), ba = g('cxBoAmt')?.value, bd = g('cxBoDate')?.value;
+  _cxOtKeep(() => {});
+  if (ba !== undefined && g('cxBoAmt')) g('cxBoAmt').value = ba;
+  if (bd && g('cxBoDate')) g('cxBoDate').value = bd;
+}
 
 async function _cxOtSave(b) {
   if (_cxOtIsMaint(_cxOtEditing())) return _cxOtSaveMaint(_cxOtEditing(), b);
@@ -828,9 +873,9 @@ async function _cxOtSave(b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   if (!(amt > 0)) { say('Please enter an amount'); g('cxOtAmt')?.focus(); return; }
   if (!date) { say('Please enter a date'); g('cxOtDate')?.focus(); return; }
-  const o = _cxOtEditing();
-  const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
-  const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
+  const o = _cxOtEditing(), os = o && _cxOtShown(o), f0 = _cxOt.form, n0 = _cxOt.formN;   // C6: the form being saved, as it shows
+  const kind = o ? (o._kind || (_CX_KINDS.includes(os.kind) ? os.kind : 'Rechnung')) : _cxOt.kind;
+  const dir = o ? (o._dir || (Number(os.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const kt = kind === 'Kaufnebenkosten' ? (o ? (o._knkType !== undefined ? o._knkType : o.knk_type || '') : _cxOt.knkType) : '';
   const kp = _cxKnkHasPart(kt) ? (o ? (o._knkPart !== undefined ? o._knkPart : o.knk_part || '') : _cxOt.knkPart) : '';
   if (kind === 'Kaufnebenkosten' && !kt) { say('Please choose what it is · Makler, Notar, …'); return; }
@@ -839,7 +884,7 @@ async function _cxOtSave(b) {
   const knk = kind === 'Kaufnebenkosten' ? { knk_type: kt, knk_part: kp || null } : (o && o.knk_type ? { knk_type: null, knk_part: null } : {});
   const fallback = kt ? kt + (kp ? ' · ' + kp : '') : kind;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
-  const nkOn = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
+  const nkOn = o ? (o._nk !== undefined ? o._nk : !!os.nk_umlage) : _cxOt.nk;
   const nk_umlage = !!nkOn && kind !== 'Kaufnebenkosten';                                  // Nov 2026: every property          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
   const catV = g('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;   // '' = general house costs (split by person)
@@ -848,7 +893,8 @@ async function _cxOtSave(b) {
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
   if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
-  b.disabled = true;
+  cxBusyNow(document.getElementById('tab-onetime'), b);   // C6: also the Save on screen, if a drawing under the question replaced it
+  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
   try {
     let saved;
     if (o) {
@@ -856,7 +902,9 @@ async function _cxOtSave(b) {
     } else {
       saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || fallback, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id, ...knk });
     }
-    if (o) { delete o._kind; delete o._dir; delete o._nk; delete o._knkType; delete o._knkPart; }
+    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id);   // C6: opened again meanwhile → its own chips stay
+    else if (o) { delete o._kind; delete o._dir; delete o._nk; delete o._knkType; delete o._knkPart; }
+    if (o && _cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     _cxOt.nk = false; _cxOt.nkCat = ''; _cxOt.knkType = ''; _cxOt.knkPart = '';
     if (saved && saved.kind === 'Kaufnebenkosten' && window._src) {   // keep the all-years list in step
       const L = window._src.knkAll || (window._src.knkAll = []), j = L.findIndex(x => String(x.id) === String(saved.id));
@@ -864,7 +912,7 @@ async function _cxOtSave(b) {
     }
     if (saved) { _cxOt.flash = saved.id; _cxOtKeepOpen(pid, saved); }
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
-    _cxOt.form = null; _cxOt.formAt = null;
+    if (_cxOt.form === f0 && _cxOt.formN === n0) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
     const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
     if (y !== window._ctrl.year) say('Saved in ' + y);
     else if (_cxOt.view === 'm' && m !== CX.month) say('Saved in ' + CX_MONTHS[m - 1]);
@@ -872,9 +920,10 @@ async function _cxOtSave(b) {
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
+    if (o && String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: its form (also opened again) keeps showing (and saving) what failed — a drawing put the stored row back
     b.disabled = false; return;
-  }
-  window.renderOneTime();
+  } finally { if (sv && _cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
+  _cxOtAfterSave();
 }
 
 /* NK on (Casa Castel) → which Casa cost type it belongs to. The key (Personen / Fläche) and the booking

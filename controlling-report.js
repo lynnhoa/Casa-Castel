@@ -807,7 +807,8 @@ const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheet
   (document.head || document.documentElement).appendChild(s);
 })();
 
-function _cxRepKey() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt + '|' + CX.rep.dbl; }
+function _cxRepChoice() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt + '|' + CX.rep.dbl; }
+function _cxRepKey() { return _cxRepChoice() + '|' + (window._ctlWriteSeq || 0); }   // C6: + the saves so far — a file made before a save is not handed out
 const _cxRepReady = () => _cxRep.key === _cxRepKey() && !!(CX.rep.fmt === 'pdf' ? _cxRep.pdf : _cxRep.file);
 /* sheets + double-rent days for the year and the chosen properties — known before the file is built */
 function _cxRepQuickFor() {
@@ -878,21 +879,23 @@ function cxReportClose() {
 
 /* load what the format needs and prepare the file for the current choice (in the background) */
 async function _cxRepPrepare() {
-  const key = _cxRepKey(), fmt = CX.rep.fmt;
-  if (_cxRepReady() || _cxRep.busy === key || !_cxRepQuickFor().n) return;
-  _cxRep.busy = key; _cxRep.err = '';
+  const ch = _cxRepChoice(), fmt = CX.rep.fmt;
+  if (_cxRepReady() || _cxRep.busy === ch || !_cxRepQuickFor().n) return;
+  _cxRep.busy = ch; _cxRep.err = '';
   try {
     if (fmt === 'pdf') await Promise.all([cxPdfPreload(), cxRepFontsPreload()]);
     else if (!window.ExcelJS) await _cxLoadScript(CX_EXCELJS_URL);
-    const d = cxRepData(CX.rep.scope);
+    if (typeof ctlIdle === 'function' && window._ctlBusy > 0) await ctlIdle();   // C6: a save on its way ('Book all') goes into the file
+    if (_cxRep.busy !== ch) return;
+    const key = _cxRepKey(), d = cxRepData(CX.rep.scope);
     if (!d.props.length) throw new Error('No property in ' + d.y);
     if (fmt === 'pdf') {
       const out = cxRepBuildPdf(d);
-      if (_cxRep.busy !== key) return;                          // the choice changed meanwhile
+      if (_cxRep.busy !== ch) return;                           // the choice changed meanwhile
       _cxRep.pdf = out; _cxRep.file = null;
     } else {
       const buf = await cxRepBuildXlsx(d);
-      if (_cxRep.busy !== key) return;
+      if (_cxRep.busy !== ch) return;
       const name = cxRepFileName(d.y, CX.rep.scope, 'xlsx');
       _cxRep.file = typeof File === 'function' ? new File([buf], name, { type: CXR_XLSX_MIME }) : new Blob([buf], { type: CXR_XLSX_MIME });
       _cxRep.file.cxName = name; _cxRep.pdf = null;
@@ -900,10 +903,13 @@ async function _cxRepPrepare() {
     _cxRep.key = key;
   } catch (e) {
     console.error('[controlling] export', e);
-    if (_cxRep.busy === key) _cxRep.err = _cxRepMsg(e);
+    if (_cxRep.busy === ch) _cxRep.err = _cxRepMsg(e);
   } finally {
-    if (_cxRep.busy === key) _cxRep.busy = '';
-    if (document.getElementById('cxRepOv')?.classList.contains('open') && _cxRepKey() === key) _cxRepPaint();
+    if (_cxRep.busy === ch) _cxRep.busy = '';
+    if (document.getElementById('cxRepOv')?.classList.contains('open') && _cxRepChoice() === ch) {
+      _cxRepPaint();
+      if (!_cxRepReady() && !_cxRep.err && !_cxRep.busy) _cxRepPrepare();   // C6: a save ended while it was made → made once more
+    }
   }
 }
 

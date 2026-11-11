@@ -490,6 +490,19 @@ function cxRenderActive() {
   const f = { dashboard: 'renderDashboard', income: 'renderIncome', expenses: 'renderExpenses', onetime: 'renderOneTime', setup: 'renderSetup' }[CX.tab];
   if (f && typeof window[f] === 'function') window[f]();
 }
+/* C6: a save that ends after you left its screen does not draw that hidden screen and leaves CX.tab with the screen you
+   are on (the month arrows drew the hidden one, and the next amount went into another month). The screen you are on is
+   drawn again with the new figures — not while you fill in something there (Setup: once you leave the field,
+   _cxSU.due · One-off: an open form keeps what you typed). Returns true when host is not on screen. */
+function cxOffScreen(host) {
+  if (!host || host.style.display !== 'none') return false;
+  const on = document.getElementById('tab-' + CX.tab);
+  if (!on || on === host || on.style.display === 'none') return true;
+  if (CX.tab === 'onetime' && typeof _cxOt !== 'undefined' && (_cxOt.form !== null || _cxOt.bonus)) return true;
+  if (typeof _cxFilling === 'function' && _cxFilling(on)) { if (CX.tab === 'setup' && typeof _cxSU !== 'undefined') _cxSU.due = true; return true; }
+  cxRenderActive();
+  return true;
+}
 function cxGoto(tab) { if (typeof switchTab === 'function') switchTab(tab); }
 
 /* ── Summary card (Einnahmen / Ausgaben) ──
@@ -524,6 +537,26 @@ function cxSummary(o) {
 function cxUndoFor(tab) {
   const u = CX.undo;
   return u && u.tab === tab && u.y === window._ctrl.year && u.m === CX.month ? u : null;
+}
+/* C6: an amount you typed or took on a line (Income / Expenses). While its save is on its way every drawing shows it (a save
+   waiting behind another one of its row does not flash back to the old amount), and 'Book all' / its Undo leave a line you
+   changed since their tap alone (cxTouchedSince: id, year, month, the number taken at the tap) */
+let _cxTouchSeq = 0;
+const _cxTouched = {}, _cxPend = {};
+async function cxMine(id, v, save) {
+  const k = id + '|' + window._ctrl.year + '|' + CX.month, p = { v: v === null || v === undefined ? null : cxR(v) };
+  _cxTouched[k] = ++_cxTouchSeq; _cxPend[k] = p;
+  try { return await save(); } finally { if (_cxPend[k] === p) delete _cxPend[k]; }
+}
+const cxTouchedSince = (ids, y, m, s) => [].concat(ids).some(id => (_cxTouched[id + '|' + y + '|' + m] || 0) > s);
+const cxPendIst = (id, ist) => { const p = _cxPend[id + '|' + window._ctrl.year + '|' + CX.month]; return p ? p.v : ist; };
+/* C6: saves of one month row go out one after the other — each starts from the row the one before wrote
+   (Zinsen then Tilgung, a mark then a new amount, two marks of one apartment) */
+const _cxRowQ = {};
+function cxRowQ(key, fn) {
+  const job = (_cxRowQ[key] || Promise.resolve()).catch(() => {}).then(fn);
+  _cxRowQ[key] = job;
+  return job.finally(() => { if (_cxRowQ[key] === job) delete _cxRowQ[key]; });
 }
 
 /* ── Property card with fold-up ── */
@@ -630,9 +663,42 @@ function cxPaint(host, html) {
   if (!host) return;
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
-  const a = host.firstElementChild, b = tpl.content.firstElementChild;
-  if (a && b && a.id !== b.id) { host.replaceChildren(...tpl.content.childNodes); return; }   // another page (e.g. Setup ↔ History)
-  _cxMorphKids(host, tpl.content);
+  const a = host.firstElementChild, b = tpl.content.firstElementChild, run = host._cxRun && host._cxRun.size ? host._cxRun : null;
+  // C6: a button turned off after a question (e.g. 'Possible duplicate?') counts as busy — seen before the drawing turns it on
+  if (run) { for (const e of run.values()) if (!e.busy && e.b.disabled) e.busy = true; _cxRunFree(host, null); }   // the drawing decides first …
+  if (a && b && a.id !== b.id) host.replaceChildren(...tpl.content.childNodes);   // another page (e.g. Setup ↔ History)
+  else _cxMorphKids(host, tpl.content, _cxFocusPair(host, tpl.content));
+  if (run) _cxRunKeep(host, run);                         // … then a button whose save is on its way stays off
+}
+/* C6: the field you are in (by its id, data-cx-in, data-cx-sel or data-h-date) and the same field in the new HTML, or null */
+function _cxFocusPair(host, frag) {
+  const f = document.activeElement;
+  if (!f || f === host || !host.contains(f) || !f.matches(_CX_CTRL)) return null;
+  for (const at of ['id', 'data-cx-in', 'data-cx-sel', 'data-h-date']) {
+    const v = f.getAttribute(at), n = v && frag.querySelector('[' + at + '="' + CSS.escape(v) + '"]');
+    if (n) return [f, n];
+  }
+  return null;
+}
+/* C6: a button its handler turned off for a save (Add, Book, Save …) stays off until that save is done (cxWire).
+   A drawing in between (a card opened, a chip, another save ending) follows the HTML and turned it on again:
+   a second tap saved twice. The tap's key: the button's data-* (+ area / month on Income and Expenses, h.place). */
+const _cxRunKey = (host, x) => JSON.stringify(x.dataset) + (host._cxPlace ? '|' + host._cxPlace() : '');
+function _cxRunKeep(host, run) {
+  host.querySelectorAll('[data-cx]').forEach(x => {
+    const k = _cxRunKey(host, x), e = run.get(k);
+    if (e && e.busy && !x.disabled) { x.disabled = true; x._cxRunOff = k; }
+  });
+}
+/* C6: a handler that turns its button off after a question: a drawing under the question may have put a new button
+   on screen — that one (the same key) is turned off too, until the save is done */
+function cxBusyNow(host, b) {
+  b.disabled = true;
+  const run = host && host._cxRun, e = run && run.get(_cxRunKey(host, b));
+  if (e) { e.busy = true; _cxRunKeep(host, run); }
+}
+function _cxRunFree(host, key) {                          // key null: every button kept off — the next drawing decides again
+  host.querySelectorAll('[data-cx]').forEach(x => { if (x._cxRunOff && (key === null || x._cxRunOff === key)) { x._cxRunOff = null; x.disabled = false; } });
 }
 function _cxWant(t) {                                   // the value a field gets from its HTML
   if (t.tagName === 'SELECT') { const o = t.querySelector('option[selected]') || t.querySelector('option'); return o ? o.value : ''; }
@@ -672,11 +738,20 @@ function _cxSyncAttrs(x, y) {
     if (v) { if (x.getAttribute('class') !== v) x.setAttribute('class', v); } else x.removeAttribute('class');
   }
 }
-function _cxMorphKids(a, b) {
+function _cxMorphKids(a, b, fp) {
   const an = [...a.childNodes], bn = [...b.childNodes];
+  // C6: the part that holds the field you are in is matched with the part that holds it in the new HTML, not by place —
+  // a row or card that came or went above it gave your field to another one (the keyboard closed, a wrong amount was saved)
+  const j = fp ? an.findIndex(x => x.contains(fp[0])) : -1, k = j < 0 ? -1 : bn.findIndex(y => y.contains(fp[1]));
+  if (k < 0 || k === j) return _cxMorphList(a, an, bn, null, fp);
+  _cxMorphList(a, an.slice(0, j), bn.slice(0, k), an[j], fp);   // what comes before it …
+  _cxMorphList(a, [an[j]], [bn[k]], null, fp);                  // … the part with your field …
+  _cxMorphList(a, an.slice(j + 1), bn.slice(k + 1), null, fp);  // … and what comes after it
+}
+function _cxMorphList(a, an, bn, before, fp) {          // an → bn by place; new parts go in front of 'before' (null: at the end)
   for (let i = 0; i < bn.length; i++) {
     const x = an[i], y = bn[i];
-    if (!x) { a.appendChild(y); continue; }
+    if (!x) { a.insertBefore(y, before); continue; }
     if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); continue; }
     if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
     if (x.isEqualNode(y)) {                             // the same → left alone; only field values follow the HTML
@@ -689,7 +764,7 @@ function _cxMorphKids(a, b) {
     }
     const isCtrl = x.matches(_CX_CTRL), want = isCtrl ? _cxWant(y) : null;
     _cxSyncAttrs(x, y);
-    _cxMorphKids(x, y);
+    _cxMorphKids(x, y, fp);
     if (isCtrl) _cxApply(x, want);
   }
   for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
@@ -698,6 +773,7 @@ function _cxMorphKids(a, b) {
 function cxWire(host, h) {
   if (host._cxWired) return;
   host._cxWired = true;
+  if (h.place) host._cxPlace = h.place;
   host.addEventListener('click', async ev => {
     const b = ev.target.closest('[data-cx]');
     if (!b || b.disabled) return;
@@ -730,7 +806,20 @@ function cxWire(host, h) {
       h.render();
       return ev.detail === 0 ? cxDifFocus(host, id, to) : undefined;   // keyboard (Enter / Space): a tap leaves no focus ring
     }
-    if (h.click) return h.click(a, b, ev);
+    if (h.click) {
+      // C6: a tap whose button its handler turns off (a save) keeps it off until it is done, also across drawings (cxPaint)
+      const run = host._cxRun || (host._cxRun = new Map()), key = _cxRunKey(host, b), cur = run.get(key);
+      if (cur && (cur.busy || cur.b.disabled)) return;       // its save is still on its way (also: turned off after a question)
+      const r = h.click(a, b, ev);
+      if (r && typeof r.then === 'function') {
+        const e = cur || { n: 0, busy: false };
+        e.n++; e.b = b; run.set(key, e);
+        const end = () => { if (--e.n) return; run.delete(key); _cxRunFree(host, key); };
+        r.then(end, end);
+        setTimeout(() => { if (b.disabled && run.get(key) === e) e.busy = true; }, 0);   // a chip or a fold stays tappable
+      }
+      return r;
+    }
   });
   host.addEventListener('change', ev => {
     const id = ev.target && ev.target.dataset && ev.target.dataset.cxIn;

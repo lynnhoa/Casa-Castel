@@ -35,12 +35,12 @@ function _cxIncModel() {
         tenantParts.forEach((pt, i) => {
           const id = base + ':t:' + pt.tid;
           _cxIncIndex[id] = { p, u, s, part: pt, inc };
-          rows.push({ id, u, s, part: pt, first: i === 0, soll: pt.amount, ist: typeof ctlIstFor === 'function' ? ctlIstFor(inc, s, pt.tid) : null, mark });
+          rows.push({ id, u, s, part: pt, first: i === 0, soll: pt.amount, ist: cxPendIst(id, typeof ctlIstFor === 'function' ? ctlIstFor(inc, s, pt.tid) : null), mark });
         });
       } else {
         const ist = inc ? cxR((Number(inc.kaltmiete) || 0) + (Number(inc.nebenkosten) || 0)) : null;
-        _cxIncIndex[base] = { p, u, s };
-        rows.push({ id: base, u, s, soll: s.soll, ist, mark });
+        _cxIncIndex[base] = { p, u, s, id: base };
+        rows.push({ id: base, u, s, soll: s.soll, ist: cxPendIst(base, ist), mark });   // C6: an amount on its way is shown
       }
     }
     return { p, rows };
@@ -49,7 +49,7 @@ function _cxIncModel() {
 
 window.renderIncome = function () {
   const host = document.getElementById('tab-income');
-  if (!host) return;
+  if (!host || cxOffScreen(host)) return;   // C6: a save that ends after you left Income draws the screen you are on
   CX.tab = 'income';
   const model = _cxIncModel();
   const future = cxFuture(window._ctrl.year, CX.month);   // CP2 (#4): nothing due yet → no "Book all"
@@ -104,9 +104,11 @@ window.renderIncome = function () {
 
   cxWire(host, {
     render: () => window.renderIncome(),
+    place: () => CX.area + '|' + window._ctrl.year + '|' + CX.month,   // C6: 'Book' of another area / month is another button
     click: async (a, b) => {
+      const id = b.dataset.id;                                // C6: read before the first await
       if (await cxAbrClick(a, b, () => window.renderIncome())) return;
-      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; CX.undo = null; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); cxKeepRow(b.dataset.id, () => window.renderIncome()); }
+      if (a === 'take') { const e = _cxIncIndex[id]; CX.undo = null; if (e) { const v = e.part ? e.part.amount : e.s.soll; await cxMine(id, v, () => _cxIncSave(e, v)); } cxKeepRow(id, () => window.renderIncome()); }
       // #6: ask first, then book, then offer undo
       if (a === 'all') { if (!cxFuture(window._ctrl.year, CX.month)) CX.bulk = 'income'; return window.renderIncome(); }
       if (a === 'allNo') { CX.bulk = null; return window.renderIncome(); }
@@ -114,31 +116,40 @@ window.renderIncome = function () {
         if (cxFuture(window._ctrl.year, CX.month)) { CX.bulk = null; return window.renderIncome(); }   // CP2 (#4): not due yet
         b.disabled = true;
         const area = CX.area, y = window._ctrl.year, m = CX.month;   // C1 #2: the Undo belongs to where you booked
-        const L = _cxIncBulkList(), done = [];
+        const L = _cxIncBulkList(), done = [], s0 = _cxTouchSeq;
         for (const e of L.list) {
           // x8: each item goes into the month you booked, also when the month arrow is tapped meanwhile;
           // another year opened meanwhile → stop (the rest stays open in its own month)
           if (window._ctrl.year !== y) break;
-          await _cxIncSave(e, e.s.soll, y, m); if (e.u.id != null) done.push(e.u.id);
+          if (cxTouchedSince(e.id, y, m, s0)) continue;           // C6: an amount you entered meanwhile stays yours
+          await _cxIncSave(e, e.s.soll, y, m); if (e.u.id != null) done.push({ uid: e.u.id, id: [e.id, 'inc:' + e.p.id + ':' + e.u.id] });   // a new room: its line by either id
         }
         // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
-        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'income', y, m, items: done, n: done.length }; }
+        // C6: a line you changed after it was booked is not undone (nor counted); nothing left → no Undo
+        const items = done.filter(it => !cxTouchedSince(it.id, y, m, s0));
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = items.length ? { tab: 'income', y, m, items, n: items.length } : null; }
         return window.renderIncome();
       }
       if (a === 'undo') {
         const u = cxUndoFor('income'); if (!u) return;
         b.disabled = true;
-        for (const uid of u.items) {
+        const s1 = _cxTouchSeq;
+        for (const it of u.items) {
           if (window._ctrl.year !== u.y) break;                // x8: never clear a month of another year
-          try { await ctlDeleteIncome(uid, u.m); } catch (err) { cxToastErr(err); }
+          if (cxTouchedSince(it.id, u.y, u.m, s1)) continue;   // C6: an amount you enter while Undo runs stays
+          try { await cxRowQ('inc|' + it.uid + '|' + u.y + '|' + u.m, () => ctlDeleteIncome(it.uid, u.m, u.y)); } catch (err) { cxToastErr(err); }
         }
         CX.undo = null;
         return window.renderIncome();
       }
     },
-    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); cxKeepRow(id, () => window.renderIncome()); },
+    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await cxMine(id, val, () => _cxIncSave(e, val)); cxKeepRow(id, () => window.renderIncome()); },
     // CP2 (#10): "On purpose" — the mark belongs to the unit's month row (a tenant change: both lines); amounts stay
-    mark: async (id, mark) => { const e = _cxIncIndex[id]; if (!e || e.u.id == null) return; await ctlSetIncomeMark(e.u.id, CX.month, mark); },
+    mark: async (id, mark) => {
+      const e = _cxIncIndex[id]; if (!e || e.u.id == null) return;
+      const y = window._ctrl.year, m = CX.month;              // C6: after a save of this row on its way (a new amount clears it) · into its own year
+      await cxRowQ('inc|' + e.u.id + '|' + y + '|' + m, () => ctlSetIncomeMark(e.u.id, m, mark, y));
+    },
   });
 };
 
@@ -179,7 +190,8 @@ function _cxIncBulkList() {
   for (const id of Object.keys(_cxIncIndex)) {
     const e = _cxIncIndex[id];
     if (e.part) continue;                                                    // tenant lines: one tap each
-    const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    const stored = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    const has = cxPendIst(id, stored ? 0 : null) !== null;                  // C6: an amount on its way counts, as on its line
     if (has || !e.s.soll || e.s.partial) continue;                           // part months: one tap each
     if (ctlVisibleCheck(e.p.name, e.u.name, e.s.check)) { skipped++; continue; }                                  // data check: deliberate entry only
     list.push(e);
@@ -211,13 +223,15 @@ async function _cxIncSave(e, ist, y = window._ctrl.year, m = CX.month) {
   if (e.part) return _cxIncSavePart(e, ist, y, m);
   try {
     if (window._ctrl.year !== y) return;
-    if (ist === null || ist === undefined) { if (e.u.id != null) await ctlDeleteIncome(e.u.id, m); return; }
+    // C6: one save at a time per unit and month (a mark on its way, then a new amount) · y: the year tapped in — a room's
+    // first unit made while another year was opened keeps its amount (it was dropped)
+    const q = () => 'inc|' + e.u.id + '|' + y + '|' + m;
+    if (ist === null || ist === undefined) { if (e.u.id != null) await cxRowQ(q(), () => ctlDeleteIncome(e.u.id, m, y)); return; }
     await _cxIncUnit(e);
-    if (window._ctrl.year !== y) return;
     const nk = _cxIncNkShare(e.s, ist);
     // real Ist: the amount belongs to the one tenant of this month (no tenant → nothing to attach)
     const tp = (e.s.parts || []).filter(pt => pt.tid !== 'room');
-    await ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk, tp.length === 1 ? { [tp[0].tid]: cxR(ist) } : null);
+    await cxRowQ(q(), () => ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk, tp.length === 1 ? { [tp[0].tid]: cxR(ist) } : null, y));
   } catch (err) { cxToastErr(err); }
 }
 
@@ -231,16 +245,12 @@ function _cxIncNkShare(s, ist) {
 /* One tenant's line in a change month (G1): stored as split[tenant] + the unit total.
    x9: one save at a time per unit and month — the next tenant's line waits for the save on its way and then
    reads the row it wrote (two quick taps lost the first tenant's payment: both read the row before either landed) */
-const _cxIncPartQ = {};                                 // unit|year|month → the save on its way
 async function _cxIncSavePart(e, ist, y = window._ctrl.year, m = CX.month) {
   try {
     if (window._ctrl.year !== y) return;
     await _cxIncUnit(e);
   } catch (err) { cxToastErr(err); return; }
-  const k = e.u.id + '|' + y + '|' + m;
-  const job = (_cxIncPartQ[k] || Promise.resolve()).then(() => _cxIncSavePartNow(e, ist, y, m));
-  _cxIncPartQ[k] = job;
-  try { await job; } finally { if (_cxIncPartQ[k] === job) delete _cxIncPartQ[k]; }
+  await cxRowQ('inc|' + e.u.id + '|' + y + '|' + m, () => _cxIncSavePartNow(e, ist, y, m));   // C6: the same queue as marks
 }
 async function _cxIncSavePartNow(e, ist, y, m) {
   try {

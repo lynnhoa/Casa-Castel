@@ -34,7 +34,7 @@ window._ctrl = {
 let _ctlLoadSeq = 0;
 async function ctlLoadAll(year, opt) {
   const y = year || window._ctrl.year, seq = ++_ctlLoadSeq;
-  const inc0 = window._src && window._src.incAll;
+  const inc0 = window._src && window._src.incAll, ss = window._ctlSrcSeq;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -51,7 +51,10 @@ async function ctlLoadAll(year, opt) {
   for (const k in rows) if (rows[k].error) { if (!(opt && opt.quiet)) console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
   if (opt && typeof opt.ok === 'function' && !opt.ok(seq)) throw new Error('not taken over');
   const yearChanged = window._ctrl.year !== y;
-  for (const k in rows) window._ctrl[k] = rows[k].data || [];
+  // C6: properties, units and cost types belong to no year and every Setup save keeps them up to date here — a Setup save
+  // that ran while this was read may be missing from the rows read (TG 9 'missing · Add' again): the rows you have stay
+  const keep = window._ctlSrcSeq !== ss || window._ctlSrcBusy > 0;
+  for (const k in rows) if (!(keep && (k === 'properties' || k === 'units' || k === 'categories'))) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
   // C5: the all-years copy (balances) gets this year's rows as just read — unless a newer read of it came meanwhile
   if (Array.isArray(inc0) && window._src.incAll === inc0) {
@@ -104,14 +107,14 @@ function _ctlIncCache(data) {
   const y = data.year, m = data.month, u = data.unit_id;
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
-  const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
-  if (idx >= 0) window._ctrl.income[idx] = data; else window._ctrl.income.push(data);
+  const idx = y !== window._ctrl.year ? -2 : window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);   // C6: -2 = saved into its year while another one is open
+  if (idx >= 0) window._ctrl.income[idx] = data; else if (idx === -1) window._ctrl.income.push(data);
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(u);   // x6: a learned rent follows the new entry at once
 }
 /* Set (mark = { ok:true, reason }) or clear (null) the mark. Only the mark changes:
    the amounts and the split per tenant stay exactly as they are. */
-async function ctlSetIncomeMark(unit_id, month, mark) {
-  const y = window._ctrl.year;
+async function ctlSetIncomeMark(unit_id, month, mark, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was tapped in
   const { data, error } = await _ctlSupa.from('ctrl_income_months').update(_ctlMarkFields(mark))
     .eq('unit_id', unit_id).eq('year', y).eq('month', month).select().single();
   if (error) throw error;
@@ -119,28 +122,38 @@ async function ctlSetIncomeMark(unit_id, month, mark) {
   _ctlIncCache(data);
   return data;
 }
-async function ctlSetCastelMark(category_id, month, mark) {
-  const y = window._ctrl.year;
+async function ctlSetCastelMark(category_id, month, mark, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was tapped in
   const { data, error } = await _ctlSupa.from('ctrl_expense_castel').update(_ctlMarkFields(mark))
     .eq('category_id', category_id).eq('year', y).eq('month', month).select().single();
   if (error) throw error;
   if (!data) throw new Error('not saved – no amount in this month');
+  if (y !== window._ctrl.year) return data;                          // C6: saved into its year while another one is open
   const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.castel_expenses[idx] = data; else window._ctrl.castel_expenses.push(data);
   return data;
 }
-async function ctlSetAptMark(property_id, month, key, mark) {
-  const y = window._ctrl.year;
-  const row = window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month);
+async function ctlSetAptMark(property_id, month, key, mark, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was tapped in
+  const row = y === window._ctrl.year ? window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month)
+    : await _ctlExpRead('ctrl_expense_apartments', 'property_id', property_id, y, month);
   const marks = Object.assign({}, (row && row.diff_marks && typeof row.diff_marks === 'object') ? row.diff_marks : {});
   if (mark && mark.ok) marks[key] = CTL_DIFF_REASONS.includes(mark.reason) ? mark.reason : null; else delete marks[key];
   const { data, error } = await _ctlSupa.from('ctrl_expense_apartments').update({ diff_marks: Object.keys(marks).length ? marks : null })
     .eq('property_id', property_id).eq('year', y).eq('month', month).select().single();
   if (error) throw error;
   if (!data) throw new Error('not saved – no amount in this month');
+  if (y !== window._ctrl.year) return data;                          // C6: saved into its year while another one is open
   const idx = window._ctrl.apt_expenses.findIndex(r => r.property_id === property_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.apt_expenses[idx] = data; else window._ctrl.apt_expenses.push(data);
   return data;
+}
+/* C6: a cost month row as stored, for a save that waited behind another save of its row while another year was opened —
+   it still writes into the year it was typed in (it was dropped), and its row is no longer in memory */
+async function _ctlExpRead(table, col, id, y, month) {
+  const { data, error } = await _ctlSupa.from(table).select('*').eq(col, id).eq('year', y).eq('month', month);
+  if (error) throw error;
+  return (data || [])[0];
 }
 
 /* ── Lookup helpers ─────────────────────────────────────────── */
@@ -245,12 +258,12 @@ function ctlPropertyMonth(pid, month) {
 /* ── Portfolio + annual rollups ─────────────────────────────── */
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
-async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
-  const y = window._ctrl.year;
+async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split, year) {
+  const y = year || window._ctrl.year;                               // C6: the year the amount was entered in
   const payload = { unit_id, year: y, month, kaltmiete, nebenkosten };
   if (split !== undefined) payload.split = split;                    // per tenant in change months (G1)
   // CP2: a marked difference whose amount changes is new → the mark goes in the same save
-  const old = window._ctrl.income.find(r => r.unit_id === unit_id && r.year === y && r.month === month);
+  const old = (y === window._ctrl.year ? window._ctrl.income : (window._src && window._src.incAll) || []).find(r => r.unit_id === unit_id && r.year === y && r.month === month);
   if (ctlDiffOn('inc') && old && old.diff_ok && _ctlIncChanged(old, kaltmiete, nebenkosten, split)) Object.assign(payload, _ctlMarkFields(null));
   const up = pl => _ctlSupa.from('ctrl_income_months').upsert(pl, { onConflict: 'unit_id,year,month' }).select().single();
   let { data, error } = await up(payload);
@@ -268,11 +281,12 @@ async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
   return data;
 }
 
-async function ctlUpsertApt(property_id, month, fields) {
-  const y = window._ctrl.year;
+async function ctlUpsertApt(property_id, month, fields, year) {
+  const y = year || window._ctrl.year;                               // C6: the year the amount was typed in
   const payload = { property_id, year: y, month, ...fields };
   // CP2: a line whose amount changes loses its "On purpose" mark (the other lines keep theirs)
-  const old = window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month);
+  const old = y === window._ctrl.year ? window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month)
+    : await _ctlExpRead('ctrl_expense_apartments', 'property_id', property_id, y, month);
   if (ctlDiffOn('apt') && old && old.diff_marks && typeof old.diff_marks === 'object' && !('diff_marks' in fields)) {
     const marks = Object.assign({}, old.diff_marks);
     const num = v => v === null || v === undefined ? null : _ctlR2(v);
@@ -283,30 +297,33 @@ async function ctlUpsertApt(property_id, month, fields) {
   let { data, error } = await up(payload);
   if (error && 'diff_marks' in payload && _ctlNoDiffCol(error)) { delete payload.diff_marks; window._ctrl.diff.apt = false; ({ data, error } = await up(payload)); }
   if (error) throw error;
+  if (y !== window._ctrl.year) return data;                          // C6: saved into its year while another one is open
   const idx = window._ctrl.apt_expenses.findIndex(r => r.property_id === property_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.apt_expenses[idx] = data;
   else window._ctrl.apt_expenses.push(data);
   return data;
 }
 
-async function ctlUpsertCastel(category_id, month, amount) {
-  const y = window._ctrl.year;
+async function ctlUpsertCastel(category_id, month, amount, year) {
+  const y = year || window._ctrl.year;                               // C6: the year the amount was typed in
   const payload = { category_id, year: y, month, amount };
   // CP2: a marked difference whose amount changes is new → the mark goes in the same save
-  const old = window._ctrl.castel_expenses.find(r => r.category_id === category_id && r.year === y && r.month === month);
+  const old = y === window._ctrl.year ? window._ctrl.castel_expenses.find(r => r.category_id === category_id && r.year === y && r.month === month)
+    : await _ctlExpRead('ctrl_expense_castel', 'category_id', category_id, y, month);
   if (ctlDiffOn('cst') && old && old.diff_ok && _ctlR2(old.amount) !== _ctlR2(amount)) Object.assign(payload, _ctlMarkFields(null));
   const up = pl => _ctlSupa.from('ctrl_expense_castel').upsert(pl, { onConflict: 'category_id,year,month' }).select().single();
   let { data, error } = await up(payload);
   if (error && 'diff_ok' in payload && _ctlNoDiffCol(error)) { delete payload.diff_ok; delete payload.diff_reason; window._ctrl.diff.cst = false; ({ data, error } = await up(payload)); }
   if (error) throw error;
+  if (y !== window._ctrl.year) return data;                          // C6: saved into its year while another one is open
   const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.castel_expenses[idx] = data;
   else window._ctrl.castel_expenses.push(data);
   return data;
 }
 
-async function ctlDeleteIncome(unit_id, month) {
-  const y = window._ctrl.year;
+async function ctlDeleteIncome(unit_id, month, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was entered in
   const { error } = await _ctlSupa.from('ctrl_income_months').delete().eq('unit_id', unit_id).eq('year', y).eq('month', month);
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
@@ -315,8 +332,8 @@ async function ctlDeleteIncome(unit_id, month) {
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
 
-async function ctlDeleteCastel(category_id, month) {
-  const y = window._ctrl.year;
+async function ctlDeleteCastel(category_id, month, year) {
+  const y = year || window._ctrl.year;                               // C6: the year it was typed in
   const { error } = await _ctlSupa.from('ctrl_expense_castel').delete().eq('category_id', category_id).eq('year', y).eq('month', month);
   if (error) throw error;
   window._ctrl.castel_expenses = window._ctrl.castel_expenses.filter(r => !(r.category_id === category_id && r.year === y && r.month === month));
@@ -348,15 +365,30 @@ async function ctlDeleteUnit(id) {
 
 /* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
 const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_castel_categories: 'categories' };
+/* C6: saves of one row go out one after the other (a slow first answer never lands after a quick correction), and the row
+   in memory shows them from the tap on: a drawing while they are on their way shows what you chose (it flashed back to the
+   old value), the next tap works from it (a 2nd month chip, the other First month). A save that fails is taken back out. */
+const _ctlRowW = {};                                         // table|id → { base: the row as saved, wait: saves on their way, last }
 async function ctlUpdateRow(table, id, fields) {
-  const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
-  if (error) throw error;
-  if (!data) throw new Error('row ' + id + ' not found');   // never replace the row with nothing
-  const list = window._ctrl[_CTL_MEM[table]] || [];
-  const i = list.findIndex(r => r.id === id);
-  if (i >= 0) list[i] = data;
-  if (typeof ctlSollReset === 'function') ctlSollReset();
-  return data;
+  const k = table + '|' + id, list = () => window._ctrl[_CTL_MEM[table]] || [];
+  const q = _ctlRowW[k] || (_ctlRowW[k] = { base: list().find(r => r.id === id), wait: [], last: null });
+  const w = { fields }, prev = q.last;
+  const show = () => {
+    const L = list(), i = L.findIndex(r => r.id === id);
+    if (i >= 0 && q.base) L[i] = q.wait.length ? Object.assign({}, q.base, ...q.wait.map(x => x.fields)) : q.base;
+    if (typeof ctlSollReset === 'function') ctlSollReset();
+  };
+  q.wait.push(w); show();
+  const run = q.last = (async () => {
+    if (prev) await prev.catch(() => null);
+    const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
+    if (error) throw error;
+    if (!data) throw new Error('row ' + id + ' not found');   // never replace the row with nothing
+    q.base = data;
+    return data;
+  })();
+  try { return await run; }
+  finally { q.wait.splice(q.wait.indexOf(w), 1); show(); if (!q.wait.length && _ctlRowW[k] === q) delete _ctlRowW[k]; }
 }
 
 /* New property (a new purchase): added at the end, so the list stays in purchase order.

@@ -578,3 +578,9 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
 document.getElementById('tab-tracking')?.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target && e.target.id === 'stAmt') { e.preventDefault(); document.querySelector('#stPanel [data-st="save"]')?.click(); }
 });
+
+/* C6 (Nov 2026): Settlements' own saves of results and settlement lines count as saves on their way (controlling-data.js
+   ctlWriting), as Controlling's do. The reload when the app comes back to the front (settlements-app.js → ctlSollLoad)
+   then reads again once they are done — a read that started before a save ended put the old lists back (the tenant
+   'open' again right after Mark as sent, and Mark as sent offered again). */
+if (typeof ctlWriting === 'function') { _stUpsertSettlement = ctlWriting(_stUpsertSettlement); _stWriteResult = ctlWriting(_stWriteResult); }

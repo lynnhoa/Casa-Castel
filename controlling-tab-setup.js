@@ -55,7 +55,7 @@ const _cxMoney = (table, id, field, val, label) =>
                  Rentals, no NK) + Rentals spaces that are in no property yet ("hinzufügen")
    Kostenarten · Casa Castel cost types — removed in Build A (Oct 2026)
    The separate "Planwerte" card and the Strom field are gone (no Strom in the apartments).  */
-const _cxSU = { edit: {} };
+const _cxSU = { edit: {}, pkPick: {} };   // C6: pkPick = the property picked for a Rentals parking space (kept across drawings)
 /* #6 (Nov 2026) · the living unit "Wohnung" of a property's Rentals apartment — made when the apartment is chosen, by
    "Accept all", or with "+ Apartment" (properties made before). One per property: a second tap / change while it is
    being saved waits for the same save; a failed save makes nothing (ctlCreateUnit retries a taken id once).
@@ -170,16 +170,19 @@ function _cxFilling(host) {
   return false;
 }
 /* a drawing put off while you were filling in (_cxSU.due) follows once you leave the field — after the tap that left it;
-   a save that tap started draws it itself when done (its button stays disabled until then: no second save) */
+   a Setup save that tap started draws it itself when done (C6: also when 'Book all' saves on another tab meanwhile — it was
+   dropped). A Setup save that ends while you are in a field draws at once: cxPaint keeps the field you are in yours (C6s-1). */
 if (typeof document !== 'undefined') document.addEventListener('focusout', e => {
   const host = document.getElementById('tab-setup');
   if (!_cxSU.due || !host || !host.contains(e.target)) return;
-  setTimeout(() => { if (_cxSU.due && CX.tab === 'setup' && !(window._ctlBusy > 0) && !_cxFilling(host)) window.renderSetup(); }, 250);
+  setTimeout(() => { if (_cxSU.due && host.style.display !== 'none' && !(window._ctlSrcBusy > 0) && !_cxFilling(host)) window.renderSetup(); }, 250);
 });
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
-  if (!host) return;
+  if (!host || cxOffScreen(host)) return;   // C6: a Setup save that ends after you left Setup draws the screen you are on
   CX.tab = 'setup';
+  const np = document.getElementById('cxSuNewProp');
+  if (np && _cxSU.newProp) _cxSU.newName = np.value;          // C6: the new property's name stays when Setup is drawn again
   // fixes made in Rentals / Casa Castel and the income of every year (Tenant history balances): reload when Setup or
   // Tenant history is opened (a full read at most every 20 s) — drawn again when something changed, unless you are
   // filling in a field: a drawing puts every other field back to its drawn value (a form being filled in kept nothing,
@@ -276,7 +279,7 @@ window.renderSetup = function () {
       return '<div class="cx-su-u"><div class="cx-set__row"><span class="cx-su-n">' + cxEsc(pk.name) + '</span>' + cxPill('open', 'missing') + '</div>' +
         '<div class="cx-r__sub">' + cxEsc([i.price !== null ? cxEur(i.price) + ' / month' : 'no price in Rentals', i.tenantName ? 'Tenant: ' + i.tenantName : 'no tenant'].join(' · ')) + '</div>' +
         '<div class="cx-grid2"><label class="cx-f cx-f--l"><select id="cxPkProp-' + cxEsc(pk.id) + '" aria-label="Property">' +
-          props.map(p => _cxOpt(p.id, p.name, g && g.id === p.id)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+          props.map(p => _cxOpt(p.id, p.name, String(_cxSU.pkPick[pk.id] ?? (g && g.id)) === String(p.id))).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +   // C6: your pick, else the guess
         '<button class="cx-btn cx-btn--s" data-cx="pkAdd" data-pk="' + cxEsc(pk.id) + '">Add</button></div></div>';
     }).join('') : '') + '</div>';
   const pkCard = cxCard({ key: 'set:parking', title: 'Parking', sub: 'Rent from Rentals › Parking · no NK',
@@ -341,7 +344,7 @@ window.renderSetup = function () {
     render: () => window.renderSetup(),
     click: async (a, b) => {
       if (a === 'openHist') { CX.hist = true; window.scrollTo(0, 0); return window.renderSetup(); }
-      if (a === 'propNew') { _cxSU.newProp = !_cxSU.newProp; return window.renderSetup(); }
+      if (a === 'propNew') { _cxSU.newProp = !_cxSU.newProp; _cxSU.newName = ''; return window.renderSetup(); }
       if (a === 'propAdd') {
         const inp = document.getElementById('cxSuNewProp'), name = (inp?.value || '').trim();
         if (!name) { ctlToast('Please enter a name'); inp?.focus(); return; }
@@ -349,7 +352,7 @@ window.renderSetup = function () {
         b.disabled = true;
         try {
           const p = await ctlCreateProperty(name);
-          _cxSU.newProp = false;
+          _cxSU.newProp = false; _cxSU.newName = '';
           CX.open['set:' + p.id] = true;                                // open its card: link apartment, units and loan next
           ctlSollReset();
           ctlToast(name + ' added');
@@ -374,14 +377,20 @@ window.renderSetup = function () {
       if (a === 'acceptAll') {
         b.disabled = true;
         const list = _cxSetupSuggestions();
-        let ok = 0, err = null;
-        for (const [t, id, f] of list) {
+        let ok = 0, n = 0, err = null;
+        for (const [t, id, f0] of list) {
+          // C6: a link you changed yourself meanwhile stays — only what is still suggested is saved (a unit's source as a pair)
+          const now = (_cxSetupSuggestions().find(x => x[0] === t && x[1] === id) || [])[2] || {}, f = {};
+          if (t === 'ctrl_units') { if (now.source_type === f0.source_type && now.source_ref === f0.source_ref) Object.assign(f, f0); }
+          else for (const k in f0) if (now[k] === f0[k]) f[k] = f0[k];
+          if (!Object.keys(f).length) continue;
+          n++;
           try {
             await ctlUpdateRow(t, id, f); ok++;
             if (t === 'ctrl_properties' && f.rentals_apartment_ref) await _cxSuEnsureLiving(id);   // #6: its living unit comes with it
           } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); }
         }
-        if (typeof ctlToast === 'function') ctlToast(err ? ok + ' of ' + list.length + ' saved · ' + String(err.message || err).slice(0, 60) : 'Links saved');
+        if (typeof ctlToast === 'function') ctlToast(err ? ok + ' of ' + n + ' saved · ' + String(err.message || err).slice(0, 60) : 'Links saved');
         return window.renderSetup();
       }
       if (a === 'hintX') { ctlDismiss(b.dataset.k); return window.renderSetup(); }
@@ -389,7 +398,8 @@ window.renderSetup = function () {
       if (a === 'suEdit') { const id = Number(b.dataset.u); _cxSU.edit[id] = !_cxSU.edit[id]; return window.renderSetup(); }
       if (a === 'suDel') {
         const id = Number(b.dataset.u), u = ctlUnit(id);
-        if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
+        if (!u) return;                                               // C6: removed meanwhile (a 2nd tap on its row)
+        if (_cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
         if (!(await ccConfirm('Remove from Controlling?', ccEscHtml(u.name), 'Remove', true))) return;
         try {
           await ctlDeleteUnit(id);
@@ -402,22 +412,25 @@ window.renderSetup = function () {
         const pid = Number(document.getElementById('cxPkProp-' + b.dataset.pk)?.value);
         const p = ctlProp(pid);
         if (!pk || !p) return;
+        if (ctlSetupLinkState().used.has('rentals_parking|' + String(pk.id))) return;   // C6: added meanwhile (a 2nd tap) — the same rule that lists it as missing
         b.disabled = true;
         // short name inside the property: "Studio One TG 3" in Studio One → "TG 3"
         const short = String(pk.name).toLowerCase().startsWith(String(p.name).toLowerCase() + ' ') ? String(pk.name).slice(p.name.length + 1) : pk.name;
         const type = /garage|stellplatz|\btg\b/i.test(String(pk.parking_type || '')) ? pk.parking_type : 'Stellplatz';
         try {
           await ctlCreateUnit({ property_id: p.id, name: short, unit_type: type, source_type: 'rentals_parking', source_ref: String(pk.id) });
+          delete _cxSU.pkPick[pk.id];
           ctlSollReset();
           if (typeof ctlToast === 'function') ctlToast(short + ' added to ' + p.name);
         } catch (e) { cxToastErr(e); }
         return window.renderSetup();
       }
       if (a === 'month') {
-        const [t, field] = b.dataset.t.split('|'), id = Number(b.dataset.id), mo = Number(b.dataset.m);
+        // C6: on or off as the chip shows it, from the months in memory — they hold a tap still on its way (a 2nd chip lost the 1st)
+        const [t, field] = b.dataset.t.split('|'), id = Number(b.dataset.id), mo = Number(b.dataset.m), on = !b.classList.contains('on');
         const row = (t === 'ctrl_properties' ? window._ctrl.properties : window._ctrl.categories).find(r => r.id === id);
         let cur = Array.isArray(row && row[field]) && row[field].length ? row[field].map(Number) : (field === 'grundsteuer_months' ? [2, 5, 8, 11] : []);
-        cur = cur.includes(mo) ? cur.filter(x => x !== mo) : cur.concat(mo).sort((x, y) => x - y);
+        cur = !on ? cur.filter(x => x !== mo) : cur.includes(mo) ? cur : cur.concat(mo).sort((x, y) => x - y);
         try { await ctlUpdateRow(t, id, { [field]: cur }); } catch (e) { cxToastErr(e); }
         return window.renderSetup();
       }
@@ -436,6 +449,7 @@ window.renderSetup = function () {
     host._cxSelWired = true;
     host.addEventListener('change', async ev => {
       const key = ev.target && ev.target.dataset && ev.target.dataset.cxSel;
+      if (ev.target && /^cxPkProp-/.test(ev.target.id || '')) { _cxSU.pkPick[ev.target.id.slice(9)] = ev.target.value; return; }   // C6: kept for 'Add'
       if (!key) return;
       const [t, id, field] = key.split('|'), v = ev.target.value;
       let f;
@@ -481,7 +495,7 @@ function _cxSuNewPropHTML() {
     '<i class="ti ti-plus" aria-hidden="true"></i>New property</button>';
   return '<div class="cx-card" style="padding:12px 14px"><div class="cx-set">' +
     '<div class="cx-set__k">New property · e.g. after a purchase</div>' +
-    '<label class="cx-f cx-f--l"><input type="text" id="cxSuNewProp" placeholder="Name · e.g. Musterstr. 5, WHG 3" aria-label="Name of the new property" autocomplete="off"></label>' +
+    '<label class="cx-f cx-f--l"><input type="text" id="cxSuNewProp" placeholder="Name · e.g. Musterstr. 5, WHG 3" aria-label="Name of the new property" autocomplete="off"' + (_cxSU.newName ? ' value="' + cxEsc(_cxSU.newName) + '"' : '') + '></label>' +
     '<div class="cx-r__sub">Added at the end of the list. Link the Rentals apartment (its unit is added with it) and the loan in its card afterwards. ' +
       'Kaufnebenkosten can be booked right away in One-off.</div>' +
     '<div class="cx-grid2" style="margin-top:8px"><button class="cx-btn cx-btn--s" data-cx="propNew">Cancel</button>' +
