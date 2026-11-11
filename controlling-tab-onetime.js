@@ -255,7 +255,7 @@ async function _cxOtSaveMaint(o, b) {
   const catV = document.getElementById('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;
   b.disabled = true;
-  const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_category_id: catV ? Number(catV) : null } };   // C6
+  const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_umlage, nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
     delete o._nk;
@@ -867,7 +867,7 @@ async function _cxOtSave(b) {
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
   if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
   cxBusyNow(document.getElementById('tab-onetime'), b);   // C6: also the Save on screen, if a drawing under the question replaced it
-  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
+  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
   try {
     let saved;
     if (o) {
