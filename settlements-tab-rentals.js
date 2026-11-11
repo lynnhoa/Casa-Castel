@@ -894,9 +894,12 @@ async function _srSendNow(btn, got, key) {
     if (now && now !== rec) { now.tenants = rec.tenants; rec = now; }
   }
   const gvKeep = _srIsGew(c) && !(rec.keys && rec.keys.gv !== undefined);   // Gewerbe: the first letter out keeps its Verwaltung choice
-  if (gvKeep && !SR.lettersRead && !(await _srReadLetters())) { stSay('Speichern fehlgeschlagen — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false; return; }   // its choice needs the archive
+  if (gvKeep && !SR.lettersRead) {                           // its choice needs the archive: not read → nothing is sent; read again, then drawn
+    stSay('Speichern fehlgeschlagen — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false;
+    _srReadLetters().then(ok => { if (ok && typeof ST !== 'undefined' && ST.tab === 'rentals') stRenderRentals(); });
+    return;
+  }
   _srGewMark(c, rec);
-  const keys0 = rec.keys;
   if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -912,7 +915,9 @@ async function _srSendNow(btn, got, key) {
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
   try { await srSaveRow(rec, null, gvKeep ? ['tenants', 'keys.gv'] : ['tenants']); }   // another tenant's: it is still saved
   catch (err) {                                              // Gewerbe: the Verwaltung this letter bills must be kept with the record
-    if (gvKeep && rec._gv) { rec.keys = keys0; stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+    if (gvKeep && rec._gv) {                                 // the choice was not stored: not kept in memory either (also on a newer copy)
+      for (const r of [rec, SR.rows.find(z => z.id === rec.id)]) if (r && r.keys && r.keys.gv !== undefined) { r.keys = Object.assign({}, r.keys); delete r.keys.gv; }
+      stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
