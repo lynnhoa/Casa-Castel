@@ -407,7 +407,8 @@ const _srGk = pos => { const v = _srNum(pos.gk); return v !== null ? Math.max(0,
 function _srStays(c, rec) {
   const per = _srPer(c, rec);
   return c.items.filter(it => it.r.tenant_id).map(it => {
-    const e = it.e || it.r, f = _srD(e.period_from), t = _srD(e.period_to);
+    // K1 (R5): the days the stay is billed for (its row — a period changed in the NK too, as _srCalc), never more than that
+    const e = it.r && it.r.period_from && it.r.period_to ? it.r : (it.e || it.r), f = _srD(e.period_from), t = _srD(e.period_to);
     const from = f > per.from ? f : per.from, to = t < per.to ? t : per.to;
     return { it, id: String(it.r.id), tid: String(it.r.tenant_id), name: _srTName(_srTenantOf(it.r)) || 'Tenant', from, to, days: from <= to ? _srDays(from, to) : 0 };
   }).filter(x => x.days > 0);
