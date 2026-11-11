@@ -14,11 +14,15 @@
    Bookings exist only while the card is settled ("Settled on" filled, or everything kept after the move-out).
    Every Save also takes back this tenant's part in every month that is no longer on the card (reconcile), so a
    Save that failed between the bookings and the Kaution row heals itself on the next Save.
+   Fix 3: such a failed Save also puts the bookings back to the saved card at once (same queue), and opening a
+   moved-out tenant's pop-up sets them back quietly when they still differ (ccKauHeal) — the card and Controlling
+   never stay out of step. The receipts of all moved-out tenants are read once after the Tenants page is drawn.
    "Kept · other reasons", "Kept · for NK-Abrechnung", the refund and the Kaution itself book nothing (R1).
    Nothing is written to Maintenance, Settlements or Controlling's own files.
    ───────────────────────────────────────────────────────────── */
 
-const _CCKB = { rc: {}, want: {}, seq: 0 };               // rc: app|tid → { list } receipts (loaded once) · { p } on its way · want: the last pop-up asked for
+const _CCKB = { rc: {}, want: {}, seq: 0, pre: {}, ok: {} };   // rc: app|tid → { list } receipts (loaded once) · { p } on its way · want: the last pop-up asked for
+                                                           // pre: app → the prefetch ran · ok: app|tid → bookings checked against the card on this page
 const CCKB_CASA = 7;                                       // Casa Castel in Controlling (CASA_PROP_ID)
 const _ckbNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');     // = Controlling's _cxNorm
 const _ckbR2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -70,53 +74,97 @@ function ccKauMonths(A, rec) {
   return { list, def: list.includes(pay) ? pay : list[0] };
 }
 
-/* ── receipts: Maintenance › Schäden, "You pay", from the move-in to today, net > 0, not on another card ── */
-async function _ckbReceiptsRead(A, app, rec) {
-  const K = A.kb;
-  let pid = CCKB_CASA;
-  if (!K.casa) {
+/* ── receipts: Maintenance › Schäden, "You pay", from the move-in to today, net > 0, not on another card,
+   not marked for the NK in Controlling (its One-off line has the NK switch on: the NK-Abrechnung bills it already) ──
+   read for one tenant (a tap) or for all moved-out tenants at once (the prefetch) → Map tenant id → list */
+async function _ckbIn(make, ids) {                         // .in() in parts of 100 ids — a long list never makes the address too long
+  const parts = [];
+  for (let i = 0; i < ids.length; i += 100) parts.push(ids.slice(i, i + 100));
+  const res = await Promise.all(parts.map(make));
+  const bad = res.find(r => r.error); if (bad) throw bad.error;
+  return res.reduce((a, r) => a.concat(r.data || []), []);
+}
+async function _ckbReceiptsReadAll(A, app, recs) {
+  const K = A.kb, out = new Map(), pidOf = new Map();
+  recs.forEach(r => out.set(String(r.id), []));
+  if (K.casa) recs.forEach(r => pidOf.set(String(r.id), CCKB_CASA));
+  else {
     const D = await _ckbReadUnits(app);
-    const U = ccKauUnitOf(D, K.unitRef(rec));
-    if (!U) return [];
-    pid = U.p.id;
+    recs.forEach(r => { const U = ccKauUnitOf(D, K.unitRef(r)); if (U) pidOf.set(String(r.id), U.p.id); });
   }
-  const cs = await sbL.from('maint_cases').select('*').eq('kind', 'schaden').eq('property_id', pid);
+  const pids = [...new Set(pidOf.values())];
+  if (!pids.length) return out;
+  const q = sbL.from('maint_cases').select('*').eq('kind', 'schaden');
+  const cs = await (pids.length === 1 ? q.eq('property_id', pids[0]) : q.in('property_id', pids));
   if (cs.error) throw cs.error;
-  const cases = (cs.data || []).filter(c => !K.casa || _ckbNorm(c.report_room) === _ckbNorm(rec.room));
-  if (!cases.length) return [];
-  const co = await sbL.from('maint_costs').select('*').in('case_id', cases.map(c => c.id));
-  if (co.error) throw co.error;
-  const all = co.data || [], rcp = all.filter(x => !x.return_of);
+  const casesOf = r => (cs.data || []).filter(c => pidOf.has(String(r.id)) && String(c.property_id) === String(pidOf.get(String(r.id)))
+    && (!K.casa || _ckbNorm(c.report_room) === _ckbNorm(r.room)));
+  const cases = new Map(); recs.forEach(r => casesOf(r).forEach(c => cases.set(String(c.id), c)));
+  if (!cases.size) return out;
+  const all = await _ckbIn(p => sbL.from('maint_costs').select('*').in('case_id', p), [...cases.values()].map(c => c.id));
+  const rcp = all.filter(x => !x.return_of);
   const ids = rcp.map(x => x.id);
   let rets = all.filter(x => x.return_of);
-  if (ids.length) {                                        // returns are read by their receipt as well (any case)
-    const rr = await sbL.from('maint_costs').select('*').in('return_of', ids);
-    if (rr.error) throw rr.error;
+  const nk = new Set();
+  if (ids.length) {                                        // returns are read by their receipt as well (any case) · the receipts' Controlling lines
+    const [rr, ln] = await Promise.all([
+      _ckbIn(p => sbL.from('maint_costs').select('*').in('return_of', p), ids),
+      _ckbIn(p => sbL.from('ctrl_expense_one_time').select('maint_cost_id,nk_umlage').in('maint_cost_id', p), ids),
+    ]);
     const seen = new Set(rets.map(x => String(x.id)));
-    (rr.data || []).forEach(x => { if (!seen.has(String(x.id))) rets.push(x); });
+    rr.forEach(x => { if (!seen.has(String(x.id))) rets.push(x); });
+    ln.forEach(o => { if (o.nk_umlage) nk.add(String(o.maint_cost_id)); });
   }
-  const from = _ckbD(rec.mietbeginn), today = _ckbToday();
-  return rcp.filter(x => !x.pay_type)                     // Who pays empty = "You pay" (never NK / Kleinreparatur / Schaden)
-    .map(x => {
-      const c = cases.find(cc => String(cc.id) === String(x.case_id)) || {};
-      const back = rets.filter(t => String(t.return_of) === String(x.id)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const date = _ckbD(x.cost_date), text = String(x.description || x.brand || c.title || '').trim() || 'Receipt';
-      return { id: String(x.id), date, text, net: Math.max(0, _ckbR2((Number(x.amount) || 0) - back)) };
-    })
-    .filter(x => x.net > 0.004 && x.date && (!from || x.date >= from) && x.date <= today)
-    .sort((a, b) => b.date.localeCompare(a.date) || a.text.localeCompare(b.text));
+  const today = _ckbToday();
+  recs.forEach(rec => {
+    const mine = new Set(casesOf(rec).map(c => String(c.id))), from = _ckbD(rec.mietbeginn);
+    out.set(String(rec.id), rcp.filter(x => mine.has(String(x.case_id)) && !x.pay_type && !nk.has(String(x.id)))   // Who pays empty = "You pay" (never NK / Kleinreparatur / Schaden) · Rentals: not on the NK
+      .map(x => {
+        const c = cases.get(String(x.case_id)) || {};
+        const back = rets.filter(t => String(t.return_of) === String(x.id)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        const date = _ckbD(x.cost_date), text = String(x.description || x.brand || c.title || '').trim() || 'Receipt';
+        return { id: String(x.id), date, text, net: Math.max(0, _ckbR2((Number(x.amount) || 0) - back)) };
+      })
+      .filter(x => x.net > 0.004 && x.date && (!from || x.date >= from) && x.date <= today)
+      .sort((a, b) => b.date.localeCompare(a.date) || a.text.localeCompare(b.text)));
+  });
+  return out;
 }
-/* loaded ONCE per tenant, before the move-out form shows (pop-up open / Edit) — never at page start */
+async function _ckbReceiptsRead(A, app, rec) { return (await _ckbReceiptsReadAll(A, app, [rec])).get(String(rec.id)) || []; }
+/* loaded ONCE per tenant: by the prefetch, else before the move-out form shows (pop-up open / Edit).
+   The prefetch failed meanwhile ({ again }) → read for this tenant now, as a tap always did */
 function ccKauReceiptsLoad(app, tid) {
   const A = _CCK[app], key = app + '|' + tid, st = _CCKB.rc[key];
   if (st && st.list) return Promise.resolve(st);
-  if (st && st.p) return st.p;
+  if (st && st.p) return st.p.then(r => (r && r.again ? ccKauReceiptsLoad(app, tid) : r));
   const rec = A && A.rec(tid);
   if (!A || !A.kb || !rec) return Promise.resolve({ list: [] });
   const p = _ckbReceiptsRead(A, app, rec)
     .then(list => (_CCKB.rc[key] = { list }), e => { delete _CCKB.rc[key]; console.warn('[kaution] receipts:', (e && e.message) || e); return { list: [] }; });
   _CCKB.rc[key] = { p };
   return p;
+}
+/* Prefetch (once per page): after the Tenants page has been drawn, when the phone is idle, ONE read for the receipts of
+   every moved-out tenant — a tap then opens the pop-up at once (it waits only while this read is still on its way).
+   Nothing on screen changes. A failed read keeps nothing: a tap reads that tenant's receipts as before. */
+function ccKauPrefetch(app) {
+  const A = _CCK[app];
+  if (!A || !A.kb || !A.kb.all || _CCKB.pre[app]) return;
+  const run = () => {
+    if (_CCKB.pre[app] || !_ckbSql(A)) return;
+    const recs = (A.kb.all() || []).filter(r => r && r.id && !_CCKB.rc[app + '|' + r.id] && ccKauOn(A, r.id, r));
+    if (!recs.length) return;
+    _CCKB.pre[app] = 1;
+    const p = _ckbReceiptsReadAll(A, app, recs);
+    p.catch(e => console.warn('[kaution] receipts:', (e && e.message) || e));
+    recs.forEach(r => {
+      const key = app + '|' + r.id;
+      const q = p.then(m => (_CCKB.rc[key] = { list: m.get(String(r.id)) || [] }),
+        () => { if (_CCKB.rc[key] && _CCKB.rc[key].p === q) delete _CCKB.rc[key]; return { list: [], again: true }; });
+      _CCKB.rc[key] = { p: q };
+    });
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2000 }); else setTimeout(run, 250);
 }
 /* the receipts this card may offer: not picked by another Kaution card (its own pick stays) */
 function _ckbReceipts(A, app, tid) {
@@ -132,6 +180,7 @@ function _ckbReceipts(A, app, tid) {
 function ccKauBeforeOpen(app, tid, open, state) {
   const A = _CCK[app], tok = _CCKB.want[app] = ++_CCKB.seq;
   if (!ccKauOn(A, tid)) return open();
+  ccKauCheck(app, tid);                                    // this tenant's bookings = the card as saved (in the background, quiet)
   const st = _CCKB.rc[app + '|' + tid];
   if (st && st.list) return open();
   const s0 = state ? state() : '';
@@ -187,12 +236,12 @@ function ccKauView(A, app, tid, R, k, P, editing, pfx, ui) {
   const amt = i => dv('k' + i, K.rent[i] ? K.rent[i].a : '');
   let n = 1; for (let i = 0; i < 3; i++) if (String(amt(i) ?? '') !== '') n = i + 1;
   n = Math.min(3, Math.max(n, Number(dv('kn', 0)) || 0, Number(ui.kbN) || 0));
-  const monthOf = i => {
-    const v = dv('m' + i, K.rent[i] ? K.rent[i].m : '');
-    if (v && M.list.includes(v)) return v;
-    if (v) return v;                                       // a saved month outside the list stays (added below)
-    const j = M.list.indexOf(M.def) + i; return M.list[Math.min(j, M.list.length - 1)];
-  };
+  // a shown row keeps its month (saved, or as typed — a saved month outside the list stays, added below); an empty row
+  // gets the first month no other row uses, counting down from the preset ("+ month" never repeats a shown month)
+  const months = [0, 1, 2].map(i => { const v = dv('m' + i, K.rent[i] ? K.rent[i].m : ''); return i < n && v ? v : ''; });
+  const used = new Set(months.filter(Boolean));
+  for (let i = 0; i < 3; i++) if (!months[i]) { months[i] = _ckbFreeMonth(M, used, i); used.add(months[i]); }
+  const monthOf = i => months[i];
   const sel = (i, v) => {
     const opts = M.list.includes(v) ? M.list : M.list.concat(v).sort().reverse();
     return `<div class="cck-f"><select id="cckb-m${i}-${pfx}" aria-label="Month of rent owed ${i + 1}" onchange="${on}">${
@@ -214,16 +263,30 @@ function ccKauView(A, app, tid, R, k, P, editing, pfx, ui) {
   [0, 1, 2].forEach(i => { shown[`cckb-k${i}-${pfx}`] = amt(i); });
   return { rows: [0, 1, 2].map(rentRow).join('') + more + rcp + dmg, keptSum, note, shown };
 }
-/* "+ month": the next Rent owed | Month row (at most three) — shown at once, nothing moves while typing */
+/* the first month of the list that no row uses, counting down from the preset, then the later months —
+   every month used: the preset and the months before it, row by row (as before) */
+function _ckbFreeMonth(M, used, i) {
+  const d = Math.max(0, M.list.indexOf(M.def));
+  return M.list.slice(d).concat(M.list.slice(0, d).reverse()).find(m => !used.has(m)) || M.list[Math.min(d + i, M.list.length - 1)];
+}
+/* "+ month": the next Rent owed | Month row (at most three) — shown at once, nothing moves while typing.
+   An empty new row shows the first month the rows above do not use yet (counting down from the preset) */
 function ccKauMore(app, pfx, tid) {
   const A = _CCK[app]; if (!A || !tid) return;
   const ui = A.ui[tid] = A.ui[tid] || {};
-  let n = 0; for (let i = 0; i < 3; i++) { const r = document.getElementById(`cckb-r${i}-${pfx}`); if (r && !r.hidden) n = i + 1; }
-  n = Math.min(3, n + 1); ui.kbN = n;
-  for (let i = 0; i < n; i++) { const r = document.getElementById(`cckb-r${i}-${pfx}`); if (r) r.hidden = false; }
-  const b = document.getElementById(`cckb-more-${pfx}`); if (b && n >= 3) b.hidden = true;
-  if (ui.draft) ui.draft.kn = n;
-  const a = document.getElementById(`cckb-k${n - 1}-${pfx}`); if (a) try { a.focus(); } catch (e) {}
+  const $ = id => document.getElementById(id);
+  let n0 = 0; for (let i = 0; i < 3; i++) { const r = $(`cckb-r${i}-${pfx}`); if (r && !r.hidden) n0 = i + 1; }
+  const n = Math.min(3, n0 + 1); ui.kbN = n;
+  for (let i = 0; i < n; i++) { const r = $(`cckb-r${i}-${pfx}`); if (r) r.hidden = false; }
+  const b = $(`cckb-more-${pfx}`); if (b && n >= 3) b.hidden = true;
+  const a = $(`cckb-k${n - 1}-${pfx}`), m = $(`cckb-m${n - 1}-${pfx}`), rec = A.rec(tid);
+  if (n > n0 && a && m && a.value === '' && rec) {
+    const used = new Set(); for (let i = 0; i < n - 1; i++) { const s = $(`cckb-m${i}-${pfx}`); if (s && s.value) used.add(s.value); }
+    const v = _ckbFreeMonth(ccKauMonths(A, rec), used, n - 1);
+    if ([...m.options].some(o => o.value === v)) m.value = v;
+  }
+  if (ui.draft) { ui.draft.kn = n; if (m) ui.draft['m' + (n - 1)] = m.value; }
+  if (a) try { a.focus(); } catch (e) {}
 }
 /* "From receipt": fills Damage (its net) and Reason ("<text> · <date>") — both stay editable; nothing else */
 function ccKauPick(app, pfx, tid, sel) {
@@ -427,6 +490,7 @@ function ccKauFailed(A, KB, res) {
   if (typeof ccSaveFailed === 'function') ccSaveFailed(res && res.error, A.failLabel);
 }
 
+const _ckbLineItem = (ref, r) => [(ref && ref.label) || '', 'Erstattung Mieter', r, 'aus Kaution'].filter(Boolean).join(' · ');
 /* ── Save, step 2 (in the tenant's write queue, before the Kaution row): set every booking ──
    reads first, works everything out, writes only what differs → { } · { error } · { notLinked } */
 async function ccKauApply(KB, kid) {
@@ -469,7 +533,7 @@ async function ccKauApply(KB, kid) {
     let line = null;
     if (wantLine) {
       const pid = A.kb.casa ? CCKB_CASA : KB.U.p.id;
-      const item = [(KB.ref && KB.ref.label) || '', 'Erstattung Mieter', KB.dmg.r, 'aus Kaution'].filter(Boolean).join(' · ');
+      const item = _ckbLineItem(KB.ref, KB.dmg.r);
       const name = [KB.rec.first_name, KB.rec.last_name].filter(Boolean).join(' ') || null;
       line = { property_id: pid, invoice_date: KB.settledAt, item, amount: _ckbR2(KB.dmg.a), company: name, kind: 'Sonstiges', direction: 1, nk_umlage: false };
     }
@@ -504,4 +568,75 @@ async function ccKauApply(KB, kid) {
     }
     return {};
   } catch (e) { return { error: e }; }
+}
+
+/* ── the card and Controlling never stay out of step (K1b fix 3) ──
+   Puts this tenant's bookings back to the Kaution row as it is saved in the database (kept · settled · Settled on):
+   right after a Save whose Kaution row was not saved (same write queue, best effort — "Your previous values are back"),
+   and when a moved-out tenant's pop-up is opened (check: read first, write only when they differ, once per page).
+   Quiet: no message, nothing is drawn again. Only the Kaution's own part of a month is set — an amount typed in
+   Controlling stays. Anything that cannot be read or has no unit now is left for the next time. */
+function ccKauCheck(app, tid) {
+  const key = app + '|' + tid;
+  if (_CCKB.ok[key]) return;
+  _CCKB.ok[key] = 1;
+  ccKauHeal(app, tid, true).then(r => { if (r && r.error) delete _CCKB.ok[key]; });
+}
+function ccKauHealAfterFail(app, tid) {
+  const key = app + '|' + tid;
+  delete _CCKB.ok[key];                                    // the next open checks again
+  return ccKauHeal(app, tid, false);
+}
+function ccKauHeal(app, tid, check) {
+  const A = _CCK[app], k0 = A && tid ? A.map()[tid] : null;
+  if (!A || !A.kb || !k0 || !k0.id || typeof sbL === 'undefined' || !sbL) return Promise.resolve({});
+  return ccQueueWrite(A.writeKey + tid, async () => {
+    try {
+      const sref = 'kau:' + app + ':' + k0.id;
+      const res = await Promise.all([sbL.from(A.table).select('*').eq('id', k0.id)].concat(check ? [
+        sbL.from('ctrl_income_months').select('*').not('kau_part', 'is', null),
+        sbL.from('ctrl_expense_one_time').select('*').eq('source_ref', sref)] : []));
+      const bad = res.find(r => r.error); if (bad) return { error: bad.error };
+      const k = (res[0].data || [])[0];
+      if (!k || !_ckbHas(k, 'kept')) return {};
+      if (check && !_ckbOff(A, String(tid), k, res[1].data || [], res[2].data || [])) return {};
+      const KB = await _ckbSavedKB(A, app, String(tid), k);
+      if (!KB) return {};
+      const r = await ccKauApply(KB, k.id);
+      return r && r.error ? { error: r.error } : {};
+    } catch (e) { return { error: e }; }
+  });
+}
+/* the bookings differ from the saved Kaution row k? rows: the month rows with a Kaution part · lines: this card's damage line(s) */
+function _ckbOff(A, tid, k, rows, lines) {
+  const K = _ckbKept(k), sAt = _ckbD(k.settled_at), rec = A.rec(tid);
+  const want = new Map(), have = new Map();
+  if (k.settled) K.rent.forEach(r => want.set(r.m, _ckbR2((want.get(r.m) || 0) + _ckbR2(r.a))));
+  rows.forEach(r => {
+    if (!r.kau_part || typeof r.kau_part !== 'object' || !_ckbHas(r.kau_part, tid)) return;
+    const m = r.year + '-' + String(r.month).padStart(2, '0');
+    have.set(m, _ckbR2((have.get(m) || 0) + _ckbR2(r.kau_part[tid] && r.kau_part[tid].a)));
+  });
+  if (want.size !== have.size || [...want].some(([m, a]) => have.get(m) !== a)) return true;
+  if (!(k.settled && K.dmg.a > 0 && sAt)) return lines.length > 0;
+  if (lines.length !== 1) return true;
+  const l = lines[0];
+  return _ckbR2(l.amount) !== K.dmg.a || _ckbD(l.invoice_date) !== sAt || String(l.item || '') !== _ckbLineItem(rec && A.kb.unitRef(rec), K.dmg.r)
+    || Number(l.direction) !== 1 || !!l.nk_umlage;
+}
+/* the booking plan of the saved Kaution row k (= what ccKauPrep makes from the form) · null: no unit now */
+async function _ckbSavedKB(A, app, tid, k) {
+  const rec = A.rec(tid);
+  if (!rec) return null;
+  const K = _ckbKept(k), by = new Map(), settled = !!k.settled;
+  K.rent.forEach(r => by.set(r.m, _ckbR2((by.get(r.m) || 0) + _ckbR2(r.a))));
+  const rent = [...by.entries()].map(([m, a]) => ({ m, a })).sort((x, y) => y.m.localeCompare(x.m));
+  const KB = { app, tid, rec, settled, settledAt: settled ? (_ckbD(k.settled_at) || null) : null, rent, dmg: K.dmg, kept: k.kept || null,
+               ref: A.kb.unitRef(rec), U: null, units: [] };
+  if (settled && (rent.length || (!A.kb.casa && K.dmg.a > 0))) {
+    const D = await _ckbReadUnits(app);
+    KB.U = ccKauUnitOf(D, KB.ref); KB.units = D.units;
+    if (!KB.U) return null;
+  }
+  return KB;
 }

@@ -2058,6 +2058,7 @@ if (typeof ccKautionBookRegister === 'function') {
     },
     others: rec => _rntRecords.filter(r => r.id !== rec.id && (rec.apartment_id ? String(r.apartment_id) === String(rec.apartment_id)
                                                                                 : !!rec.parking_id && String(r.parking_id) === String(rec.parking_id))),
+    all: () => _rntRecords,                                        // fix 3: the moved-out tenants' receipts are read once, after the page is drawn
   });
   { const open0 = _rntOpenModal, shown = () => { const m = document.getElementById('rntModal'); return m && m.classList.contains('open') ? 'open:' + _rntModalTid : ''; };
     _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
@@ -4508,6 +4509,7 @@ async function loadRntTenants() {
   const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
     .then(r => { _rntUnitsFailed = r.includes(false); if (!_rntUnitsFailed) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
   const ok = await _rntLoad(unitsReady);
+  if (ok !== false && _rntLoadedOnce && typeof ccKauPrefetch === 'function') ccKauPrefetch('rnt');   // K1b: the moved-out tenants' receipts, in the background (idle, once)
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));

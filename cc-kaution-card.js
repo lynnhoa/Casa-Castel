@@ -243,7 +243,10 @@ function _cckFootOrder(btns, slot) {
    K1 (KAU-10): typing the NK amount (or Received) recalculates the one of the two you did not type last
    (typed: 'ref' | 'd') — a refund you typed stays; was: the refund always changed (1.050 → 750).
    K1 (C9c): refund and "other" both typed, "Kept · for NK" not (tk: the fields you typed) → the NK amount takes
-   the difference, so a refund you typed also stays when you type "other" after it (was: 1.000 → 1.300) */
+   the difference, so a refund you typed also stays when you type "other" after it (was: 1.000 → 1.300)
+   K1b fix 3: only the refund alone (nothing kept typed) counts as the source when the form is read whole (src null: opened
+   again, the draft note, Save) — while you type, a field you empty never brings an amount back into itself or into
+   "other" (was: Backspace in "other" wrote 1,00 back, emptying the NK / Damage put 3,00 into "other"); the refund follows */
 function _cckForm(pfx, k, src, typed, tk, get) {
   const $ = get || (id => document.getElementById(id));             // get: the fields as drawn from the draft
   const rIn = $(`cck-r-${pfx}`), dIn = $(`cck-d-${pfx}`), nIn = $(`cck-nk-${pfx}`), fIn = $(`cck-ref-${pfx}`);
@@ -254,7 +257,7 @@ function _cckForm(pfx, k, src, typed, tk, get) {
   let d = has(dIn) ? _cckNum(dIn.value) : 0, n = has(nIn) ? _cckNum(nIn.value) : 0, rf = has(fIn) ? _cckNum(fIn.value) : 0;
   const any = has(dIn) || has(nIn) || has(fIn) || kb.any;
   const fromRefund = !!(src && fIn && src === fIn) || (!(src && dIn && src === dIn) && typed === 'ref' && has(fIn))
-    || (!has(dIn) && !has(nIn) && !kb.any && has(fIn));
+    || (!src && !has(dIn) && !has(nIn) && !kb.any && has(fIn));
   const nkFollows = !!nIn && !!tk && !!tk.ref && !!tk.d && !tk.nk;
   let over = false;
   if (any) {
@@ -373,7 +376,11 @@ async function ccKautionAct(app, pfx, tid, act) {
   upd.settled_at = refDate || (keptAll ? _cckToday() : null);
   if (KB) {                                             // K1b: the bookings first (same write queue), then the Kaution row with `kept`
     const b = await ccQueueWrite(A.writeKey + tid, () => ccKauApply(KB, k.id));
-    if (b.error || b.notLinked) { ccKauFailed(A, KB, b); return redraw(); }
+    if (b.error || b.notLinked) {
+      ccKauFailed(A, KB, b);
+      if (b.error) ccKauHealAfterFail(app, tid);         // K1b: what was booked before the failure goes back to the saved card
+      return redraw();
+    }
     upd.kept = KB.kept;
   }
   const before = {}; Object.keys(upd).forEach(key => { before[key] = k[key]; });
@@ -381,6 +388,7 @@ async function ccKautionAct(app, pfx, tid, act) {
   const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update(upd).eq('id', k.id));
   if (error) {                                          // not saved: the form stays open with what you typed
     Object.assign(k, before); if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel);
+    if (KB) ccKauHealAfterFail(app, tid);               // K1b: the bookings go back to the card as saved (same queue)
     return redraw();
   }
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;

@@ -3253,6 +3253,7 @@ if (typeof ccKautionBookRegister === 'function') {
       return { from: _ccIso(rec.mietbeginn), out, end: ce, pay: rec.rent_until === 'move' ? out : (ce || out) };
     },
     others: rec => _tnRecords.filter(r => r.id !== rec.id && _ckbNorm(r.room) === _ckbNorm(rec.room)),
+    all: () => _tnRecords,                                         // fix 3: the moved-out tenants' receipts are read once, after the page is drawn
   });
   { const open0 = _tnOpenModal, shown = () => { const m = document.getElementById('tnModal'); return m && m.classList.contains('open') ? 'open:' + _tnModalTid : ''; };
     _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
@@ -5104,6 +5105,7 @@ async function loadTenants() {
   }
   _tnWireRealtime();
   await _tnLoad();
+  if (_tnLoadedOnce && typeof ccKauPrefetch === 'function') ccKauPrefetch('tn');   // K1b: the moved-out tenants' receipts, in the background (idle, once)
   // Birthday notice now comes from the daily Supabase job (BIRTHDAY.sql) — checkBirthdays() is no longer called
   const h = _ccTakeFormerHandoff('casa');
   if (h && h.room) { _ccReturnBanner(document.getElementById('tab-tenants')); _tnAddFormer(h.room, h); }
