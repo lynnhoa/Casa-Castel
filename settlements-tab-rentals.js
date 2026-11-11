@@ -267,14 +267,22 @@ const _srInNk = p => (_srIsNkOnly(p) || p.u) && p.nk !== false;      // Nov 2026
 /* Gewerbe: the Gewerbemietvertrag says "Verwaltungskosten sind im Gewerbemietverhältnis umlagefähig" — the Verwaltung of a
    Gewerbefläche goes into the tenants' NK, from the first Abrechnung with no letter sent yet on. An Abrechnung with a letter
    sent stays as it was sent. Flats: unchanged (Wohnraum: Verwaltung is not umlagefähig). */
-function _srGewOn(c) {
-  if (!c || !c.apt || c.apt.zimmer_type !== 'Gewerbefläche') return false;
-  return !(c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res); });
+const _srIsGew = c => !!(c && c.apt && c.apt.zimmer_type === 'Gewerbefläche');
+/* a letter of this Abrechnung went out: a result, or one in the archive (also one set back to open since, or a manual one) */
+function _srGewSent(c) {
+  if ((c.items || []).some(it => { const l = _srLine(c, it); return !!(l.state && l.state.res); })) return true;
+  const cy = Number(c.per.to.slice(0, 4));
+  return (SR.letters || []).some(l => (l.app === 'rentals' || l.app === 'manual') && Number(l.property_id) === Number(c.p.id) && Number(l.year) === cy);
 }
-const _srKindU = (k, gew) => k.u || (!!gew && k.k === 'verwaltung');
+function _srGewOn(c) { return _srIsGew(c) && !_srGewSent(c); }
+const _srKindSet = (p, k, c) => { if (k.k === 'verwaltung' && _srGewOn(c)) { p.u = true; p.gv = true; } else { p.u = k.u; delete p.gv; } };   // a row named after a Kostenart
 function _srGewUp(c, rec) {                              // in memory — the next save of the record keeps it
-  if (!rec || !_srGewOn(c)) return;
-  for (const p of rec.positions || []) if (p.kind === 'verwaltung' && !_srIsNkOnly(p) && !p.u) p.u = true;
+  if (!rec || !c || _srGewSent(c)) return;                 // sent: stays as sent
+  const on = _srIsGew(c);
+  for (const p of rec.positions || []) {
+    if (on && p.kind === 'verwaltung' && !_srIsNkOnly(p) && !p.u) { p.u = true; p.gv = true; }
+    else if (!on && p.gv) { p.u = false; delete p.gv; }     // no longer a Gewerbefläche (and nothing sent): back to nicht umlagefähig
+  }
 }
 function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
@@ -701,6 +709,7 @@ function _srCollectTenant() {
   const c = _srCards[SR.sel && SR.sel.ck]; if (!c) return null;
   const it = c.items.find(x => x.type === 'row' && String(x.r.id) === String(SR.sel.tid)); if (!it) return null;
   const rec = _srRec(c.p, c.per); if (!rec) return null;
+  _srGewUp(c, rec);                                        // also on a record read again since the last drawing
   const tid = String(it.r.tenant_id);
   rec.tenants = rec.tenants || {};
   const ts = rec.tenants[tid] = rec.tenants[tid] || {};
@@ -879,6 +888,7 @@ async function _srSendNow(btn, got, key) {
     const now = SR.rows.find(r => r.id === rec.id);          // before it — the old amount was sent, the record kept the new costs)
     if (now && now !== rec) { now.tenants = rec.tenants; rec = now; }
   }
+  _srGewUp(c, rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
@@ -891,7 +901,10 @@ async function _srSendNow(btn, got, key) {
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
-  try { await srSaveRow(rec, null, ['tenants']); } catch (e) {}   // another tenant's: it is still saved
+  try { await srSaveRow(rec, null, ['tenants']); }           // another tenant's: it is still saved
+  catch (err) {                                              // Gewerbe: the Verwaltung the letter bills must be stored with it
+    if ((rec.positions || []).some(p => p.gv)) { stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+  }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
                    direction: dir, amount: cxR(amountRec), result_date: date, due_date: dir ? _srAdd(date, _srNum(ts.days) ?? 30) : null,
@@ -1602,7 +1615,7 @@ function _srHvView(c) {
   const mx = Math.max(Math.abs(tu) + Math.abs(tn), 1);
   let costs = '<div class="mx-mini"><i style="flex:' + Math.max(1, Math.abs(tu) / mx * 100) + ';background:#9DBF7A"></i><i style="flex:' + Math.max(1, Math.abs(tn) / mx * 100) + ';background:#E8C98F"></i></div>' +
     '<div class="mx-dr"><span class="mx-d" style="background:#9DBF7A"></span><span>Umlagefähig<small>goes into the tenants’ NK</small></span><span class="mx-a" data-sr-tot="u">' + stEur(tu) + '</span></div>' +
-    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Nicht umlagefähig<small>Verwaltung, Rücklage …</small></span><span class="mx-a" data-sr-tot="n">' + stEur(tn) + '</span></div>' +
+    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Nicht umlagefähig<small>' + (U.some(([p]) => p.kind === 'verwaltung') ? 'Rücklage …' : 'Verwaltung, Rücklage …') + '</small></span><span class="mx-a" data-sr-tot="n">' + stEur(tn) + '</span></div>' +
     '<div class="mx-dr is-b"><span class="mx-d"></span><span>Total</span><span class="mx-a" data-sr-tot="t">' + stEur(tt) + '</span></div>';
   if (SR.costsOpen) {
     const row = ([p, i]) => {
@@ -1678,7 +1691,7 @@ async function _srAutoFlush() { if (_srAutoT) { clearTimeout(_srAutoT); await _s
 function _srCleanRec(d, c) {
   const clean = JSON.parse(JSON.stringify(d)); delete clean._ck;
   clean.positions = (clean.positions || []).filter(p => p.kind && (_srNum(p.amount) !== null || _srUnitAmt(clean, Object.assign({}, p, { amount: null }), c.apt) !== null))
-    .map(p => { if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = _srKindU(k, _srGewOn(c)); p.label = null; } } return p; });
+    .map(p => { if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; _srKindSet(p, k, c); p.label = null; } } return p; });
   if (!clean.weg_direction) { clean.weg_amount = null; clean.weg_due = null; }
   if (clean.weg_direction && !clean.weg_via) clean.weg_via = 'zahlung';
   clean.keys = Object.assign({}, clean.keys || {}, { ja_v: 2 });
@@ -2176,7 +2189,7 @@ async function _srHvSave4(btn, thenView) {
   // custom rows: match a catalogue name, else keep as "Sonstige"
   d.positions = (d.positions || []).filter(p => p.kind && (_srNum(p.amount) !== null || _srUnitAmt(d, Object.assign({}, p, { amount: null }), c.apt) !== null))
     .map(p => {
-      if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; p.u = _srKindU(k, _srGewOn(c)); p.label = null; } }
+      if (p.label) { const k = SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()); if (k) { p.kind = k.k; _srKindSet(p, k, c); p.label = null; } }
       return p;
     });
   if (!d.period_from || !d.period_to || d.period_to < d.period_from) { stSay('Period: “to” is before “from”'); return; }
