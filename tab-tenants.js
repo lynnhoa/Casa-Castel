@@ -1420,8 +1420,9 @@ function _tnNkHasOpen(tid) {
 function _tnFormerOpenPills(r) {   // Kaution only — NK status lives in More → NK-Abrechnungen and in Settlements
   const out = [];
   if (_tnKautionOpen(r.id)) {
-    const held = _tnKautionKept(r.id);
-    out.push(`<span class="tnp tnp-amber">${held > 0 ? 'Kaution ' + _tnFmtEUR(held) + ' to settle' : 'Kaution: mark settled'}</span>`);
+    const k = _tnKaution[r.id], held = _tnKautionKept(r.id);
+    if (k && k.settled) out.push(ccTnFormerKautionPill(k, _tnFmtEUR, _tnFmtDate, held));   // K1: "Kaution 300 € held for NK"
+    else out.push(`<span class="tnp tnp-amber">${held > 0 && !(Number(k.returned) >= Number(k.received)) ? 'Kaution ' + _tnFmtEUR(held) + ' to settle' : 'Kaution: mark settled'}</span>`);
   }
   return out.join('');
 }
@@ -1467,7 +1468,7 @@ function _tnKautionMissingCount() {
   return c;
 }
 function _tnSummaryUpdate() {
-  const held = ccTnHeldTotal(_tnRecords, _tnKaution);
+  const held = ccTnHeldTotal(_tnRecords, _tnKaution, _tnKautionNkHeld);   // K1: + the part held for the NK
   const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
   const pills = (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
     + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
@@ -1485,15 +1486,29 @@ function _tnSummaryUpdate() {
   if (oc) { oc.innerHTML = ''; oc.style.display = 'none'; }   // open items now sit inside the IST card
 }
 
-function _tnKautionOpen(tid) {
+/* K1 (Nov 2026): "Kept · for NK-Abrechnung" only for a tenant who gets one — not a Pauschal tenancy (its rent now) */
+function _tnHasNkAbr(rec) { const r = rec ? _tnCurrentRent(rec, rec.room) : null; return !r || r.mode !== 'pauschal'; }
+/* K1: the part of a settled Kaution kept for the NK that is still held (the NK not settled yet) — 0 when none */
+function _tnKautionNkHeld(tid) {
   const k = _tnKaution[tid];
-  return k && k.received > 0 && !k.settled;
+  if (!k || !k.settled || !(Number(k.nk_einbehalt) > 0) || typeof ccTnNkHeld !== 'function') return 0;
+  const rec = _tnRecords.find(r => String(r.id) === String(tid));
+  if (!rec || !_tnHasNkAbr(rec)) return 0;
+  const nks = typeof CC_NKS !== 'undefined' ? CC_NKS : {};
+  return ccTnNkHeld(k, tid, 'casa', nks.res, nks.rows);
 }
 
+function _tnKautionOpen(tid) {
+  const k = _tnKaution[tid];
+  return (k && k.received > 0 && !k.settled) || _tnKautionNkHeld(tid) > 0;   // K1: also while held for the NK
+}
+
+/* Money still held: everything received until settled (a refund typed but not paid yet is still held) —
+   then the part kept for the NK until that NK is settled (K1) */
 function _tnKautionKept(tid) {
   const k = _tnKaution[tid];
   if (!k) return 0;
-  return Math.max(0, (k.received || 0) - (k.returned || 0));
+  return k.settled ? _tnKautionNkHeld(tid) : Math.max(0, Number(k.received) || 0);
 }
 
 function _tnIsAllDone(tid) {
@@ -1856,6 +1871,7 @@ async function _tnSetTestPw(room) {
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
   const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnMh, _tnProfileCache, _tnPwAt, _tnPwReqs.map(q => [q.id, q.status]),
+                              _tnRecords.map(r => _tnKautionNkHeld(r.id)),   // K1: a part held for the NK follows its NK
                               (typeof _pwaOpen === 'function' ? _pwaOpen().map(q => q.room) : []),
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
@@ -3210,6 +3226,8 @@ ccKautionRegister('tn', {
   fmt:  n => _tnFmtEUR(n),
   fmtDate: d => _tnFmtDate(d),
   saveAmounts: (tid, received, returned) => _tnSaveKaution(tid, received, returned),
+  hasNkAbr: rec => _tnHasNkAbr(rec),          // K1: "Kept · for NK-Abrechnung" only with an NK-Abrechnung
+  nkHeld: tid => _tnKautionNkHeld(tid),        // K1: "Settled · 300 € held for NK"
   afterChange: tid => {
     _tnRefreshFormerBadges(tid);
     const r = _tnRecords.find(x => x.id === tid);
@@ -3513,11 +3531,12 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs, bare) {
     const settled = k?.settled || false;
     const kept    = _tnKautionKept(rec.id);
     const hasK    = k && k.received > 0;
-    const canHide = settled; // only offer Hide when kaution settled
+    const nkHeld  = _tnKautionNkHeld(rec.id);                         // K1: part still held for the NK
+    const canHide = settled && !(nkHeld > 0); // only offer Hide when kaution settled (K1: and nothing held for the NK)
     const recv2   = k ? Number(k.received) : 0;
     const ret2    = k ? Number(k.returned) : 0;
     const sdate   = k?.settled_at ? _tnFmtDate(k.settled_at) : '';
-    const kPill   = ccTnFormerKautionPill(k, _tnFmtEUR, _tnFmtDate);   // shared: remaining amount, not received
+    const kPill   = ccTnFormerKautionPill(k, _tnFmtEUR, _tnFmtDate, nkHeld);   // shared: remaining amount, not received
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${esc(name)}</div>
@@ -3539,7 +3558,7 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs, bare) {
         <div class="tn-arc-name">${esc(name)}</div>
         <div class="tn-arc-period">${esc(period)}</div>
       </div>
-      ${_tnKautionOpen(rec.id) ? `<div class="tn-former-pills">${ccTnFormerKautionPill(_tnKaution[rec.id], _tnFmtEUR, _tnFmtDate)}</div>` : ''}
+      ${_tnKautionOpen(rec.id) ? `<div class="tn-former-pills">${ccTnFormerKautionPill(_tnKaution[rec.id], _tnFmtEUR, _tnFmtDate, _tnKautionNkHeld(rec.id))}</div>` : ''}
       <button class="tn-btn tn-btn-sm" onclick="_tnReopen('${rec.id}')">Reopen</button>
       <button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Keep archived">
         <i class="ti ti-eye-off" style="font-size:11px"></i></button>
@@ -4820,8 +4839,8 @@ async function _tnMarkDone(tid) {
   const rec = _tnRecords.find(r => r.id === tid);
   if (!rec || rec.status !== 'former') return;              // #11: only a former tenant is archived
   if (_tnKautionOpen(tid)) {                                // #11: the Kaution is settled first
-    const held = _tnKautionKept(tid);
-    if (typeof ccToast === 'function') ccToast('Settle the Kaution first' + (held > 0 ? ' — ' + _tnFmtEUR(held) + ' still held' : ''), true);
+    const held = _tnKautionKept(tid), forNk = !!(_tnKaution[tid] && _tnKaution[tid].settled);   // K1: settled, a part held for the NK
+    if (typeof ccToast === 'function') ccToast((forNk ? 'Settle the NK first' : 'Settle the Kaution first') + (held > 0 ? ' — ' + _tnFmtEUR(held) + (forNk ? ' of the Kaution' : '') + ' still held' : ''), true);
     return;
   }
   if (rec) { rec.done = true; rec.status = 'archived'; }
