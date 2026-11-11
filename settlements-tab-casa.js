@@ -743,8 +743,12 @@ function scSay(t) {
     const kb = r.via === 'kaution' && (b || !r.dir || !r.amount) ? scKau(t, r.dir * r.amount) : null;
     if (kb) {                                                // K1 (C11): what was kept of the Kaution · what really moved
       if (!b) return ['', 'paid back ' + scE(kb.E)];         // balanced: the held part went back, nothing booked
-      const B = scKauBk(b), x = scKauX(t, kb, b), T = Math.abs(kb.T), kept = cxR(Math.max(0, Math.min(kb.E, B)));
-      const moved = T >= 0.005 || x >= 0.005 ? (kb.T < -0.004 ? 'paid back ' : 'received ') + scE(x) + (Math.abs(x - T) >= 0.005 ? ' (instead of ' + scE(T) + ')' : '') : '';
+      // the transfer comes back from the booking exactly (held part ± transfer, its sign kept, never clamped); the other way
+      // round than the letter named (e.g. the Ist typed in Controlling) → said so, as in Rentals: 'paid back 150,00 € (instead of receiving 150,00 €)'
+      const B = scKauBk(b), tr = cxR(B - kb.E), exp = kb.T, kept = cxR(Math.max(0, Math.min(kb.E, B)));
+      const way = Math.abs(tr) >= 0.005 ? tr : exp, turned = Math.abs(tr) >= 0.005 && Math.abs(exp) >= 0.005 && (tr > 0) !== (exp > 0);
+      const moved = Math.abs(tr) >= 0.005 || Math.abs(exp) >= 0.005 ? (way > 0 ? 'received ' : 'paid back ') + scE(Math.abs(tr)) +
+        (Math.abs(tr - exp) >= 0.005 ? ' (instead of ' + (turned ? (exp > 0 ? 'receiving ' : 'paying back ') : '') + scE(Math.abs(exp)) + ')' : '') : '';
       return [B > 0.004 ? 'pos' : B < -0.004 ? 'neg' : '', [kept > 0.004 ? 'kept ' + scE(kept) + ' of the Kaution' : '', moved].filter(Boolean).join(' · ')];
     }
     if (b && Number(b.amount) < 0.005) return ['', r.dir > 0 ? 'let go ' + scE(r.amount) : 'kept ' + scE(r.amount)];
@@ -2193,7 +2197,7 @@ function scKau(t, saldo) {
 }
 const scKauB = (kt, x) => cxR(kt.E + (kt.T < 0 ? -1 : 1) * (Number(x) || 0));                 // transfer x → the booking (signed)
 const scKauBk = b => cxR((Number(b.direction) === 1 ? 1 : -1) * (Number(b.amount) || 0));      // a booking, signed
-const scKauX = (t, kt, bk) => bk ? cxR(Math.max(0, (kt.T < 0 ? -1 : 1) * (scKauBk(bk) - kt.E))) : Math.abs(kt.T);   // the transfer (typed · booked: back from it)
+const scKauX = (t, kt, bk) => bk ? cxR(Math.max(0, (kt.T < 0 ? -1 : 1) * (scKauBk(bk) - kt.E))) : Math.abs(kt.T);   // the Amount prefill (≥ 0, in the letter's direction · booked: back from it) — the done text (scSay) takes the transfer signed
 /* D39 (bug 29): the NK years by the Casa period ("beginnt am"), not by the calendar — a year is the period that
    ENDS in it (scPeriod): maxY = the running period (the last one the arrows reach), lastEnded = the one before it
    (the one that is settled now). With a 01.01 start this is this year and last year, as before. */
