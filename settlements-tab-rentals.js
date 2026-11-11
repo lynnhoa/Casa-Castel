@@ -698,8 +698,9 @@ function _srCheckHtml(c, it, rec, x) {
 /* Live update of sum, result and check while typing (no re-render → the keyboard stays) */
 function _srRefreshTenant() {
   const got = _srCollectTenant(); if (!got) return null;
-  SR._gvDrawn = { ck: got.c.ck, gv: !!got.rec._gv };
   const x = _srCalc(got.c, got.it, got.rec), ts = got.ts;
+  const gd = SR._gvDrawn;                                    // Gewerbe Verwaltung changed since the pop-up was drawn: draw all of it again
+  if (gd && gd.ck === got.c.ck && gd.gv !== !!got.rec._gv) { _srRerenderPanel(); return { got, x }; }
   const sumEl = document.querySelector('#srPanel [data-sr-sum]'); if (sumEl) sumEl.textContent = stEur(x.sum);
   const resEl = document.querySelector('#srPanel [data-sr-res]'); if (resEl) resEl.textContent = x.missing ? '\u2014' : stEur(Math.abs(x.saldo));   // Nov 2026: the amount in the right-hand column
   const chk = document.querySelector('#srPanel [data-sr-check]'); if (chk) chk.innerHTML = _srCheckHtml(got.c, got.it, got.rec, x);
