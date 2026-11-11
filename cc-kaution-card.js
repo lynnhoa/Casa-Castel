@@ -256,12 +256,18 @@ function _cckForm(pfx, k, src, typed, tk, get) {
   const fromRefund = !!(src && fIn && src === fIn) || (!(src && dIn && src === dIn) && typed === 'ref' && has(fIn))
     || (!has(dIn) && !has(nIn) && !kb.any && has(fIn));
   const nkFollows = !!nIn && !!tk && !!tk.ref && !!tk.d && !tk.nk;
+  let over = false;
   if (any) {
     if (nkFollows) { n = _cckR2(recv - rf - d - kb.sum); if (src) nIn.value = n >= 0 ? String(n) : ''; }
     else if (fromRefund) { d = _cckR2(recv - rf - n - kb.sum); if (src && dIn) dIn.value = d >= 0 ? String(d) : ''; }
-    else { rf = _cckR2(recv - d - n - kb.sum); if (src && fIn) fIn.value = String(rf); }
+    else {
+      rf = _cckR2(recv - d - n - kb.sum);
+      // K1b: Edit of a settled card (tk.paid = the refund paid out) — the refund never drops below it; keeping more is blocked
+      if (tk && tk.paid != null && rf < tk.paid - 0.004) { rf = tk.paid; over = true; }
+      if (src && fIn) fIn.value = String(rf);
+    }
   }
-  const bad = any && (d < -0.004 || n < -0.004 || rf < -0.004 || kb.neg);
+  const bad = any && (d < -0.004 || n < -0.004 || rf < -0.004 || kb.neg || over);
   return { recv, d: Math.max(0, d), n, rf, any, bad, rIn, dIn, nIn, fIn, kb };
 }
 
@@ -283,9 +289,11 @@ function ccKautionInput(app, pfx, tid, src) {
   const ui = tid ? (A.ui[tid] = A.ui[tid] || {}) : {};
   const tk = ui.tk = ui.tk || {};                                     // K1: the fields you typed (refund · other · NK)
   const nkFollows = !!$(`cck-nk-${pfx}`) && tk.ref && !tk.nk;          // "other" typed now: the NK amount follows
-  if (src && src.id === `cck-ref-${pfx}`) { tk.ref = 1; ui.typed = 'ref'; }   // K1: which of refund / "other" stays
+  if (src && src.id === `cck-ref-${pfx}`) { tk.ref = 1; delete tk.paid; ui.typed = 'ref'; }   // K1: which of refund / "other" stays
   else if (src && src.id === `cck-d-${pfx}`) { tk.d = 1; if (!nkFollows) ui.typed = 'd'; }
   else if (src && src.id === `cck-nk-${pfx}`) tk.nk = 1;
+  else if (src && tk.paid != null && [`cck-r-${pfx}`, `cckb-k0-${pfx}`, `cckb-k1-${pfx}`, `cckb-k2-${pfx}`, `cckb-ka-${pfx}`].includes(src.id))
+    ui.typed = 'ref';                                                  // K1b, settled card: Received / Rent owed / Damage changed → "other" follows
   const F = _cckForm(pfx, k, src, ui.typed, tk);
   if (F.rIn && !k.settled) {                           // received → pill / bar / caption
     // K1: the move-out form stays "Settle · … held · settled once "Settled on" is filled" while you type

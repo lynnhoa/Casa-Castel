@@ -2059,7 +2059,8 @@ if (typeof ccKautionBookRegister === 'function') {
     others: rec => _rntRecords.filter(r => r.id !== rec.id && (rec.apartment_id ? String(r.apartment_id) === String(rec.apartment_id)
                                                                                 : !!rec.parking_id && String(r.parking_id) === String(rec.parking_id))),
   });
-  { const open0 = _rntOpenModal; _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid)); }   // receipts before the form shows
+  { const open0 = _rntOpenModal, shown = () => { const m = document.getElementById('rntModal'); return m && m.classList.contains('open') ? 'open:' + _rntModalTid : ''; };
+    _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
 }
 
 

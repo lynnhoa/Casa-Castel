@@ -18,7 +18,7 @@
    Nothing is written to Maintenance, Settlements or Controlling's own files.
    ───────────────────────────────────────────────────────────── */
 
-const _CCKB = { rc: {} };                                  // rc: app|tid → { list } receipts (loaded once) · { p } on its way
+const _CCKB = { rc: {}, want: {}, seq: 0 };               // rc: app|tid → { list } receipts (loaded once) · { p } on its way · want: the last pop-up asked for
 const CCKB_CASA = 7;                                       // Casa Castel in Controlling (CASA_PROP_ID)
 const _ckbNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');     // = Controlling's _cxNorm
 const _ckbR2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -126,20 +126,26 @@ function _ckbReceipts(A, app, tid) {
   Object.entries(A.map() || {}).forEach(([t, k]) => { if (String(t) !== String(tid)) { const c = _ckbKept(k).dmg.cost; if (c) taken.add(c); } });
   return st.list.filter(x => !taken.has(x.id));
 }
-/* Opening the pop-up of a moved-out tenant: its receipts first, so the form never changes after it shows */
-function ccKauBeforeOpen(app, tid, open) {
-  const A = _CCK[app];
+/* Opening the pop-up of a moved-out tenant: its receipts first, so the form never changes after it shows.
+   Only the pop-up tapped last opens: a tenant tapped while another one's receipts load wins, and nothing opens once
+   another pop-up was opened (or this one closed) in the meantime (state: the app's pop-up as it is now) */
+function ccKauBeforeOpen(app, tid, open, state) {
+  const A = _CCK[app], tok = _CCKB.want[app] = ++_CCKB.seq;
   if (!ccKauOn(A, tid)) return open();
   const st = _CCKB.rc[app + '|' + tid];
   if (st && st.list) return open();
-  return ccKauReceiptsLoad(app, tid).then(() => open());
+  const s0 = state ? state() : '';
+  return ccKauReceiptsLoad(app, tid).then(() => { if (_CCKB.want[app] === tok && (!state || state() === s0)) open(); });
 }
-/* Edit (moved-out tenant): the receipts first · on a settled card the refund counts as typed — it was paid out,
-   so a change goes into "Kept · other reasons" */
+/* Edit (moved-out tenant): the receipts first · on a settled card the refund counts as typed (tk.paid = the refund
+   paid out): a change of Received / Rent owed / Damage goes into "Kept · other reasons"; typing "Kept · other reasons"
+   moves the NK amount (part T); without an NK field the refund follows, but never below what was paid out — keeping
+   more than that shows "Kept + refund can be at most …" and Save waits. Typing the refund itself ends this. */
 async function ccKauEdit(app, tid, ui, redraw) {
   const A = _CCK[app], k = A.map()[tid];
   await ccKauReceiptsLoad(app, tid);
-  ui.mode = 'edit'; ui.draft = null; ui.typed = k && k.settled ? 'ref' : null; ui.tk = null; delete ui.kbN;
+  const paid = !!(k && k.settled);
+  ui.mode = 'edit'; ui.draft = null; ui.typed = paid ? 'ref' : null; ui.tk = paid ? { ref: 1, paid: _ckbR2(k.returned) } : null; delete ui.kbN;
   return redraw();
 }
 

@@ -3254,7 +3254,8 @@ if (typeof ccKautionBookRegister === 'function') {
     },
     others: rec => _tnRecords.filter(r => r.id !== rec.id && _ckbNorm(r.room) === _ckbNorm(rec.room)),
   });
-  { const open0 = _tnOpenModal; _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid)); }   // receipts before the form shows
+  { const open0 = _tnOpenModal, shown = () => { const m = document.getElementById('tnModal'); return m && m.classList.contains('open') ? 'open:' + _tnModalTid : ''; };
+    _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
 }
 
 
