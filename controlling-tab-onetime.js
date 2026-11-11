@@ -259,7 +259,7 @@ async function _cxOtSaveMaint(o, b) {
   const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_umlage, nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
-    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id, o); else delete o._nk;   // C6: opened again meanwhile → its own switch stays
+    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id); else delete o._nk;   // C6: opened again meanwhile → its own switch stays
     if (_cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     if (saved) _cxOt.flash = saved.id;
     if (_cxOt.formN === sv.n) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
@@ -267,7 +267,7 @@ async function _cxOtSaveMaint(o, b) {
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
-    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: opened again while it saved → it keeps showing (and saving) what failed
+    if (String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: its form (also opened again) keeps showing (and saving) what failed — a drawing put the stored row back
     b.disabled = false; return;
   } finally { if (_cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
@@ -315,15 +315,21 @@ function _cxOtFormHTML(o) {
 /* C6: the invoice being saved is drawn with what you typed (a drawing during its save put the old values back) */
 /* C6: an invoice opened again while its save ran: the saved row replaced it in memory — the chips its form shows
    (kind, Raus / Rein, NK) are kept on the new row, so the form and its next Save stay as you see them
-   (a form not drawn just now — search, Casa / Rentals — keeps what was tapped on the old row) */
-function _cxOtChipsKeep(id, old) {
+   (a form not drawn just now — search, Casa / Rentals — keeps what was tapped in it) */
+function _cxOtChipsKeep(id) {
   const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id)), f = document.querySelector('#tab-onetime .cx-ot-form[data-edit="' + CSS.escape(String(id)) + '"]');
   if (!o) return;
-  if (!f) { if (old && old !== o) for (const x of ['_kind', '_dir', '_nk']) if (old[x] !== undefined) o[x] = old[x]; return; }
+  if (!f) { const t = _cxOt.tap; if (t && t.n === _cxOt.formN && String(t.id) === String(id)) Object.assign(o, t.c); return; }
   const k = f.querySelector('[data-cx="otKind"].on'), d = f.querySelector('[data-cx="otDir"].on'), nk = f.querySelector('#cxOtNkRow');
   if (k) o._kind = k.dataset.v;
   if (d) o._dir = Number(d.dataset.v);
   if (nk) o._nk = nk.classList.contains('on');
+}
+/* C6: a chip tapped in an invoice form: on its row, and kept for that form too (a reload or a save replaces the row) */
+function _cxOtTap(o, k, v) {
+  o[k] = v;
+  const t = _cxOt.tap;
+  (t && t.n === _cxOt.formN && String(t.id) === String(o.id) ? t : (_cxOt.tap = { id: o.id, n: _cxOt.formN, c: {} })).c[k] = v;
 }
 const _cxOtDraftOn = o => { const d = _cxOt.draft; return !!(o && d && d.n === _cxOt.formN && String(d.id) === String(o.id)); };
 const _cxOtShown = o => { const s = _cxOt.saving[o.id] || (_cxOtDraftOn(o) ? _cxOt.draft : null); return s ? Object.assign({}, o, s.f) : o; };
@@ -681,18 +687,18 @@ window.renderOneTime = function () {
       if (a === 'otKind') {
         _cxOt.kind = b.dataset.v;
         return _cxOtKeep(() => {
-          const o = _cxOtEditing(); if (o) o._kind = b.dataset.v;
+          const o = _cxOtEditing(); if (o) _cxOtTap(o, '_kind', b.dataset.v);
           // Hausgeld = the yearly Strom/Gas/Wasser result → always part of the Casa Castel NK
           const pid = Number(document.getElementById('cxOtProp')?.value);
-          if (b.dataset.v === 'Versorger' && pid === CASA_PROP_ID) { if (o) o._nk = true; else _cxOt.nk = true; }
-          if (b.dataset.v === 'Kaufnebenkosten') { if (o) o._nk = false; else _cxOt.nk = false; }
+          if (b.dataset.v === 'Versorger' && pid === CASA_PROP_ID) { if (o) _cxOtTap(o, '_nk', true); else _cxOt.nk = true; }
+          if (b.dataset.v === 'Kaufnebenkosten') { if (o) _cxOtTap(o, '_nk', false); else _cxOt.nk = false; }
         });
       }
-      if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
+      if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) _cxOtTap(o, '_dir', Number(b.dataset.v)); }); }
       if (a === 'otNk') {
         const o = _cxOtEditing();
         const cur = o ? (o._nk !== undefined ? o._nk : !!_cxOtShown(o).nk_umlage) : _cxOt.nk;   // C6: the switch as shown
-        if (o) o._nk = !cur; else _cxOt.nk = !cur;
+        if (o) _cxOtTap(o, '_nk', !cur); else _cxOt.nk = !cur;
         return _cxOtKeep(() => {});
       }
       if (a === 'otSave') return _cxOtSave(b);
@@ -818,7 +824,7 @@ function _cxOtDirty() {
   const o = om;
   const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
   if (!o) return !!(amt || text || co);
-  return cxParse(amt) !== cxR(o.amount) || text !== String(o.item || '') || co !== String(o.company || '') ||
+  return cxParse(amt) !== cxR(o.amount) || (text || co || o._kind || o.kind) !== String(o.item || '') || co !== String(o.company || '') ||   // empty description → company or kind is written
     String(g('cxOtDate')?.value || '') !== String(o.invoice_date).slice(0, 10) || Number(g('cxOtProp')?.value) !== Number(o.property_id) ||
     (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1)) ||
     (o._nk !== undefined && o._nk !== !!o.nk_umlage) ||
@@ -888,7 +894,7 @@ async function _cxOtSave(b) {
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
   if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
   cxBusyNow(document.getElementById('tab-onetime'), b);   // C6: also the Save on screen, if a drawing under the question replaced it
-  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text || company || fallback, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
+  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
   try {
     let saved;
     if (o) {
@@ -896,7 +902,7 @@ async function _cxOtSave(b) {
     } else {
       saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || fallback, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id, ...knk });
     }
-    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id, o);   // C6: opened again meanwhile → its own chips stay
+    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id);   // C6: opened again meanwhile → its own chips stay
     else if (o) { delete o._kind; delete o._dir; delete o._nk; delete o._knkType; delete o._knkPart; }
     if (o && _cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     _cxOt.nk = false; _cxOt.nkCat = ''; _cxOt.knkType = ''; _cxOt.knkPart = '';
@@ -914,7 +920,7 @@ async function _cxOtSave(b) {
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
-    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: opened again while it saved → it keeps showing (and saving) what failed
+    if (o && String(_cxOt.form) === String(o.id)) _cxOt.draft = { id: o.id, n: _cxOt.formN, f: sv.f };   // C6: its form (also opened again) keeps showing (and saving) what failed — a drawing put the stored row back
     b.disabled = false; return;
   } finally { if (sv && _cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
