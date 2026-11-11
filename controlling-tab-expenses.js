@@ -127,9 +127,9 @@ window.renderExpenses = function () {
           if (e.row.ist !== null && e.row.ist !== undefined) done.push({ pid: e.p.id, catId: e.row.catId || null, key: e.row.key, id: e.row.id });
         }
         // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
-        // C6: a line you changed after it was booked is not undone (nor counted)
+        // C6: a line you changed after it was booked is not undone (nor counted); nothing left → no Undo
         const items = done.filter(it => !cxTouchedSince(it.id, y, m, s0));
-        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'expenses', y, m, items, n: items.length }; }
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = items.length ? { tab: 'expenses', y, m, items, n: items.length } : null; }
         return window.renderExpenses();
       }
       if (a === 'undo') {

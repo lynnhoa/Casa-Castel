@@ -125,9 +125,9 @@ window.renderIncome = function () {
           await _cxIncSave(e, e.s.soll, y, m); if (e.u.id != null) done.push({ uid: e.u.id, id: [e.id, 'inc:' + e.p.id + ':' + e.u.id] });   // a new room: its line by either id
         }
         // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
-        // C6: a line you changed after it was booked is not undone (nor counted)
+        // C6: a line you changed after it was booked is not undone (nor counted); nothing left → no Undo
         const items = done.filter(it => !cxTouchedSince(it.id, y, m, s0));
-        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'income', y, m, items, n: items.length }; }
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = items.length ? { tab: 'income', y, m, items, n: items.length } : null; }
         return window.renderIncome();
       }
       if (a === 'undo') {
