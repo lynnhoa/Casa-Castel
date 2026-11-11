@@ -15,7 +15,11 @@
      · open → in its month (due date, else result date); if that month is over,
        it moves along into the current month ("fällig seit …") until confirmed
      · confirmed → in the month paid (the booking's date)
-     · settled via Kaution / Miete / Hausgeld or 0 € → once, as information
+     · settled with the rent / Hausgeld or 0 € → once, as information
+     · K1 (Nov 2026): settled with the part of the Kaution held back for the NK → like a transfer: open until
+       Settlements books it, then ONE booking = the NK result as it happened (the kept part ± the transfer, in the
+       month the rest moved). The Kaution itself never shows. An older one confirmed 'via Kaution' without a
+       booking stays information, as it was.
    Bookings stay in ctrl_expense_one_time (kind NK-Abrechnung / Hausgeldabrechnung,
    source_ref 'abr:<id>' or the tenant-tab ref) → Dashboard unchanged.
    Nov 2026: such a bill shows its Abrechnungszeitraum (nk_from / nk_to, typed in Settlements).
@@ -346,7 +350,9 @@ function _ctlAbrRows(pid, y, m, dir) {
     const b0 = ctlAbrBooking(r), b = b0 && (Number(b0.direction) === 1 ? 1 : -1) === r.dir ? b0 : null;
     if (b0) usedRefs.add(b0.source_ref);
     const rym = _cxYm(r.date) || cur;
-    if (r.via !== 'zahlung' || !r.amount) {                                // information only
+    // K1: a Kaution result counts like a transfer — an older one already confirmed without a booking stays information
+    const kauOld = r.via === 'kaution' && !b0 && _cxAbrKauDone(r);
+    if ((r.via !== 'zahlung' && r.via !== 'kaution') || kauOld || !r.amount) {   // information only
       if (rym === ym) rows.push({ id: 'abrI:' + r.key, res: r, info: true });
       continue;
     }
@@ -373,6 +379,12 @@ function _ctlAbrRows(pid, y, m, dir) {
     }
   }
   return rows;
+}
+/* K1: confirmed in Settlements before (status erledigt / bezahlt / paid on) — or an older own NK with no tenant, which no
+   Settlements line shows and nobody can confirm (a tenant's result without a stored line waits there, as in Settlements) */
+function _cxAbrKauDone(r) {
+  const lines = ctlAbrSettleLines(r);
+  return lines.length ? lines.some(l => l.status === 'erledigt' || l.status === 'bezahlt' || !!l.paid_date) : !(r.db && r.db.tenant_id);
 }
 /* open results of a property in a month (for card status, summaries, Dashboard) */
 function ctlAbrOpenCount(pid, y, m, dir) {

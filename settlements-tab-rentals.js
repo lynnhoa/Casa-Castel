@@ -247,15 +247,17 @@ function _srKeyVals(rec, pos, apt) {
   if (pos.key === 'personen')  return { u: ku, t: kt };
   return null;
 }
-/* Amount of one position for the whole Wohnung (override › Gesamtkosten × Anteil) */
+/* Amount of one position for the whole Wohnung (override › Gesamtkosten × Anteil)
+   K1: a credit keeps its minus (a Versorger-Guthaben marked for the NK, a refund typed −80 €) — it lowers the costs;
+   only a kind that is always a credit (CO₂ Anteil Vermieter) is made negative (was: every amount made positive) */
+const _srSgn = (pos, v) => _srKind(pos.kind).neg ? -Math.abs(v) : v;
 function _srUnitAmt(rec, pos, apt) {
-  const sign = _srKind(pos.kind).neg ? -1 : 1;
   const ov = _srNum(pos.amount);
-  if (ov !== null) return cxR(sign * Math.abs(ov));
+  if (ov !== null) return cxR(_srSgn(pos, ov));
   if (!_srShareKey(pos.key)) return null;
   const kv = _srKeyVals(rec, pos, apt), tot = _srNum(pos.total);
   if (tot === null || !kv || !(kv.t > 0) || kv.u === null) return null;
-  return cxR(sign * Math.abs(tot) * kv.u / kv.t);
+  return cxR(_srSgn(pos, tot) * kv.u / kv.t);
 }
 function _srKeyText(rec, pos, apt) {
   const kv = _srKeyVals(rec, pos, apt);
@@ -327,7 +329,7 @@ function _srCalc(c, it, rec) {
     let amt = null, cons = null;
     if (pos.split === 'mieter') {
       const d = _srNum(ts.direct && ts.direct[pos.id]);
-      if (d !== null) { amt = cxR((_srKind(pos.kind).neg ? -1 : 1) * Math.abs(d)); direct = true; } else missing++;
+      if (d !== null) { amt = cxR(_srSgn(pos, d)); direct = true; } else missing++;
     } else if (unit !== null && _srIsCons(pos)) {
       const sp = _srConsSplit(c, rec, pos, unit), id = String(it.r.id);
       if (sp.g[id] !== undefined) { amt = cxR(sp.g[id] + (sp.v[id] || 0)); cons = sp.active ? { text: _srConsText(sp, id, true), en: _srConsText(sp, id, false), how: sp.how } : null; }
@@ -339,7 +341,7 @@ function _srCalc(c, it, rec) {
   }
   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
   const since = _srBought(c.p);
-  const rf = _srD(r.period_from), rt = _srD(r.period_to);
+  const rf = from, rt = to;                     // K1: the Vorauszahlungen of this Abrechnung's own period (was: the whole standard year)
   let vzSoll, vzIst, pre = null, vzPartialFlag = false, mlist = [];
   if (since && since > rf && since <= rt) {
     // year of purchase: months before it → contract Soll (the seller collected them), after it → what Controlling shows
@@ -364,7 +366,7 @@ function _srCalc(c, it, rec) {
   sum = cxR(sum);
   const kauAvail = _srEinbehalt(r);                                 // B20: Kaution kept for this NK
   const kau = kauAvail > 0 ? { amount: kauAvail } : null;
-  const einbehalt = kauAvail > 0 && ((ts && ts.via) || 'kaution') === 'kaution' ? kauAvail : 0;
+  const einbehalt = kauAvail;                                       // K1: always offset — no choice (an old draft's 'via' is not read)
   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
@@ -628,7 +630,7 @@ async function _srWriteWegNow(c, rec) {
   if (now) c = Object.assign({}, c, { weg: Object.assign({}, c.weg, { r: now, virtual: false }) });
   const l = _srLine(c, c.weg), st = l.state, existing = st.res || null;
   const dir = Number(rec.weg_direction), amount = dir ? cxR(_srNum(rec.weg_amount) || 0) : 0;
-  const via = rec.weg_via === 'hausgeld' ? 'hausgeld' : 'zahlung';
+  const via = rec.weg_via === 'hausgeld' && !(existing && st.booking) ? 'hausgeld' : 'zahlung';   // K1 (C4): once booked, a transfer
   if (existing && existing.dir === dir && Math.abs(existing.amount - amount) < 0.005 && existing.via === via &&
       _srD(existing.db.due_date) === _srD(rec.weg_due)) return;                                      // unchanged
   if (existing && st.booking && (existing.dir !== dir || Math.abs(existing.amount - amount) >= 0.005) &&
@@ -651,20 +653,27 @@ async function _srWriteWegNow(c, rec) {
 
 const _srSign = x => x.missing ? 'm' : String(Math.sign(x.saldo));
 /* Kaution-Einbehalt (B20, Oct 2026): Tenants › Kaution › "Kept · for NK-Abrechnung" (column nk_einbehalt,
-   once the Kaution is settled). It is offset in the tenant's NK-Abrechnung when the letter says "With the Kaution"
-   (the default while it is unused) — only once: an NK already sent with the Kaution for another period has used it.
-   Controlling gets the NK result itself; the Kaution never shows there. */
+   once the Kaution is settled). K1 (Nov 2026): it is always offset — there is no choice any more — and only once:
+   by the tenant's first NK result settled with it (settle_via 'kaution') dated on or after the day the Kaution was
+   settled. An older NK settled 'via Kaution' long before the move-out does not use it (it blocked the hold for good).
+   A line sent another way (or before the Kaution was settled) keeps its letter without the hold.
+   Controlling gets the NK result itself (the kept part ± the transfer, booked on the Money step); the Kaution never shows there. */
 function _srEinbehalt(r) {
   const k = SR.kaution && r && r.tenant_id != null ? SR.kaution[String(r.tenant_id)] : null;
   const E = k && k.settled ? cxR(Number(k.nk_einbehalt) || 0) : 0;
   if (!(E > 0)) return 0;
-  const from = String(r.period_from || '').slice(0, 10);
-  const used = (window._src.abr || []).some(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === 'rentals') && a.status !== 'storniert' &&
-    String(a.tenant_id) === String(r.tenant_id) && a.settle_via === 'kaution' && String(a.period_from || '').slice(0, 10) !== from);
+  const from = String(r.period_from || '').slice(0, 10), since = _srD(k.settled_at);
+  const all = (window._src.abr || []).filter(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === 'rentals') && a.status !== 'storniert' &&
+    String(a.tenant_id) === String(r.tenant_id));
+  const uses = a => a.settle_via === 'kaution' && (!since || _srD(a.result_date) >= since);
+  const mine = all.find(a => String(a.period_from || '').slice(0, 10) === from) || null;
+  if (mine && !uses(mine)) return 0;
+  const before = a => !mine || _srD(a.result_date) < _srD(mine.result_date) || (_srD(a.result_date) === _srD(mine.result_date) && String(a.id) < String(mine.id));
+  const used = all.some(a => a !== mine && String(a.period_from || '').slice(0, 10) !== from && uses(a) && before(a));
   return used ? 0 : E;
 }
-/* How the result is settled: chosen in the letter, else Kaution when part of it is held back, else transfer */
-const _srViaOf = x => (x.ts && x.ts.via) || (x.kau && x.kau.amount > 0 ? 'kaution' : 'zahlung');
+/* How the result is settled (K1): by itself — with the Kaution when part of it is held back, else by bank transfer */
+const _srViaOf = x => x.einbehalt > 0 ? 'kaution' : 'zahlung';
 function _srBig(x, date, days, via) {
   if (x.missing) return '<div class="sr-res sr-res--open"><span><b>Result</b><small>amounts per tenant missing</small></span><strong>—</strong></div>';
   const due = _srAdd(date || cxToday(), days ?? 30);
@@ -817,7 +826,8 @@ function _srLetterData(c, it, rec, x, ts) {
   const t = x.t, apt = x.apt || c.apt || {};
   const date = ts.date || cxToday();
   const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
-  const periodLabel = _srPerLabel(c.per.from, c.per.to);
+  const per = x.per || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file)
+  const sentRes = _srLine(c, it).state.res;                                  // K1: a letter already sent keeps its way
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
@@ -828,11 +838,11 @@ function _srLetterData(c, it, rec, x, ts) {
     vermieter: s.vermieter_name || '', sender,
     bank: { inhaber: s.kontoinhaber || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     names: _srTNames(t), addr: String(addr || '').split('\n').map(z => z.trim()).filter(Boolean),
-    date, due: _srAdd(date, _srNum(ts.days) ?? 30), periodLabel, perFrom: c.per.from, perTo: c.per.to, perDays: x.perDays,
+    date, due: _srAdd(date, _srNum(ts.days) ?? 30), periodLabel, perFrom: per.from, perTo: per.to, perDays: x.perDays,
     useFrom: x.from, useTo: x.to, tDays: x.tDays, partial: x.partial,
     hvName: (c.verw && c.verw.hausverwaltung) || '', hvDate: rec.hv_date,
     lines: x.lines.filter(l => l.amt !== null), direct: x.direct,
-    sum: x.sum, vz: x.vz, vzMonths: x.vzMonths || [], saldo: x.saldo, via: _srViaOf(x), einbehalt: x.einbehalt,
+    sum: x.sum, vz: x.vz, vzMonths: x.vzMonths || [], saldo: x.saldo, via: sentRes ? sentRes.via : _srViaOf(x), einbehalt: x.einbehalt,
     newVz: _srNum(ts.new_vz), newVzFrom: ts.new_vz_from || null,
     anlagen: ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec),
     hasVerbrauch: x.lines.some(l => l.pos.key === 'verbrauch' || ['heizung', 'warmwasser'].includes(l.pos.kind)), hasFlaeche: x.lines.some(l => l.pos.key === 'flaeche'), hasMea: x.lines.some(l => l.pos.key === 'mea'),
@@ -919,7 +929,8 @@ async function _srSendNow(btn, got, key) {
   const amount = Math.abs(x.saldo), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0;
   // B20: with a Kaution-Einbehalt the result is settled with the Kaution (Nachzahlung, Guthaben or 0 €) and Controlling
   // gets the NK result itself — the part taken from the Kaution is NK income too (was: only the rest the tenant transfers)
-  const via = x.einbehalt > 0 ? 'kaution' : dir ? _srViaOf(x) : 'zahlung';
+  // K1: else always by bank transfer (no 'with the rent', no 'via Kaution' without a part held back)
+  const via = _srViaOf(x);
   const amountRec = amount;
   const date = ts.date || cxToday();
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
@@ -1034,11 +1045,13 @@ function _srYearModel(Y) {
     return c;
   });
 }
-/* Hausgeld you paid in the period (Soll per Rentals, months after the purchase) — for the WEG check */
-function _srHausgeldPaid(c) {
+/* Hausgeld you paid in the period (Soll per Rentals, months after the purchase) — for the WEG check
+   K1: the months of this Abrechnung's own period (rec: the record or the draft; else the stored record) */
+const _srPerOf = (c, rec) => _srPer(c, rec === undefined ? _srRec(c.p, c.per) : rec);
+function _srHausgeldPaid(c, rec) {
   let sum = 0;
-  const since = _srBought(c.p);
-  for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+  const since = _srBought(c.p), per = _srPerOf(c, rec);
+  for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (since && _srLastOfMonth(y, m) < since) continue;
     try { const r = ctlCostRows(c.p, y, m).rows.find(x => x.key === 'hausgeld'); if (r) sum += Number(r.soll) || 0; } catch (e) {}
@@ -1046,10 +1059,10 @@ function _srHausgeldPaid(c) {
   return cxR(sum);
 }
 /* #11: Hausgeld actually paid (Ist) in Controlling for the same months as the Soll — shown as a hint only */
-function _srHausgeldIst(c) {
+function _srHausgeldIst(c, rec) {
   let sum = 0, need = 0, got = 0;
-  const since = _srBought(c.p), rows = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
-  for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+  const since = _srBought(c.p), rows = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id)), per = _srPerOf(c, rec);
+  for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (since && _srLastOfMonth(y, m) < since) continue;
     need++;
@@ -1058,8 +1071,8 @@ function _srHausgeldIst(c) {
   }
   return { sum: cxR(sum), need, got };
 }
-function _srIstHint(c, soll) {
-  const I = _srHausgeldIst(c);
+function _srIstHint(c, soll, rec) {
+  const I = _srHausgeldIst(c, rec);
   if (!I.got) return '';                                              // nothing entered in Controlling for these months
   const line = t => '<p class="mx-ok is-info"><i class="ti ti-info-circle" aria-hidden="true"></i> Controlling (Ist): ' + stEur(I.sum) + ' paid · ' + t + '</p>';
   if (I.got < I.need) return line(I.got + ' of ' + I.need + ' months entered');
@@ -1089,6 +1102,14 @@ function _srSettledTxt(ti, weg) {
   const st = ti.st;
   if (ti.skipped) return 'skipped' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '');
   if (!st.res) return '';
+  const E = !weg && st.res.via === 'kaution' && ti.r ? _srEinbehalt(ti.r) : 0;
+  if (E > 0 && (st.booking || !st.res.amount || !st.res.dir)) {   // K1: the part of the Kaution kept · what really moved by bank
+    const B = st.booking ? st.res.dir * Number(st.booking.amount) : 0, tr = cxR(B - E), exp = cxR(st.res.dir * st.res.amount - E);
+    const kept = cxR(Math.max(0, Math.min(E, B))), when = _srD(st.booking ? st.booking.invoice_date : ti.r.paid_date);
+    const moved = Math.abs(tr) >= 0.005 || Math.abs(exp) >= 0.005 ? ((tr || exp) > 0 ? 'received ' : 'paid back ') + stEur(Math.abs(tr)) +
+      (Math.abs(tr - exp) >= 0.005 ? ' (instead of ' + stEur(Math.abs(exp)) + ')' : '') : '';
+    return [kept > 0.004 ? 'kept ' + stEur(kept) + ' of the Kaution' : '', moved, when ? stDM(when) : ''].filter(Boolean).join(' · ');
+  }
   if (st.booking && Number(st.booking.amount) < 0.005) return (weg ? 'nothing moved' : st.res.dir > 0 ? 'let go ' + stEur(st.res.amount) : 'kept ' + stEur(st.res.amount)) + ' · ' + stDM(st.booking.invoice_date);
   if (st.booking) {
     const verb = weg ? (st.res.dir > 0 ? 'received ' : 'paid ') : (st.res.dir > 0 ? 'paid you ' : 'returned ');
@@ -1113,18 +1134,31 @@ function _srCardInfo4(c) {
   return { c, rec, sum, rows, hv, k: open ? 'open' : 'settled', onYou: _srOnYou(c, rec, sumOk) };
 }
 
+/* K1: the Rentals Grundsteuer of a quarter due in month m (Apartments › Verwaltung, as Controlling's cost rows) — 0 when none */
+function _srGsDue(c, m) {
+  const months = Array.isArray(c.p.grundsteuer_months) && c.p.grundsteuer_months.length ? c.p.grundsteuer_months.map(Number) : _CX_Q;
+  if (!months.includes(m)) return 0;
+  const q = c.apt ? (c.verw ? _srNum(c.verw.grundsteuer_mtl) : null) : _srNum(c.p.def_grundsteuer);
+  return q ? cxR(q) : 0;
+}
 /* WEG result of a complete Jahresabrechnung → tracker (no "edit → Done" after an import);
    money already booked in Controlling with the same amount → linked instead of booked twice */
 /* Nov 2026 · what comes into "NK only" by itself (you can untick each):
    Grundsteuer — booked in Controlling for the months of the NK period, else the Rentals amount per quarter due then;
    every one-off of the apartment marked "Show in Settlements" (Controlling › One-off, also from Maintenance) dated in the period */
-function _srAutoNkItems(c, zero) {
-  const out = [], since = _srBought(c.p), per = c.per;
+function _srAutoNkItems(c, zero, rec) {
+  const out = [], since = _srBought(c.p), per = _srPerOf(c, rec);       // K1: the months of this Abrechnung's own period
   let gs = 0, nBk = 0, nSoll = 0;
   const ist = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
   for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
-    if (since && _srLastOfMonth(y, m) < since) continue;
+    if (since && _srLastOfMonth(y, m) < since) {
+      // K1: year of purchase — the NK covers the whole year (its Vorauszahlungen too), so a quarter due before the
+      // purchase counts with the Rentals amount: the tenant pays the yearly Grundsteuer for exactly his days
+      // (was: only the quarters after the purchase, split over all 365 days — too little for every tenant)
+      const q = _srGsDue(c, m); if (q) { gs += q; nSoll++; }
+      continue;
+    }
     const hit = ist.filter(x => Number(x.year) === y && Number(x.month) === m && x.grundsteuer !== null && x.grundsteuer !== undefined && x.grundsteuer !== '');
     if (hit.length) { nBk++; hit.forEach(x => { gs += Number(x.grundsteuer) || 0; }); continue; }
     try { const r = ctlCostRows(c.p, y, m).rows.find(x => x.key === 'grundsteuer'); if (r && Number(r.soll)) { gs += Number(r.soll); nSoll++; } } catch (e) {}
@@ -1153,7 +1187,7 @@ function _srAutoNkItems(c, zero) {
 function _srRetPatchDraft() {
   const d = SR.draft, c = d && _srCards[d._ck]; if (!c) return;
   try { if ((_srCardInfo4(c).rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) return; } catch (e) { return; }   // a letter went out
-  const want = _srAutoNkItems(c).filter(w => /^ot:/.test(String(w.auto)));
+  const want = _srAutoNkItems(c, null, d).filter(w => /^ot:/.test(String(w.auto)));
   d.positions = (d.positions || []).filter(p => !/^ot:/.test(String(p.auto || '')) || want.some(w => w.auto === p.auto))
     .map(p => { const w = /^ot:/.test(String(p.auto || '')) && want.find(x => x.auto === p.auto); return w ? Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src }) : p; });
   for (const w of want) if (!d.positions.some(p => p.auto === w.auto)) d.positions.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
@@ -1187,7 +1221,7 @@ function _srNkAutoSync(infos) {
 }
 /* The positions with the NK auto items (Grundsteuer, costs marked for the NK) brought up to date · null = nothing to change */
 function _srNkAutoNext(c, rec) {
-  const pos = rec.positions || [], want = _srAutoNkItems(c);
+  const pos = rec.positions || [], want = _srAutoNkItems(c, null, rec);
   const manualGs = pos.some(p => !p.auto && p.kind === 'grundsteuer' && _srIsNkOnly(p));
   const list = want.filter(w => !(w.auto === 'gs' && manualGs));
   const next = pos.filter(p => !p.auto || list.some(w => w.auto === p.auto)).map(p => {
@@ -1635,7 +1669,7 @@ function _srHvView(c) {
       : can ? payBox + '<button class="cx-btn cx-btn--p mx-step__go" data-sr="payOnW" data-k="' + stEsc(c.ck) + '"><i class="ti ti-check" aria-hidden="true"></i> ' + (wDir < 0 ? 'Paid' : 'Received') + '</button>' : '';
   }
   // ── costs (summary; all rows editable behind "Show all costs")
-  const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c);
+  const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c, d);
   const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (wAmt || 0)), diff = entered === null ? null : cxR(calc - entered);
   const mx = Math.max(Math.abs(tu) + Math.abs(tn), 1);
   let costs = '<div class="mx-mini"><i style="flex:' + Math.max(1, Math.abs(tu) / mx * 100) + ';background:#9DBF7A"></i><i style="flex:' + Math.max(1, Math.abs(tn) / mx * 100) + ';background:#E8C98F"></i></div>' +
@@ -1656,7 +1690,7 @@ function _srHvView(c) {
       '<div class="mx-er"><span>− Hausgeld Soll <small>per Rentals</small></span><span class="mx-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld Soll" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></span></div>' +
       '<div class="mx-er is-b"><span>= calculated <span data-sr-tot="cl">' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</span></span><span data-sr-tot="c">' + stEur(Math.abs(calc)) + '</span></div>' +
       (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="mx-ok"><i class="ti ti-check" aria-hidden="true"></i> matches the HV result</p>' : '<p class="mx-ok is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') +
-      _srIstHint(c, hgPaid) + '</div>';
+      _srIstHint(c, hgPaid, d) + '</div>';
   }
   costs += '<button class="mx-lnk" data-sr="costs">' + (SR.costsOpen ? 'Hide the costs' : 'Show all ' + (U.length + N.length) + ' costs · edit') + '</button>';
   // ── settings (period · expected month) — folded at the end
@@ -1720,7 +1754,7 @@ function _srCleanRec(d, c) {
   if (!clean.weg_direction) { clean.weg_amount = null; clean.weg_due = null; }
   if (clean.weg_direction && !clean.weg_via) clean.weg_via = 'zahlung';
   clean.keys = Object.assign({}, clean.keys || {}, { ja_v: 2 });
-  const hgDef = _srHausgeldPaid(c);
+  const hgDef = _srHausgeldPaid(c, clean);
   if (_srNum(clean.keys.hg_paid) !== null && Math.abs(_srNum(clean.keys.hg_paid) - hgDef) < 0.005) clean.keys.hg_paid = null;
   return clean;
 }
@@ -1794,7 +1828,7 @@ function _srNkView(c) {
     };
     // a receipt returned in full: in no line, never in a letter — here (0,00 €) with its returns and switches
     const zero = [];
-    if (typeof stRetZeroHtml === 'function') _srAutoNkItems(c, zero);
+    if (typeof stRetZeroHtml === 'function') _srAutoNkItems(c, zero, d);
     const zRows = zero.filter(o => !(d.positions || []).some(p => p.auto === 'ot:' + o.id))
       .map(o => stRetZeroHtml(o.item || o.company || 'Cost', 'returned in full · not in the NK · ' + stDe(_srD(o.invoice_date)), o.maint_cost_id, { locked: sentNk ? 'sent' : '', gross: Math.abs(Number(o.amount) || 0), frozen: 0 })).join('');
     const retWarn = typeof ST_RET !== 'undefined' && ST_RET.error && !sentNk ? '<p class="st-ret__warn">' + stEsc(stRetFailTxt + ' – the costs marked for the NK wait until then.') + '</p>' : '';
@@ -1954,11 +1988,11 @@ async function _srPayEdit(el) {
   const weg = el.dataset.w === '1', x = _srSetCtx(el.dataset.k, weg ? null : el.dataset.id, weg);
   if (!x || !x.st || !x.st.res || x.st.k !== 'erledigt') return;                 // not settled yet: used when you flip the switch
   const date = _srD(_srPayVal('date')) || cxToday(), res = x.st.res;
-  if (!weg && res.via && res.via !== 'zahlung') {
+  if (!weg && res.via && res.via !== 'zahlung' && !(res.via === 'kaution' && x.st.booking)) {
     try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
     ctlSettlementInvalidate(); stSay('Date saved'); _srAfterSettle(x); return;
   }
-  await _srSetAmount(el.dataset.k, weg ? null : el.dataset.id, weg, _srPayVal('amt') ?? cxE2(res.amount), null, date);
+  await _srSetAmount(el.dataset.k, weg ? null : el.dataset.id, weg, _srKauBook(x, _srPayVal('amt') ?? cxE2(res.amount)), null, date);
 }
 
 function _srTenView(c) {
@@ -1988,23 +2022,26 @@ function _srTenView(c) {
   // ── Nov 2026 · steps with labelled buttons (no unlabelled switches) · the PDF is a real button
   const late = !sent && perC.frist && date > perC.frist && x.saldo > 0;
   const how = { zahlung: 'bank transfer', miete: 'with the rent', kaution: 'via Kaution' };
-  const hasMoney = Math.abs(v) >= 0.005;
-  const ways = !sent && hasMoney ? '<p class="tp-mini">Settle by</p><div class="mx-ways tp-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
-    '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sr="via" data-v="' + k + '" aria-pressed="' + (via === k) + '">' + stIc(ic, 16) + l + '</button>').join('') + '</div>' : '';
+  // K1: no "Settle by" any more — the way follows by itself (part of the Kaution held back → with the Kaution, else bank transfer)
+  // With the Kaution the Money step is the real transfer T = NK result − held part (a balanced result: the held part goes back)
+  const resVia0 = sent ? (ti.st.res.via || 'zahlung') : via, kau = resVia0 === 'kaution' && x.einbehalt > 0;
+  const T = kau ? cxR(v - x.einbehalt) : null;
+  const hasMoney = Math.abs(v) >= 0.005 || kau;
   const pdf = stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
     undo: sent && !settledT ? '<button type="button" class="tp-undo" data-sr="reopen">undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing || _srBusy.get(_srLineKey(c, it)) === 'send') + '</div>' };
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing || _srBusy.get(_srLineKey(c, it)) === 'send') + '</div>' };
   let s2 = null;
   if (hasMoney) {
-    const resVia = sent ? (ti.st.res.via || 'zahlung') : via, b = ti.st.booking;
-    const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung') : '';
+    const resVia = resVia0, b = ti.st.booking;
+    const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || (resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';   // balanced: nothing is booked, the date only
+    const kauSay = !kau ? '' : T < -0.004 ? 'You pay back ' + stEur(-T) : T > 0.004 ? first + ' transfers ' + stEur(T) : 'You keep ' + stEur(x.einbehalt) + ' of the Kaution';
     s2 = { n: 2, state: settledT ? 'done' : sent ? 'open' : 'wait', title: 'Money',
-      sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc((v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
+      sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc(kau ? kauSay : (v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
       undo: settledT ? '<button type="button" class="tp-undo" data-sr="setUndo" ' + idAttr + '>undo</button>' : '',
-      body: sent && !settledT ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', v > 0 ? 'Received' : 'Paid back', true) + '</div>' : '' };
+      body: sent && !settledT ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', (kau ? T >= -0.004 : v > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
   }
   // ── calculation · one right-hand column for every amount
   const since = _srBought(c.p);
@@ -2039,13 +2076,14 @@ function _srTenView(c) {
   let letter = '';
   if (!sent) {
     const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
-    const isNach = x.saldo > 0, moved = _srMovedOut(ti.t), miss = _srChecks(c, it, rec, x).length > 0;
+    const moved = _srMovedOut(ti.t), miss = _srChecks(c, it, rec, x).length > 0;
     const lsub = (addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing') + ' · ' + stDate(date) + ' · ' + days + ' days';
     letter = stTpLbl('mail', '#FAF0DC', '#854F0B', 'Letter') + '<div class="tp-card"><details class="tp-fold tp-letter"' + (SR.briefOpen || miss ? ' open' : '') + '><summary>' +
       '<div class="tp-r"><span class="tp-r__m"><b>Letter details <span data-sr-check>' + _srCheckHtml(c, it, rec, x) + '</span></b><small>' + stEsc(lsub) + '</small></span><span class="tp-r__v"></span><span class="tp-r__i"><i class="ti ti-chevron-down" aria-hidden="true"></i></span></div></summary>' +
       '<div class="tp-form">' +
       '<label class="tp-f"><span>Address' + (moved ? ' · new address after moving out' : '') + '</span><textarea class="st-in sr-ta" rows="2" data-srt="addr">' + stEsc(addr) + '</textarea></label>' +
-      (!isNach && x.saldo ? '<label class="tp-f"><span>Tenant IBAN · for the Guthaben</span><input class="st-in" data-srt="iban" value="' + stEsc(ts.iban || '') + '" placeholder="DE…"/></label>' : '') +
+      // K1: also when the part of the Kaution held back is more than the Nachzahlung — the rest goes back by transfer
+      (cxR(x.einbehalt - x.saldo) > 0 ? '<label class="tp-f"><span>Tenant IBAN · for the ' + (x.einbehalt > 0 ? 'money back' : 'Guthaben') + '</span><input class="st-in" data-srt="iban" value="' + stEsc(ts.iban || '') + '" placeholder="DE…"/></label>' : '') +
       '<div class="tp-g2"><label class="tp-f"><span>Letter date</span><input class="st-in" type="date" data-srt="date" value="' + stEsc(date) + '"/></label>' +
         '<label class="tp-f"><span>Pay within (days)</span><input class="st-in" inputmode="numeric" data-srt="days" value="' + days + '"/></label></div>' +
       (!moved ? '<div class="tp-g2"><label class="tp-f"><span>New NK / month</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srt="new_vz" value="' + stEsc(_srE2in(ts.new_vz)) + '"/><span>€</span></span></label>' +
@@ -2104,6 +2142,25 @@ function _srSetObj(c, st, ti, weg, idx) {
     ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? _srD(b.invoice_date) : null,
     note: done && !b && SR.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent', hausgeld: 'Settled with the Hausgeld' }[res.via] || null) : null });
 }
+/* K1 (C11): a result settled with the Kaution books ONE line, the NK result as it really happened: the part held back
+   plus what the tenant transferred, minus what you paid back (typed: the transfer the Money step names, prefilled).
+   300 held · Nachzahlung 200, 100 paid back → +200 · Nachzahlung 450, 150 received → +450 (100 → +400, 0 → +300) ·
+   Guthaben 50, 350 paid back → −50. Booked in the result's direction (never below 0). Anything else: as typed. */
+function _srKauBook(x, raw) {
+  const res = x && x.st && x.st.res, E = x && x.ti && x.it ? _srEinbehalt(x.it.r) : 0;
+  if (!res || res.via !== 'kaution' || !(E > 0) || !res.amount || !res.dir) return raw;
+  const t = cxParse(String(raw === null || raw === undefined ? '' : raw).trim());
+  if (String(raw === null || raw === undefined ? '' : raw).trim() === '' || t === null || isNaN(t)) return raw;
+  const T = cxR(res.dir * res.amount - E), sT = T > 0.004 ? 1 : T < -0.004 ? -1 : res.dir;
+  return cxE2(Math.max(0, res.dir * (E + sT * Math.abs(t))));
+}
+/* K1 (C4): an older WEG result "with the Hausgeld" booked as received → its record keeps 'zahlung' (and the open draft) */
+async function _srWegViaPaid(x) {
+  const rec = x.rec; if (!rec || rec.weg_via !== 'hausgeld') return;
+  rec.weg_via = 'zahlung';
+  if (SR.draft && SR.draft._ck === x.c.ck) SR.draft.weg_via = 'zahlung';
+  await srSaveRow(rec, null, ['weg_via']);
+}
 /* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
 async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const x = _srSetCtx(ck, tid, weg); if (!x) return;
@@ -2115,10 +2172,12 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const amt = cxR(Math.abs(parsed)), b = x.st.booking;
   let date = _srD(when) || cxToday(), linkedManual = null, took = null;
   if (btn) btn.disabled = true;
+  const kau = res.via === 'kaution';                         // K1 (C6): a Kaution result stays one — it is booked as it is
   try {
-    if (res.via !== 'zahlung') {
+    if (res.via !== 'zahlung' && !kau) {
       await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung';
       await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
+      if (weg && res.via === 'hausgeld') await _srWegViaPaid(x);   // K1 (C4): the record says so too — the next autosave keeps it
     }
     const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
                       : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
@@ -2145,7 +2204,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
         kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
       date = String(d.invoice_date || date).slice(0, 10);
     }
-    await _stConfirmSettled(x.l, 'zahlung', date);
+    await _stConfirmSettled(x.l, kau ? 'kaution' : 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual && !weg ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
   _srAfterSettle(x);
@@ -2160,10 +2219,8 @@ async function _srSetUndo(ck, tid, weg) {
     if (skipped) await _stUpsertSettlement(x.l, { status: 'offen' });
     else {
       if (b) await _stUndoBooking(b);                                // own booking removed · your own entry only unlinked
-      if (x.st.res && x.st.res.via !== 'zahlung') {
-        await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', x.st.res.id); x.st.res.db.settle_via = 'zahlung';
-        await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
-      }
+      // K1 (C6): the way stays as stored — with the Kaution / with the rent is never turned into a bank transfer of the
+      // full amount (the held part stays used once, nothing is counted twice)
       await _stUpsertSettlement(x.l, { status: 'verschickt' });                 // back to sent: waiting again
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
@@ -2223,7 +2280,7 @@ async function _srHvSave4(btn, thenView) {
   if (d.weg_direction && !(_srNum(d.weg_amount) > 0)) { stSay('Please enter the amount of the WEG result'); return; }
   if (!d.weg_direction) { d.weg_amount = null; d.weg_due = null; }
   if (d.weg_direction && !d.weg_via) d.weg_via = 'zahlung';
-  const hgDef = _srHausgeldPaid(c);
+  const hgDef = _srHausgeldPaid(c, d);
   if (_srNum(d.keys.hg_paid) !== null && Math.abs(_srNum(d.keys.hg_paid) - hgDef) < 0.005) d.keys.hg_paid = null;   // equal to Rentals → keep following Rentals
   if (btn) btn.disabled = true;
   try {
@@ -2317,12 +2374,13 @@ function srIsRentalsLine() { return false; }
       const weg = a === 'payOnW', x = _srSetCtx(b.dataset.k, weg ? null : b.dataset.id, weg);
       if (!x || !x.st || !x.st.res) { stSay(weg ? 'Add the result of the Jahresabrechnung first' : 'Send the letter first'); return; }
       const res = x.st.res, date = _srD(_srPayVal('date')) || cxToday();   // the day the money moved (default today)
-      if (!weg && res.via && res.via !== 'zahlung') {               // settled with the rent / via Kaution: confirm, no booking
+      // settled with the rent: confirm, no booking · K1: with the Kaution and balanced: the held part went back — nothing is counted
+      if (!weg && res.via && res.via !== 'zahlung' && (res.via !== 'kaution' || !res.amount || !res.dir)) {
         b.disabled = true;
         try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
         ctlSettlementInvalidate(); stSay('Settled'); _srAfterSettle(x); return;
       }
-      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, _srPayVal('amt') ?? cxE2(res.amount), b, date); return;
+      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, _srKauBook(x, _srPayVal('amt') ?? cxE2(res.amount)), b, date); return;
     }
     if (a === 'tick') {
       e.preventDefault(); e.stopPropagation();
@@ -2442,7 +2500,6 @@ function srIsRentalsLine() { return false; }
       _srQueueTenantSave(got.rec); _srRerenderPanel(); return;
     }
     if (a === 'brief') { const got = _srCollectTenant(); if (got) _srQueueTenantSave(got.rec); SR.briefOpen = !SR.briefOpen; _srRerenderPanel(); return; }
-    if (a === 'via') { const got = _srCollectTenant(); if (!got) return; got.ts.via = b.dataset.v; _srQueueTenantSave(got.rec); _srRerenderPanel(); return; }
     if (a === 'pdf') { await _srPdf(b); return; }
     if (a === 'send') { await _srSend(b); return; }
     if (a === 'reopen') {

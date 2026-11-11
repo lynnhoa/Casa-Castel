@@ -7,7 +7,9 @@
      Verschickt → Ergebnis entered (Nachzahlung / Guthaben / ausgeglichen)
                   → published to Controlling (abr_results)
      Erledigt   → by itself: paid (confirmed in Controlling) or settled
-                  via Kaution / Miete / Hausgeld, or ausgeglichen
+                  with the rent / Hausgeld (older results), or ausgeglichen.
+                  K1 (Nov 2026): a result settled with the part of the Kaution held back
+                  is paid like a transfer — by its booking (the kept part ± the transfer)
    Plus: Leerstand lines ("war leer"), Pauschal lines ("nicht durchgeführt")
    and a folded Datenprüfung.
 
@@ -33,7 +35,8 @@ function _stTenant(app, id) {
   return list.find(t => String(t.id) === String(id)) || null;
 }
 const _stViaText = { zahlung: 'by transfer', kaution: 'settled via Kaution', miete: 'settled with the rent', hausgeld: 'settled with the Hausgeld' };
-/* Settled with the rent / via Kaution / with the Hausgeld counts as done only once you confirmed it (status erledigt) */
+/* Settled with the rent / with the Hausgeld counts as done only once you confirmed it (status erledigt) — so does an older
+   result confirmed 'via Kaution' without a booking (K1) */
 const _stConfirmed = r => !!r && (r.status === 'erledigt' || r.status === 'bezahlt' || !!r.paid_date);
 
 /* Result (abr_results) of a tracking line — by link, else by matching (e.g. entered in Controlling before) */
@@ -67,16 +70,22 @@ function _stState(line) {
   const res = _stResultOf(line.p, r);
   if (res) {
     const txt = _stResultText(res, weg);
-    if (!res.amount || !res.dir) return { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
-    const b = res.via === 'zahlung' ? ctlAbrBooking(res) : null;
+    // K1: a balanced Rentals result with part of the Kaution held back waits until that part went back (Money step, nothing counted)
+    if (!res.amount || !res.dir) return _stKauBack(res) && !_stConfirmed(r) ? { k: 'verschickt', pill: ['beige', 'sent'], res, text: txt } : { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
+    // K1: a Kaution result is paid like a transfer (its booking: the kept part ± the transfer); an older one confirmed without
+    // a booking stays settled as it was. Only rent / Hausgeld wait for your Confirm (no booking)
+    const b = res.via === 'zahlung' || res.via === 'kaution' ? ctlAbrBooking(res) : null;
     if (b) return { k: 'erledigt', pill: ['ok', 'paid'], res, booking: b, text: txt };
     if (res.via !== 'zahlung' && _stConfirmed(r)) return { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
-    // sent: waiting for the money — or, settled with the rent / via Kaution, waiting for your Confirm
-    return { k: 'verschickt', pill: ['beige', res.via !== 'zahlung' ? 'confirm' : weg ? 'received' : 'sent'], res, text: txt, confirm: res.via !== 'zahlung' };
+    // sent: waiting for the money — or, settled with the rent / Hausgeld, waiting for your Confirm
+    const conf = res.via === 'miete' || res.via === 'hausgeld';
+    return { k: 'verschickt', pill: ['beige', conf ? 'confirm' : weg ? 'received' : 'sent'], res, text: txt, confirm: conf };
   }
   if (r.status === 'bezahlt' || r.status === 'erledigt') return { k: 'erledigt', pill: ['ok', 'settled'], text: '' };   // older tracking
   return { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist soon'] : ['open', 'open'], text: '' };
 }
+/* K1: a balanced Rentals NK result settled with the Kaution: the held part still goes back by transfer (Settlements' Money step) */
+const _stKauBack = res => res.via === 'kaution' && (!res.db || !res.db.app || res.db.app === 'rentals');
 function _stResultText(res, weg) {
   if (!res.dir || !res.amount) return 'balanced';
   const nach = weg ? res.dir < 0 : res.dir > 0;
@@ -309,7 +318,7 @@ function _stFormHtml(l, weg, res) {
   const r = l.it.r;
   const cur = res ? (!res.dir || !res.amount ? 'null' : ((weg ? res.dir < 0 : res.dir > 0) ? 'nach' : 'gut')) : 'nach';
   const opt = (v, t, sub) => '<button type="button" class="st-seg__b' + (cur === v ? ' is-on' : '') + '" data-st="res" data-v="' + v + '" aria-pressed="' + (cur === v) + '">' + t + '<small>' + sub + '</small></button>';
-  const vias = weg ? [['zahlung', 'Zahlung'], ['hausgeld', 'Hausgeld']] : [['zahlung', 'Zahlung'], ['kaution', 'Kaution'], ['miete', 'Miete']];
+  // K1: no choice of the way any more (a new result is a bank transfer; a stored one keeps its way)
   const curVia = res && res.via ? res.via : 'zahlung';
   const hide = cur === 'null' ? ' hidden' : '';
   return '<form class="st-form" onsubmit="return false">' +
@@ -325,9 +334,6 @@ function _stFormHtml(l, weg, res) {
       '<small class="st-per-hint">Nur ändern, wenn die Abrechnung dieses Mieters einen anderen Zeitraum hat.</small></div>' : '') +
     '<label class="st-f"><span class="st-f__l">' + (weg ? 'Abrechnung vom' : 'Verschickt am') + '</span>' +
       '<input id="stDate" class="st-in" type="date" value="' + stEsc(res && res.date ? res.date : cxToday()) + '"/></label>' +
-    '<fieldset class="st-f st-f--via"' + hide + '><legend class="st-f__l">Verrechnung</legend><div class="st-seg st-seg--' + vias.length + '" role="group">' +
-      vias.map(([v, t]) => '<button type="button" class="st-seg__b' + (curVia === v ? ' is-on' : '') + '" data-st="via" data-v="' + v + '" aria-pressed="' + (curVia === v) + '">' + t + '</button>').join('') +
-    '</div></fieldset>' +
     '<p class="st-hint" id="stHint">' + _stHint(cur, weg, curVia) + '</p>' +
     '<button type="button" class="cx-btn cx-btn--p cx-btn--full" data-st="save">' + (res ? 'Änderung speichern' : weg ? 'Ergebnis speichern' : 'Als verschickt speichern') + '</button>' +
     (res ? '<button type="button" class="cx-link st-center" data-st="cancelEdit">Abbrechen</button>' : '') +
@@ -393,8 +399,8 @@ async function _stSyncStatus() {
     const p = (window._ctrl.properties || []).find(x => x.id === Number(r.property_id)); if (!p) continue;
     const res = _stResultOf(p, r); if (!res) continue;
     let paid = null;
-    if (!res.amount || !res.dir) paid = res.date || cxToday();
-    else if (res.via === 'zahlung') { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
+    if (!res.amount || !res.dir) { if (!_stKauBack(res)) paid = res.date || cxToday(); }       // K1: the held part goes back first
+    else if (res.via === 'zahlung' || res.via === 'kaution') { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
     if (!paid) continue;
     try {
       const { data, error } = await _ctlSupa.from('ctrl_settlements').update({ status: 'erledigt', paid_date: paid }).eq('id', r.id).select().single();
@@ -426,7 +432,7 @@ async function _stWriteResult(existing, row) {
 async function _stSave(l, btn) {
   const weg = l.it.r.kind === 'weg_hausgeld';
   const res = document.querySelector('#stPanel .st-seg__b[data-st="res"].is-on')?.dataset.v || 'nach';
-  const via = document.querySelector('#stPanel .st-seg__b[data-st="via"].is-on')?.dataset.v || 'zahlung';
+  const via = (ST.edit && l.state.res && l.state.res.via) || 'zahlung';             // K1: no choice — a stored result keeps its way
   const date = document.getElementById('stDate')?.value || cxToday();
   let amount = 0, dir = 0;
   if (res !== 'null') {
@@ -554,11 +560,11 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
     ctlSettlementInvalidate(); stRenderTracking(); return;
   }
   const l = _stLines[ST.sel];
-  if (a === 'res' || a === 'via') {
+  if (a === 'res') {
     b.parentElement.querySelectorAll('.st-seg__b').forEach(x => { x.classList.toggle('is-on', x === b); x.setAttribute('aria-pressed', x === b); });
     const res = document.querySelector('#stPanel .st-seg__b[data-st="res"].is-on')?.dataset.v || 'nach';
-    const via = document.querySelector('#stPanel .st-seg__b[data-st="via"].is-on')?.dataset.v || 'zahlung';
-    document.querySelectorAll('#stPanel .st-f--amt, #stPanel .st-f--via').forEach(x => { x.hidden = res === 'null'; });
+    const via = (ST.edit && l && l.state.res && l.state.res.via) || 'zahlung';
+    document.querySelectorAll('#stPanel .st-f--amt').forEach(x => { x.hidden = res === 'null'; });
     const weg = l && l.it.r && l.it.r.kind === 'weg_hausgeld';
     const h = document.getElementById('stHint'); if (h) h.textContent = _stHint(res, weg, via);
     if (a === 'res' && res !== 'null') document.getElementById('stAmt')?.focus();
