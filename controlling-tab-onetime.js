@@ -259,7 +259,7 @@ async function _cxOtSaveMaint(o, b) {
   const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_umlage, nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
-    if (!(_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id))) delete o._nk;   // C6: opened again meanwhile → its own switch stays
+    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id); else delete o._nk;   // C6: opened again meanwhile → its own switch stays
     if (_cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     if (saved) _cxOt.flash = saved.id;
     if (_cxOt.formN === sv.n) { _cxOt.form = null; _cxOt.formAt = null; }   // C6: a form opened meanwhile (also this one again) stays open
@@ -313,6 +313,16 @@ function _cxOtFormHTML(o) {
 }
 
 /* C6: the invoice being saved is drawn with what you typed (a drawing during its save put the old values back) */
+/* C6: an invoice opened again while its save ran: the saved row replaced it in memory — the chips its form shows
+   (kind, Raus / Rein, NK) are kept on the new row, so the form and its next Save stay as you see them */
+function _cxOtChipsKeep(id) {
+  const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id)), f = document.querySelector('#tab-onetime .cx-ot-form[data-edit="' + CSS.escape(String(id)) + '"]');
+  if (!o || !f) return;
+  const k = f.querySelector('[data-cx="otKind"].on'), d = f.querySelector('[data-cx="otDir"].on'), nk = f.querySelector('#cxOtNkRow');
+  if (k) o._kind = k.dataset.v;
+  if (d) o._dir = Number(d.dataset.v);
+  if (nk) o._nk = nk.classList.contains('on');
+}
 const _cxOtDraftOn = o => { const d = _cxOt.draft; return !!(o && d && d.n === _cxOt.formN && String(d.id) === String(o.id)); };
 const _cxOtShown = o => { const s = _cxOt.saving[o.id] || (_cxOtDraftOn(o) ? _cxOt.draft : null); return s ? Object.assign({}, o, s.f) : o; };
 /* One invoice = one row, same pattern as Income / Expenses:
@@ -883,7 +893,8 @@ async function _cxOtSave(b) {
     } else {
       saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || fallback, company, amount: cxR(amt), kind, direction: dir, nk_umlage, nk_category_id, ...knk });
     }
-    if (o && !(_cxOt.formN !== n0 && String(_cxOt.form) === String(o.id))) { delete o._kind; delete o._dir; delete o._nk; delete o._knkType; delete o._knkPart; }   // C6: opened again meanwhile → its own chips stay
+    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) _cxOtChipsKeep(o.id);   // C6: opened again meanwhile → its own chips stay
+    else if (o) { delete o._kind; delete o._dir; delete o._nk; delete o._knkType; delete o._knkPart; }
     if (o && _cxOt.draft && String(_cxOt.draft.id) === String(o.id)) _cxOt.draft = null;
     _cxOt.nk = false; _cxOt.nkCat = ''; _cxOt.knkType = ''; _cxOt.knkPart = '';
     if (saved && saved.kind === 'Kaufnebenkosten' && window._src) {   // keep the all-years list in step
