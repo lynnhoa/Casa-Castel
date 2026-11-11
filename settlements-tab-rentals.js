@@ -101,6 +101,13 @@ function _srPerLabel(from, to) { return stPer(from, to); }
 /* ── Data: own table ──────────────────────────────────────── */
 /* B18: one load at a time — a second caller waits for the running one */
 function srLoadRows() { return SR._p || (SR._p = _srLoadRowsNow().finally(() => { SR._p = null; })); }
+async function _srReadLetters() {
+  try {
+    const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
+    if (!l.error) { SR.letters = l.data || []; SR.lettersRead = true; } else { SR.letters = SR.letters || []; SR.lettersErr = l.error.message || String(l.error); }
+  } catch (e) { SR.letters = SR.letters || []; SR.lettersErr = e.message || String(e); }
+  return !!SR.lettersRead;
+}
 async function _srLoadRowsNow() {
   SR.loading = true;
   try {
@@ -109,12 +116,11 @@ async function _srLoadRowsNow() {
     const { data, error } = await _ctlSupa.from(SR_TABLE).select('*');
     if (SR._rd === saved) SR._rd = null;
     if (error) throw error;
+    const was = {}; (SR.rows || []).forEach(r => { if (r && r.id && r._gv !== undefined) was[r.id] = r._gv; });
     SR.rows = (data || []).map(r => saved[r.id] || r); SR.missing = false;
+    SR.rows.forEach(r => { if (r._gv === undefined && was[r.id] !== undefined) r._gv = was[r.id]; });   // Gewerbe Verwaltung: as drawn until the next drawing
     Object.values(saved).forEach(r => { if (!SR.rows.includes(r)) SR.rows.push(r); });
-    try {                                               // letter archive (nk_letters) — for the History
-      const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
-      if (!l.error) { SR.letters = l.data || []; SR.lettersRead = true; } else SR.letters = SR.letters || [];
-    } catch (e) { SR.letters = SR.letters || []; }
+    await _srReadLetters();                             // letter archive (nk_letters) — for the History
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
     try {                                               // #11: Hausgeld Ist per month (Controlling) — read only, for the hint
       // every year of every apartment: past Supabase's 1000 rows per request it is read in pages (ctlReadAll, controlling-soll.js)
@@ -280,7 +286,7 @@ function _srGewSent(c) {
 function _srGewMark(c, rec) {
   if (!rec) return rec;
   const k = rec.keys || {};
-  rec._gv = k.gv !== undefined ? !!k.gv : _srIsGew(c) && !_srGewSent(c);
+  rec._gv = _srIsGew(c) && (k.gv !== undefined ? !!k.gv : !_srGewSent(c));   // a flat is never billed Verwaltung
   return rec;
 }
 const _srU = (p, rec) => !!p.u || (!!(rec && rec._gv) && p.kind === 'verwaltung' && !_srIsNkOnly(p));
@@ -887,8 +893,10 @@ async function _srSendNow(btn, got, key) {
     const now = SR.rows.find(r => r.id === rec.id);          // before it — the old amount was sent, the record kept the new costs)
     if (now && now !== rec) { now.tenants = rec.tenants; rec = now; }
   }
-  _srGewMark(c, rec);
   const gvKeep = _srIsGew(c) && !(rec.keys && rec.keys.gv !== undefined);   // Gewerbe: the first letter out keeps its Verwaltung choice
+  if (gvKeep && !SR.lettersRead && !(await _srReadLetters())) { stSay('Speichern fehlgeschlagen — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false; return; }   // its choice needs the archive
+  _srGewMark(c, rec);
+  const keys0 = rec.keys;
   if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -904,7 +912,7 @@ async function _srSendNow(btn, got, key) {
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
   try { await srSaveRow(rec, null, gvKeep ? ['tenants', 'keys.gv'] : ['tenants']); }   // another tenant's: it is still saved
   catch (err) {                                              // Gewerbe: the Verwaltung this letter bills must be kept with the record
-    if (gvKeep && rec._gv) { stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+    if (gvKeep && rec._gv) { rec.keys = keys0; stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
@@ -1078,7 +1086,7 @@ function _srSettledTxt(ti, weg) {
   return '';
 }
 function _srCardInfo4(c) {
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
+  const rec = _srGewMark(c, _srRec(c.p, c.per)), sum = _srRecSummary(rec, c.apt);
   if (c.before) return { c, rec, sum, rows: [], hv: null, k: 'before' };
   const hv = _srHvState(c, rec, sum);
   const sumOk = sum.ok && _srJaDone(rec, sum);
@@ -1938,7 +1946,7 @@ async function _srPayEdit(el) {
 
 function _srTenView(c) {
   // Oct 2026 · one level: amount on top · "Letter sent" and "Paid back / Received" as switches · details below
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
+  const rec = _srGewMark(c, _srRec(c.p, c.per)), sum = _srRecSummary(rec, c.apt);
   const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid));
   if (!it) return stMHead('Tenant', '', 'calc', 'data-sr="close"') + '<div class="srm__b mx-b"><p class="cx-empty">Not found.</p></div>';
   const ti = _srTenInfo(c, it, rec, sum.ok && (_srJaDone(rec, sum) || !!_srLine(c, it).state.res)), x = ti.x;
