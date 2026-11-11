@@ -265,6 +265,7 @@ async function _cxOtSaveMaint(o, b) {
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
+    if (_cxOt.formN !== sv.n && String(_cxOt.form) === String(o.id) && o._nk === undefined) o._nk = nk_umlage;   // C6: opened again while it saved → its next Save writes what it shows
     b.disabled = false; return;
   } finally { if (_cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
@@ -891,6 +892,9 @@ async function _cxOtSave(b) {
   } catch (e) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
+    if (o && _cxOt.formN !== n0 && String(_cxOt.form) === String(o.id)) {   // C6: opened again while it saved → its next Save writes what it shows
+      if (o._kind === undefined) o._kind = kind; if (o._dir === undefined) o._dir = dir; if (o._nk === undefined) o._nk = nk_umlage;
+    }
     b.disabled = false; return;
   } finally { if (sv && _cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
