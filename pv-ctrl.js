@@ -19,9 +19,10 @@
   window._pvCtl = st;
   const same = (a, b) => String(a) === String(b);
   const find = (catId, y, m) => (st.y === y ? st.rows.find(r => same(r.category_id, catId) && r.month === m) : null);
-  // C6: a Controlling save that waited while another year was opened still goes into its own year — that year's months are kept
-  const take = (y, rows) => { if (st.y !== y) st.was = { y: st.y, rows: st.rows }; st.y = y; st.rows = rows; };
-  const findFor = (catId, y, m) => find(catId, y, m) || (st.was && st.was.y === y ? st.was.rows.find(r => same(r.category_id, catId) && r.month === m) || null : null);
+  // C6: a Controlling save that waited while other years were opened still goes into its own year — each year's months are kept
+  const byY = {};
+  const take = (y, rows) => { byY[y] = rows; st.y = y; st.rows = rows; };
+  const findFor = (catId, y, m) => find(catId, y, m) || (byY[y] || []).find(r => same(r.category_id, catId) && r.month === m) || null;
   const catOf = id => (window._ctrl.categories || []).find(c => same(c.id, id));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const eur = n => (typeof cxEur === 'function' ? cxEur(Number(n) || 0) : (Number(n) || 0).toFixed(2).replace('.', ',') + ' €');

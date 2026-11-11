@@ -48,7 +48,7 @@ let _cxOt = {
   nkCat: '',                                           // new entry: Casa cost type for the NK ('' = general house costs)
   knkType: '', knkPart: '',                            // new entry: Kaufnebenkosten type · Kauf / Grundschuld
   bonus: null, bonusNk: null,                          // Bonuses to confirm: the bonus being confirmed · its NK switch
-  saving: null, boSaving: null,                        // C6: the invoice / bonus being saved, with what was typed (drawn into its form)
+  saving: {}, boSaving: null,                          // C6: the invoices / bonus being saved (by id), with what was typed (drawn into its form)
   formN: 0,                                            // C6: counts the forms opened — the same invoice opened again is another form
 };
 const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_prop')) || null; } catch (e) { return null; } };
@@ -204,7 +204,7 @@ function _cxOtMaintFormHTML(o) {
         '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
       _cxOtNkCatHTML(o, nk, pid) +
       '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-        '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + _cxOt.formN + '">Save</button></div>' +   // C6: each opened form has its own Save (cxWire's busy key)
+        '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + cxEsc(o.id) + '">Save</button></div>' +   // C6: each invoice has its own Save (cxWire's busy key)
       '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
     : _cxOtWhoHTML(o) +                                      // cx-ot-mtbtns: "Open in Maintenance" gets the room (one line on phones)
       '<div class="cx-grid2 cx-ot-mtbtns"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
@@ -255,7 +255,7 @@ async function _cxOtSaveMaint(o, b) {
   const catV = document.getElementById('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;
   b.disabled = true;
-  const sv = _cxOt.saving = { id: o.id, n: _cxOt.formN, f: { nk_category_id: catV ? Number(catV) : null } };   // C6
+  const sv = _cxOt.saving[o.id] = { id: o.id, n: _cxOt.formN, f: { nk_category_id: catV ? Number(catV) : null } };   // C6
   try {
     const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
     delete o._nk;
@@ -266,7 +266,7 @@ async function _cxOtSaveMaint(o, b) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
     b.disabled = false; return;
-  } finally { if (_cxOt.saving === sv) _cxOt.saving = null; }
+  } finally { if (_cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
 }
 
@@ -304,13 +304,13 @@ function _cxOtFormHTML(o) {
       '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + _cxOt.formN + '">Save</button></div>' +   // C6: each opened form has its own Save (cxWire's busy key)
+      '<button class="cx-btn cx-btn--p" data-cx="otSave" data-n="' + (o ? cxEsc(o.id) : 'new' + _cxOt.formN) + '">Save</button></div>' +   // C6: each invoice / new form has its own Save (cxWire's busy key)
     (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Delete invoice</button>' : '') +
   '</div>';
 }
 
 /* C6: the invoice being saved is drawn with what you typed (a drawing during its save put the old values back) */
-const _cxOtShown = o => { const s = _cxOt.saving; return s && String(s.id) === String(o.id) ? Object.assign({}, o, s.f) : o; };
+const _cxOtShown = o => { const s = _cxOt.saving[o.id]; return s ? Object.assign({}, o, s.f) : o; };
 /* One invoice = one row, same pattern as Income / Expenses:
    label (Beschreibung) · pill │ amount (bold) │ date · Firma — tap to edit */
 function _cxOtRowHTML(o) {
@@ -788,7 +788,7 @@ function _cxOtOpen(form, pid) {
 }
 /* Something typed that would be lost? (new: any field · edit: anything changed) */
 function _cxOtDirty() {
-  if (_cxOt.form === null || (_cxOt.saving && _cxOt.saving.n === _cxOt.formN)) return false;   // C6: this form is being saved
+  if (_cxOt.form === null || Object.values(_cxOt.saving).some(s => s.n === _cxOt.formN)) return false;   // C6: this form is being saved
   const g = id => document.getElementById(id);
   const om = _cxOtEditing() && _cxOtShown(_cxOtEditing());   // C6: opened again while it saves → it shows what is being saved
   if (_cxOtIsMaint(om)) return (om._nk !== undefined && om._nk !== !!om.nk_umlage) ||
@@ -866,8 +866,8 @@ async function _cxOtSave(b) {
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
   if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
-  b.disabled = true;
-  const sv = o ? (_cxOt.saving = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
+  cxBusyNow(document.getElementById('tab-onetime'), b);   // C6: also the Save on screen, if a drawing under the question replaced it
+  const sv = o ? (_cxOt.saving[o.id] = { id: o.id, n: n0, f: { property_id: pid, invoice_date: date, item: text, company, amount: cxR(amt), nk_category_id: catV ? Number(catV) : null } }) : null;   // C6
   try {
     let saved;
     if (o) {
@@ -892,7 +892,7 @@ async function _cxOtSave(b) {
     if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
     else cxToastErr(e);
     b.disabled = false; return;
-  } finally { if (sv && _cxOt.saving === sv) _cxOt.saving = null; }
+  } finally { if (sv && _cxOt.saving[o.id] === sv) delete _cxOt.saving[o.id]; }
   _cxOtAfterSave();
 }
 

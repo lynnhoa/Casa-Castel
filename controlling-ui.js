@@ -690,6 +690,13 @@ function _cxRunKeep(host, run) {
     if (e && e.busy && !x.disabled) { x.disabled = true; x._cxRunOff = k; }
   });
 }
+/* C6: a handler that turns its button off after a question: a drawing under the question may have put a new button
+   on screen — that one (the same key) is turned off too, until the save is done */
+function cxBusyNow(host, b) {
+  b.disabled = true;
+  const run = host && host._cxRun, e = run && run.get(_cxRunKey(host, b));
+  if (e) { e.busy = true; _cxRunKeep(host, run); }
+}
 function _cxRunFree(host, key) {                          // key null: every button kept off — the next drawing decides again
   host.querySelectorAll('[data-cx]').forEach(x => { if (x._cxRunOff && (key === null || x._cxRunOff === key)) { x._cxRunOff = null; x.disabled = false; } });
 }
