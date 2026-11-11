@@ -183,8 +183,16 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? cell('Refund to tenant', money('cck-ref', decided ? P.ret : ''), 'cck-ref') +
       cell('Settled on', _cckDate(`cck-fd-${pfx}`, dv('fd', refDate), onIn, dis), 'cck-fd')
     : cell('Refund to tenant', val(P.ret, decided)) + cell('Settled on', P.settled && k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
-  const note = !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
+  let note = !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
     : hasNk ? `${f(P.recv)} received − ${f(oth)} other − ${f(nkv)} for NK` : `${f(P.recv)} received − ${f(ded)} kept`;
+  let noteBad = false;
+  if (D) {   // K1: typed values from the draft (pop-up opened again, a "Not saved") — the note follows the fields
+    const shown = { [`cck-r-${pfx}`]: dv('r', P.recv || ''), [`cck-d-${pfx}`]: dv('d', decided ? oth : ''),
+      [`cck-ref-${pfx}`]: dv('ref', decided ? P.ret : '') };
+    if (hasNk) shown[`cck-nk-${pfx}`] = dv('nk', decided && nkv ? nkv : '');
+    const F = _cckForm(pfx, k, null, ui.typed, ui.tk, id => (id in shown ? { value: String(shown[id] == null ? '' : shown[id]) } : null));
+    note = _cckNoteText(A, F); noteBad = F.bad;
+  }
 
   // Buttons (same place in every state): form → Cancel · Save · otherwise Edit
   const B = (label, act, kind) =>
@@ -212,7 +220,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ${r3}
     <div class="cck-refund${editing || P.phase === 5 ? '' : ' cck-dim'}">
       <div class="cck-grid" style="margin-bottom:0;align-items:end">${refRow}</div>
-      <div class="cck-note" id="cck-rn-${pfx}">${note}</div>
+      <div class="cck-note${noteBad ? ' cck-err' : ''}" id="cck-rn-${pfx}">${note}</div>
     </div>`}
   </div>
   <div class="${foot} cck-foot" style="gap:6px">${_cckFootOrder('', slot)}</div>
@@ -233,8 +241,8 @@ function _cckFootOrder(btns, slot) {
    (typed: 'ref' | 'd') — a refund you typed stays; was: the refund always changed (1.050 → 750).
    K1 (C9c): refund and "other" both typed, "Kept · for NK" not (tk: the fields you typed) → the NK amount takes
    the difference, so a refund you typed also stays when you type "other" after it (was: 1.000 → 1.300) */
-function _cckForm(pfx, k, src, typed, tk) {
-  const $ = id => document.getElementById(id);
+function _cckForm(pfx, k, src, typed, tk, get) {
+  const $ = get || (id => document.getElementById(id));             // get: the fields as drawn from the draft
   const rIn = $(`cck-r-${pfx}`), dIn = $(`cck-d-${pfx}`), nIn = $(`cck-nk-${pfx}`), fIn = $(`cck-ref-${pfx}`);
   const has = el => !!el && el.value !== '';
   const recv = rIn ? _cckNum(rIn.value) : _cckNum(k && k.received);
@@ -250,6 +258,13 @@ function _cckForm(pfx, k, src, typed, tk) {
   }
   const bad = any && (d < -0.004 || n < -0.004 || rf < -0.004);
   return { recv, d: Math.max(0, d), n, rf, any, bad, rIn, dIn, nIn, fIn };
+}
+
+/* The note under "Refund to tenant" for the form as typed */
+function _cckNoteText(A, F) {
+  return F.bad ? `Kept + refund can be at most ${A.fmt(F.recv)}`
+    : !F.any ? 'Type what you keep, or the refund · empty = all still held'
+    : F.nIn ? `${A.fmt(F.recv)} received − ${A.fmt(F.d)} other − ${A.fmt(F.n)} for NK` : `${A.fmt(F.recv)} received − ${A.fmt(F.d)} kept`;
 }
 
 /* ── live typing: pill, bar, caption, the refund ↔ kept amounts; SAVE turns dark ── */
@@ -279,9 +294,7 @@ function ccKautionInput(app, pfx, tid, src) {
   const rn = $(`cck-rn-${pfx}`);
   if (rn) {
     rn.classList.toggle('cck-err', F.bad);
-    rn.textContent = F.bad ? `Kept + refund can be at most ${A.fmt(F.recv)}`
-      : !F.any ? 'Type what you keep, or the refund · empty = all still held'
-      : F.nIn ? `${A.fmt(F.recv)} received − ${A.fmt(F.d)} other − ${A.fmt(F.n)} for NK` : `${A.fmt(F.recv)} received − ${A.fmt(F.d)} kept`;
+    rn.textContent = _cckNoteText(A, F);
   }
   const save = $(`cck-save-${pfx}`);
   if (save && typeof ccSaveSet === 'function') ccSaveSet(save, 'dirty');
