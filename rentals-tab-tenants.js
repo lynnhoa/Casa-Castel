@@ -2038,6 +2038,29 @@ ccKautionRegister('rnt', {
       foot.innerHTML = _rntModalFooterHTML(r, _rntIsAllDone(tid));
   },
 });
+/* K1b (Nov 2026): Rent owed and Damage kept from the Kaution count in Controlling by themselves (cc-kaution-book.js).
+   Without KAUTION-K1B.sql nothing of this is used. */
+if (typeof ccKautionBookRegister === 'function') {
+  ccKautionBookRegister('rnt', {
+    rentAt: (rec, iso) => {                                        // Pauschal: "davon NK" of the rent entry (none → 0)
+      const r = _rntCurrentRent(rec, iso);
+      return !r ? { nk: 0, total: 0 } : { nk: r.mode === 'pauschal' ? (Number(r.period && r.period.nebenkosten) || 0) : (Number(r.nk) || 0), total: Number(r.total) || 0 };
+    },
+    unitRef: rec => {                                              // the flat or the parking space (its name in the message)
+      const nm = (list, id) => ((Array.isArray(list) ? list : []).find(x => String(x.id) === String(id)) || {}).name || '';
+      if (rec.apartment_id) return { type: 'rentals_apartment', id: String(rec.apartment_id), label: nm(typeof appApartments !== 'undefined' ? appApartments : [], rec.apartment_id) || 'This flat' };
+      if (rec.parking_id) return { type: 'rentals_parking', id: String(rec.parking_id), label: nm(typeof appParking !== 'undefined' ? appParking : [], rec.parking_id) || 'This parking space' };
+      return null;
+    },
+    months: rec => {                                               // the rent window as Controlling reads it
+      const ce = _ccIso(rec.vertragsende), out = _ccIso(rec.mietende);
+      return { from: _ccIso(rec.mietbeginn), out, end: ce, pay: rec.rent_until === 'move' ? out : (ce || out) };
+    },
+    others: rec => _rntRecords.filter(r => r.id !== rec.id && (rec.apartment_id ? String(r.apartment_id) === String(rec.apartment_id)
+                                                                                : !!rec.parking_id && String(r.parking_id) === String(rec.parking_id))),
+  });
+  { const open0 = _rntOpenModal; _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid)); }   // receipts before the form shows
+}
 
 
 /* ── NK SECTION (apartments only) ── */

@@ -3238,6 +3238,24 @@ ccKautionRegister('tn', {
       foot.innerHTML = _tnModalFooterHTML(r, _tnIsAllDone(tid));
   },
 });
+/* K1b (Nov 2026): Rent owed and Damage kept from the Kaution count in Controlling by themselves (cc-kaution-book.js).
+   Without KAUTION-K1B.sql nothing of this is used. */
+if (typeof ccKautionBookRegister === 'function') {
+  ccKautionBookRegister('tn', {
+    casa: true,                                                    // property 7 · receipts of this Zimmer
+    rentAt: (rec, iso) => {                                        // Pauschal: "davon NK" of the rent entry (none → 0)
+      const r = _tnCurrentRent(rec, rec.room, iso);
+      return !r ? { nk: 0, total: 0 } : { nk: r.mode === 'pauschal' ? (Number(r.period && r.period.nebenkosten) || 0) : (Number(r.nk) || 0), total: Number(r.total) || 0 };
+    },
+    unitRef: rec => ({ type: 'casa_room', room: rec.room, label: rec.room }),
+    months: rec => {                                               // the rent window as Controlling reads it
+      const cs = _tnContracts(rec), ce = (cs.length && cs[cs.length - 1].end) || _ccIso(rec.vertragsende), out = _ccIso(rec.mietende);
+      return { from: _ccIso(rec.mietbeginn), out, end: ce, pay: rec.rent_until === 'move' ? out : (ce || out) };
+    },
+    others: rec => _tnRecords.filter(r => r.id !== rec.id && _ckbNorm(r.room) === _ckbNorm(rec.room)),
+  });
+  { const open0 = _tnOpenModal; _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid)); }   // receipts before the form shows
+}
 
 
 /* ── NK SECTION (shared card + modal) ── */
