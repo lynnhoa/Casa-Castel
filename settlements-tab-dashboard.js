@@ -369,6 +369,9 @@ function sdUseMonths(d) {
 const SD_QUICK = ['Strom', 'Gas', 'Wasser / Abwasser', 'Müll', 'Grundsteuer', 'Versicherung', 'Internet', 'Reinigung', 'Schornsteinfeger'];   // as Casa Castel (SC_QUICK)
 const SD_SPLIT_BTN = [['full', 'Whole'], ['days', 'By days'], ['pct', '%'], ['direct', 'Fixed €']];
 const SD_VIA = [['zahlung', 'Bank transfer'], ['kaution', 'With the Kaution'], ['miete', 'With the rent']];
+/* K1 (C8, R3): an own NK-Abrechnung is always settled by bank transfer (it knows no Kaution part held for it) — no choice
+   any more, an old draft's way is ignored · a letter already sent keeps the way it was sent with (shown, not changeable) */
+const sdVia = d => d.status === 'sent' ? (d.settle_via || 'zahlung') : 'zahlung';
 function sdMissing(d, x) {
   const m = [];
   if (!d.property_id && !String(d.title_name || '').trim()) m.push('property');
@@ -394,7 +397,7 @@ function sdHeroSub(d, x, miss) {
 }
 const sdHasCosts = x => x.lines.some(l => l.share !== null);
 const sdTone = x => !sdHasCosts(x) ? '' : x.saldo > 0 ? 'neg' : x.saldo < 0 ? 'pos' : '';
-const sdShowIban = (d, x) => x.saldo < 0 && (d.settle_via || 'zahlung') === 'zahlung';
+const sdShowIban = (d, x) => x.saldo < 0 && sdVia(d) === 'zahlung';
 function sdBarHTML(d, miss) {
   if (SD.dirty) SD.pdfMade = false;                                 // changed after the PDF → make the PDF again first
   if (d.status === 'sent') return '<div class="srm__bar srm__bar--2" id="sdBar" data-mode="sent"><button class="cx-btn cx-btn--s" data-sd="close">Close</button>' +
@@ -477,7 +480,7 @@ function sdCalcView() {
   // 5 · settle
   const dues = [14, 30]; if (d.due_days && !dues.includes(Number(d.due_days))) dues.push(Number(d.due_days));
   const settle = cap('Settle', 'send') + '<div class="srm__card sd-card">' +
-    '<div class="sd-col"><span class="sd-lab">How</span><div class="sc-opts">' + SD_VIA.map(([v, t]) => opt('via', v, t, (d.settle_via || 'zahlung') === v)).join('') + '</div></div>' +
+    (sent ? '<div class="sd-col"><span class="sd-lab">How</span><div class="sc-opts">' + SD_VIA.map(([v, t]) => opt('via', v, t, sdVia(d) === v)).join('') + '</div></div>' : '') +
     row('IBAN', '<input class="sd-in" data-sdf="iban" value="' + stEsc(d.iban || '') + '" placeholder="tenant\'s IBAN for the Guthaben"' + dis + '/>', ' id="sdIban"' + (sdShowIban(d, x) ? '' : ' hidden')) +
     row('Letter', '<input class="sd-in" type="date" data-sdf="letter_date" value="' + stEsc(d.letter_date || cxToday()) + '"' + dis + '/>') +
     '<div class="sd-col"><span class="sd-lab">Due within</span><div class="sd-due"><div class="sc-opts">' + dues.map(n => opt('due', n, n + ' days', Number(d.due_days ?? 30) === n)).join('') + '</div>' +
@@ -498,18 +501,28 @@ function sdResLabel(d, x) {
 /* NK paid typed as one amount: keep it on the months actually lived (after a period / lived change) */
 function sdSameVz(d) { const v = sdUseMonths(d).map(ym => sdNum(sdVzOf(d, ym))); return v.length && v.every(z => z !== null && z === v[0]) ? v[0] : null; }
 function sdRespread(d, same) { if (same !== null && !SD.perMonth) d.vz = sdUseMonths(d).map(ym => ({ ym, amount: cxR(same) })); }
+/* K1 (tracking-dash-1): the positions follow "Lived here the whole period" as its switch does — a tenant who lived only
+   part of the period turns 'Whole' positions into 'By days', the whole period turns them back (picked tenant, other year) */
+function sdSplitFollow(d, wasWhole) {
+  const whole = !d.use_from && !d.use_to; if (whole === wasWhole) return;
+  (d.lines || []).forEach(l => { if (l.split === (whole ? 'days' : 'full')) l.split = whole ? 'full' : 'days'; });
+}
 function sdAfterPeriod(d, same) {
+  const was = !d.use_from && !d.use_to;
   const t = d.tenant_ref ? sdTenants(d).find(z => String(z.id) === String(d.tenant_ref)) : null;
   if (t) sdTenantPeriod(d, t);
   if (d.use_from && (d.use_from < d.period_from || d.use_from > d.period_to)) d.use_from = '';
   if (d.use_to && (d.use_to < d.period_from || d.use_to > d.period_to)) d.use_to = '';
+  sdSplitFollow(d, was);
   sdRespread(d, same);
 }
 function sdPickTenant(d, t) {
   d.tenant_ref = String(t.id); d.tenant_name = [t.first_name, t.last_name].filter(Boolean).join(' ');
   const out = t.mietende && sdD(t.mietende) < cxToday(); d.former = !!out;
   d.address = out && t.address ? String(t.address).split(/\s*,\s*|\n/).filter(Boolean).join('\n') : sdPropAddr(d).join('\n');
+  const was = !d.use_from && !d.use_to;
   sdTenantPeriod(d, t);
+  sdSplitFollow(d, was);
 }
 
 /* ── Inputs ── */
@@ -612,7 +625,7 @@ function sdSave(quiet) {
 const sdRow = d => ({ property_id: d.property_id || null, unit_label: d.unit_label || null, title_name: (d.title_name || '').trim() || null, tenant_ref: d.tenant_ref || null,
                 tenant_name: d.tenant_name || null, address: d.address || null, iban: d.iban || null, former: !!d.former,
                 period_from: d.period_from || null, period_to: d.period_to || null, use_from: d.use_from || null, use_to: d.use_to || null,
-                lines: d.lines || [], vz: d.vz || [], settle_via: d.settle_via || 'zahlung', due_days: d.due_days ?? 30, letter_date: d.letter_date || null,
+                lines: d.lines || [], vz: d.vz || [], settle_via: sdVia(d), due_days: d.due_days ?? 30, letter_date: d.letter_date || null,
                 book: !!d.book, status: d.status || 'draft', sent_at: d.sent_at || null, updated_at: new Date().toISOString(),
                 tenant_app: d.tenant_ref && d.property_id ? (Number(d.property_id) === CASA_PROP_ID ? 'casa' : 'rentals') : null });
 async function _sdSaveNow(d, quiet) {
@@ -655,7 +668,7 @@ async function sdLetterData(d) {
     du: !!casa, closing: casa ? 'Viele Grüße' : 'Mit freundlichen Grüßen',
     introHtml: 'hiermit erfolgt die Abrechnung der Betriebskosten für ' + objekt + ' für den Abrechnungszeitraum vom <strong>' + dt(d.period_from) + ' bis ' + dt(d.period_to) + '</strong>.' +
       (x.partial ? (casa ? ' Das ' : ' Die ') + unit + ' wurde in diesem Zeitraum vom ' + dt(x.uf) + ' bis ' + dt(x.ut) + ' genutzt (' + x.useDays + ' von ' + x.perDays + ' Tagen).' : ''),
-    sum: x.sum, vz: x.vz, saldo: x.saldo, via: x.saldo ? (d.settle_via || 'zahlung') : 'zahlung', due: due.toISOString().slice(0, 10),
+    sum: x.sum, vz: x.vz, saldo: x.saldo, via: x.saldo ? sdVia(d) : 'zahlung', due: due.toISOString().slice(0, 10),
     bank: { inhaber: s.kontoinhaber || s.vermieter_name || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     verwendung: 'NK ' + y + ' ' + (brand || '') + (casa && d.unit_label ? ' ' + d.unit_label : '') + ' ' + last, tenantIban: d.iban || '', former: !!d.former,
     outro: casa ? 'Die Aufstellung der Kosten und die Berechnung deines Anteils findest du auf Seite 2.' : '',
@@ -732,7 +745,7 @@ async function sdSend(btn) {
       await _stWriteResult(null, { property_id: p.id, kind: 'nk_tenant', year: Y, period_from: d.period_from, period_to: d.period_to, app: p.id === CASA_PROP_ID ? 'casa' : 'rentals',
         tenant_id: d.tenant_ref || null, unit_label: d.unit_label || null, tenant_name: d.tenant_name || null, direction: dir, amount,
         result_date: d.letter_date || cxToday(), due_date: dir ? sdD(new Date(new Date((d.letter_date || cxToday()) + 'T12:00:00Z').getTime() + (Number(d.due_days ?? 30) || 30) * 864e5).toISOString()) : null,
-        settle_via: dir ? (d.settle_via || 'zahlung') : 'zahlung', status: 'fertig', source: 'manual' });
+        settle_via: dir ? sdVia(d) : 'zahlung', status: 'fertig', source: 'manual' });
       if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
     } catch (e) { stSay('Sent · the result could not be booked in Controlling (' + (e.message || e) + ')'); }
   }
@@ -742,7 +755,7 @@ async function sdSend(btn) {
       const pid = Number(d.property_id), app = pid === CASA_PROP_ID ? 'casa' : 'rentals';
       const res = d.book ? (window._src.abr || []).concat([]).reverse().find(a => String(a.tenant_id || '') === String(d.tenant_ref) && sdD(a.period_from) === sdD(d.period_from) && a.status !== 'storniert') : null;
       const line = { property_id: pid, tenant_id: String(d.tenant_ref), app, kind: 'nk_tenant', covers_year: Y, period_from: d.period_from, period_to: d.period_to,
-                     status: dir && d.book ? 'verschickt' : 'erledigt', amount, direction: dir, settled_via: d.settle_via || 'zahlung', note: 'manual',
+                     status: dir && d.book ? 'verschickt' : 'erledigt', amount, direction: dir, settled_via: sdVia(d), note: 'manual',
                      paid_date: dir && d.book ? null : (d.letter_date || cxToday()), result_id: res ? String(res.id) : null };
       const old = (window._src.settle || []).find(r => String(r.tenant_id) === String(d.tenant_ref) && r.app === app && sdD(r.period_from) === sdD(d.period_from));
       const q = old ? _ctlSupa.from('ctrl_settlements').update(line).eq('id', old.id).select().single() : _ctlSupa.from('ctrl_settlements').insert(line).select().single();
@@ -796,7 +809,6 @@ async function sdClick(e) {
     else { d.use_from = ''; d.use_to = ''; (d.lines || []).forEach(l => { if (l.split === 'days') l.split = 'full'; }); }
     sdRespread(d, same); SD.dirty = true; return sdRenderModal();
   }
-  if (a === 'via') { d.settle_via = b.dataset.v; SD.dirty = true; return sdRenderModal(); }
   if (a === 'due') { d.due_days = Number(b.dataset.v) || 30; SD.dirty = true; return sdRenderModal(); }
   if (a === 'fill') {
     const n = sdNum((document.getElementById('sdFill') || {}).value); if (n === null) { stSay('Type the monthly amount first'); return; }
