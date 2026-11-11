@@ -193,13 +193,15 @@ function scContractNk(t, ym, day) {
 /* Pauschal tenants: the NK part inside the Pauschale (rent history "davon NK", per month)
    K1 (casa-calc-1): day by day, as Controlling counts it (ctlPauschalNkCovered) — each day takes the rent row in force
    on that day (was: the newest row up to the period end, also a later price or the Kalt + NK row after the stay).
-   A day with no row, or with a Kalt + NK row, covers 0 € (a stay with no rent row counts 0 €, as before).
+   A day with a Kalt + NK row covers 0 €. A day before the stay's first row covers what Controlling counts for it
+   (scPnkLegacy · main counted the first row's "davon NK" there) · a stay with no rent row counts 0 €, as before.
    t.pnkMon = the € covered in each month (scVzMonths) · t.pnk = the month average, so pnk × months = what is covered
    (one row for the whole stay: its "davon NK", as before) */
 function scPnkMonths(t, from, to) {
   const rows = (window._src.rentP || []).filter(r => r.app === 'casa' && String(r.tenant_id) === String(t.tenantId))
     .sort((a, b) => String(b.valid_from).localeCompare(String(a.valid_from)));
-  const vAt = d => { const r = rows.find(x => String(x.valid_from || '').slice(0, 10) <= d); return r && r.mode === 'pauschal' ? Number(r.nebenkosten) || 0 : 0; };
+  let leg = null;
+  const vAt = d => { const r = rows.find(x => String(x.valid_from || '').slice(0, 10) <= d); return !r ? (rows.length ? (leg = leg || scPnkLegacy(t))(d) : 0) : r.mode === 'pauschal' ? Number(r.nebenkosten) || 0 : 0; };
   const cuts = [...new Set(rows.map(r => String(r.valid_from || '').slice(0, 10)))].filter(d => d > from && d <= to).sort();
   const out = {}, vals = new Set();
   let months = 0;
@@ -214,6 +216,17 @@ function scPnkMonths(t, from, to) {
     a = NkCasa.addDays(b, 1);
   }
   return { mon: out, pnk: !vals.size ? 0 : vals.size === 1 ? [...vals][0] : Object.values(out).reduce((x, y) => x + y, 0) / months };
+}
+/* K1 (casa-calc-1): day → the "davon NK" of a Pauschal day before the stay's first rent row, exactly as Controlling counts
+   that day (ctlPauschalNkCovered → _cxRentDay without a row: the tenant record by the room's rule) · not found → 0 € */
+function scPnkLegacy(t) {
+  const p = typeof ctlProp === 'function' && typeof _cxRentDay === 'function' ? ctlProp(CASA_PROP_ID) : null;
+  for (const u of (p ? ctlUnitsFor(p.id) : [])) {
+    const link = ctlUnitLink(u, p); if (!link || link.type !== 'casa_room') continue;
+    const all = _cxTenancies(link), w = all.find(x => x.id === String(t.tenantId)), memo = new Map();
+    if (w && w.from) return d => { const rd = _cxRentDay(link, w, u, Number(d.slice(0, 4)), Number(d.slice(5, 7)), d, all, memo); return rd.mode === 'pauschal' ? Number(rd.nk) || 0 : 0; };
+  }
+  return () => 0;
 }
 function scPauschalNk(input) {
   const P = input.period || {}, F = input.fullPeriod || P;
@@ -535,8 +548,13 @@ function scModel(y) {
     const kAvail = t.mode === 'pauschal' ? 0 : scEinbehalt(t.tenantId, t.from);   // B20: Kaution kept for this NK
     const kau = kAvail > 0 ? { amount: kAvail } : null;
     // K1 (C8): a letter not sent yet always offsets the held part (no choice any more · an old draft's way is ignored) ·
-    // a sent letter keeps the way it was sent with
-    const einbehalt = kAvail > 0 && (!(st && st.res) || st.res.via === 'kaution') ? kAvail : 0;
+    // a sent letter keeps the way it was sent with · C5: only a result dated on/after the day the Kaution was settled
+    // takes it (an older NK sent 'via Kaution' keeps its own amount, and the held part stays for the next NK)
+    const kr = kAvail > 0 && SC.kaution ? SC.kaution[String(t.tenantId)] : null, since = kr && kr.settled_at ? scD(kr.settled_at) : '';
+    const einbehalt = kAvail > 0 && (!(st && st.res) || (st.res.via === 'kaution' && (!since || scD(st.res.date) >= since))) ? kAvail : 0;
+    // K1 (C11): a balanced result with a held part waits until that part went back ("Paid back" · nothing is booked)
+    if (st && st.res && st.res.via === 'kaution' && (!st.res.amount || !st.res.dir) && !src.extra)
+      st = Object.assign({}, st, { k: einbehalt > 0 && !_stConfirmed(it.r) ? 'verschickt' : 'erledigt' });
     const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
     const movedOut = t.to < input.period.to || !!(tr && tr.mietende && scD(tr.mietende) < today);
@@ -717,11 +735,12 @@ function scSay(t) {
     if (t.skipped) return ['', 'skipped · tap to undo'];
     const r = t.st.res, b = t.st.booking;
     if (!r) return ['', 'settled'];
-    const kb = b && r.via === 'kaution' ? scKau(t, r.dir * r.amount) : null;
+    const kb = r.via === 'kaution' && (b || !r.dir || !r.amount) ? scKau(t, r.dir * r.amount) : null;
     if (kb) {                                                // K1 (C11): what was kept of the Kaution · what really moved
-      const B = cxR((Number(b.direction) === 1 ? 1 : -1) * (Number(b.amount) || 0)), x = cxR(Math.abs(B - kb.E));
-      if (kb.T < 0) return [B > 0.004 ? 'pos' : B < -0.004 ? 'neg' : '', (B > 0.004 ? 'kept ' + scE(B) + ' of the Kaution · ' : '') + 'paid back ' + scE(x)];
-      return [B > 0.004 ? 'pos' : '', 'kept ' + scE(kb.E) + ' of the Kaution' + (kb.T > 0.004 ? ' · received ' + scE(x) : '')];
+      if (!b) return ['', 'paid back ' + scE(kb.E)];         // balanced: the held part went back, nothing booked
+      const B = scKauBk(b), x = scKauX(t, kb, b), T = Math.abs(kb.T), kept = cxR(Math.max(0, Math.min(kb.E, B)));
+      const moved = T >= 0.005 || x >= 0.005 ? (kb.T < -0.004 ? 'paid back ' : 'received ') + scE(x) + (Math.abs(x - T) >= 0.005 ? ' (instead of ' + scE(T) + ')' : '') : '';
+      return [B > 0.004 ? 'pos' : B < -0.004 ? 'neg' : '', [kept > 0.004 ? 'kept ' + scE(kept) + ' of the Kaution' : '', moved].filter(Boolean).join(' · ')];
     }
     if (b && Number(b.amount) < 0.005) return ['', r.dir > 0 ? 'let go ' + scE(r.amount) : 'kept ' + scE(r.amount)];
     if (b) return [r.dir > 0 ? 'pos' : 'neg', (r.dir > 0 ? 'paid you ' : 'returned ') + scE(b.amount)];
@@ -2080,9 +2099,9 @@ function scTenView(M, m) {
   // K1 (C11): with a Kaution part held for this NK the step names the real bank transfer T = result − held part
   // (> 0 the tenant transfers the rest · < 0 you pay back) — the amount typed there is that transfer
   const kt = via === 'kaution' ? scKau(t, saldo) : null;
-  if (hasMoney) {
+  if (hasMoney || kt) {                                         // balanced with a held part: it goes back by transfer ("Paid back" books nothing)
     const bk = t.st && t.st.booking;
-    const amtF = via === 'zahlung' || (via === 'kaution' && (!kt || Math.abs(kt.T) >= 0.005));   // nothing moves (T = 0) → no amount
+    const amtF = hasMoney && (via === 'zahlung' || (via === 'kaution' && (!kt || Math.abs(kt.T) >= 0.005)));   // nothing moves (T = 0) or nothing booked (balanced) → no amount
     const payBox = sent && !done && !t.extra ? '<div class="mx-pay">' +
       '<label class="mx-f"><span>On</span><input type="date" data-scpay="date" ' + kAttr + ' value="' + stEsc(bk ? scD(bk.invoice_date) : (t.it && scD(t.it.r.paid_date)) || cxToday()) + '"/></label>' +
       (amtF ? '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scpay="amt" ' + kAttr + ' value="' + stEsc(cxE2(kt ? scKauX(t, kt, bk) : bk ? cxR(bk.amount) : res.amount)) + '"/><em>€</em></span></label>' : '') + '</div>' : '';
@@ -2091,8 +2110,6 @@ function scTenView(M, m) {
       sub: done ? stEsc(scSay(t)[1]) : sent ? stEsc(kSub || (saldo > 0 ? first + ' pays you ' : first + ' gets back ') + scE(Math.abs(saldo)) + ' · ' + how[via]) : 'after the letter',
       undo: done ? '<button type="button" class="tp-undo" data-sc="setUndo" ' + kAttr + '>undo</button>' : '',
       body: sent && !done ? payBox + '<div class="tp-acts">' + stTpBtn('data-sc="payOn" ' + kAttr, 'check', (kt ? kt.T >= 0 : saldo > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
-  } else if (kt) {                                             // balanced: the held part goes back by transfer (nothing counts)
-    s2 = { n: 2, state: sent ? 'done' : 'wait', title: 'Money', sub: sent ? stEsc('You pay back ' + scE(kt.E)) : 'after the letter', undo: '', body: '' };
   }
   // ── calculation · one right-hand column for every amount
   const q = M.quota || {}, vzOpen = SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz';
@@ -2170,7 +2187,8 @@ function scKau(t, saldo) {
   return E > 0 ? { E, T: cxR((Number(saldo) || 0) - E) } : null;
 }
 const scKauB = (kt, x) => cxR(kt.E + (kt.T < 0 ? -1 : 1) * (Number(x) || 0));                 // transfer x → the booking (signed)
-const scKauX = (t, kt, bk) => bk ? cxR(Math.abs((Number(bk.direction) === 1 ? 1 : -1) * (Number(bk.amount) || 0) - kt.E)) : Math.abs(kt.T);   // the transfer shown
+const scKauBk = b => cxR((Number(b.direction) === 1 ? 1 : -1) * (Number(b.amount) || 0));      // a booking, signed
+const scKauX = (t, kt, bk) => bk ? cxR(Math.max(0, (kt.T < 0 ? -1 : 1) * (scKauBk(bk) - kt.E))) : Math.abs(kt.T);   // the transfer (typed · booked: back from it)
 /* D39 (bug 29): the NK years by the Casa period ("beginnt am"), not by the calendar — a year is the period that
    ENDS in it (scPeriod): maxY = the running period (the last one the arrows reach), lastEnded = the one before it
    (the one that is settled now). With a 01.01 start this is this year and last year, as before. */
@@ -2242,19 +2260,21 @@ async function scSetAmount(key, raw, btn, when) {
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
-  let amt = cxR(Math.abs(parsed));
-  // K1 (C11): offset with the held Kaution part — what you typed is the real transfer; Controlling books ONE line in the
-  // result's direction (never below 0), the held part ± that transfer (+200 / +450 / −50 when it moved in full), in the
-  // month it moved · 'kaution' stays (the same rule as Rentals)
+  let amt = cxR(Math.abs(parsed)), dir = res.dir;
+  // K1 (C11 · R2): offset with the held Kaution part — what you typed is the real transfer; Controlling books ONE line:
+  // the held part + what the tenant transferred − what you paid back, in that sign (> 0 income · < 0 expense), in the
+  // month it moved: +200 / +450 / −50 when it moved in full · only 100 of 150 → +400 · 200 of 350 back → +100 ·
+  // 'kaution' stays (the same rule as Rentals)
   const kt = res.via === 'kaution' ? scKau(t, res.dir * res.amount) : null;
-  if (kt) amt = cxR(Math.max(0, res.dir * scKauB(kt, amt)));
+  if (kt) { const B = scKauB(kt, amt); amt = cxR(Math.abs(B)); if (amt) dir = B > 0 ? 1 : -1; }
+  const rs = dir === res.dir ? res : Object.assign({}, res, { dir });   // your own entry in Controlling: in the booking's direction
   let date = scD(when) || cxToday(), linkedManual = null, took = null;   // Oct 2026: the day the money moved (default today)
   if (btn) btn.disabled = true;
   try {
     // K1 (C6): a Kaution result is never turned into a bank transfer (only an old 'with the rent' from the settle view)
     if (res.via !== 'zahlung' && res.via !== 'kaution') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
     let mine = null;
-    if (b && amt && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(CASA_PROP_ID, res, amt, false))) {
+    if (b && amt && (Number(b.direction) === 1 ? 1 : -1) === dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(CASA_PROP_ID, rs, amt, false))) {
       // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
       // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
       await ctlDeleteOneTime(b.id);
@@ -2264,15 +2284,15 @@ async function scSetAmount(key, raw, btn, when) {
       // Nov 2026 fix: the result changed direction since it was paid (Nachzahlung ↔ Guthaben) → its booking turns too
       // (it kept the old direction: Controlling counted the money the wrong way and showed it on both sides)
       const f = { amount: amt, invoice_date: date };
-      if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben') });
+      if ((Number(b.direction) === 1 ? 1 : -1) !== dir) Object.assign(f, { direction: dir, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben') });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (amt && (took = await _stTakeOwnEntry(CASA_PROP_ID, res, amt, false, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking (C3c: other years too)
+    } else if (amt && (took = await _stTakeOwnEntry(CASA_PROP_ID, rs, amt, false, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking (C3c: other years too)
       linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
       if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
       const d = await ctlAbrAdd({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
-                                  amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+                                  amount: amt, kind: 'NK-Abrechnung', direction: dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
       date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(t.line, res.via === 'kaution' ? 'kaution' : 'zahlung', date);
@@ -2307,8 +2327,10 @@ async function scSetUndo(key) {
   try {
     if (t.skipped) await _stUpsertSettlement(t.line, { status: 'offen' });
     else {
+      // K1: the line first, then the booking — when the 2nd write fails, the booking left over still counts (and the line is
+      // confirmed again), never a Kaution result settled without its booking (C6: the way stays as sent · the held part stays used)
+      await _stUpsertSettlement(t.line, { status: 'verschickt' });
       if (b) await _stUndoBooking(b);                                // own booking removed · your own entry only unlinked
-      await _stUpsertSettlement(t.line, { status: 'verschickt' });  // K1 (C6): the way stays as sent (Kaution · rent) — the held part stays used
     }
   } catch (e) { stSay('Could not undo — ' + (e.message || e)); return; }
   SC.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
@@ -2636,7 +2658,9 @@ async function scClick(e) {
     if (t.extra) { const y = SC.year, m0 = SC.modal, s2 = scSet(t.key); if (s2.sent) s2.sent.settled = cxToday(); try { await scSaveRec(scRecEnsure(y)); } catch (err) {} return scSaveEnd(y, t.key, m0); }
     const res = t.st && t.st.res; if (!res) { stSay('Send the letter first'); return; }
     const date = scD(scPayVal('date')) || cxToday();
-    if (res.via && res.via !== 'zahlung' && res.via !== 'kaution') {   // K1: an old 'with the rent' result is only confirmed
+    // K1: an old 'with the rent' result is only confirmed · so is a balanced one with a held part (it went back by transfer —
+    // the tenant's Kaution, never booked)
+    if (res.via && res.via !== 'zahlung' && (res.via !== 'kaution' || !res.amount || !res.dir)) {
       b.disabled = true;
       try { await _stConfirmSettled(t.line, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
       ctlSettlementInvalidate(); stSay('Settled'); const m0 = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m0; return scRenderModal();
