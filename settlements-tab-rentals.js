@@ -253,15 +253,16 @@ function _srKeyVals(rec, pos, apt) {
 }
 /* Amount of one position for the whole Wohnung (override › Gesamtkosten × Anteil)
    K1: a credit keeps its minus (a Versorger-Guthaben marked for the NK, a refund typed −80 €) — it lowers the costs;
-   only a kind that is always a credit (CO₂ Anteil Vermieter) is made negative (was: every amount made positive) */
-const _srSgn = (pos, v) => _srKind(pos.kind).neg ? -Math.abs(v) : v;
-function _srUnitAmt(rec, pos, apt) {
+   only a kind that is always a credit (CO₂ Anteil Vermieter) is made negative (was: every amount made positive).
+   old: a tenant letter sent before this rule (_srOldCalc) keeps the old one, so it reopens as it went out */
+const _srSgn = (pos, v, old) => _srKind(pos.kind).neg ? -Math.abs(v) : old ? Math.abs(v) : v;
+function _srUnitAmt(rec, pos, apt, old) {
   const ov = _srNum(pos.amount);
-  if (ov !== null) return cxR(_srSgn(pos, ov));
+  if (ov !== null) return cxR(_srSgn(pos, ov, old));
   if (!_srShareKey(pos.key)) return null;
   const kv = _srKeyVals(rec, pos, apt), tot = _srNum(pos.total);
   if (tot === null || !kv || !(kv.t > 0) || kv.u === null) return null;
-  return cxR(_srSgn(pos, tot) * kv.u / kv.t);
+  return cxR(_srSgn(pos, tot, old) * kv.u / kv.t);
 }
 function _srKeyText(rec, pos, apt) {
   const kv = _srKeyVals(rec, pos, apt);
@@ -298,8 +299,8 @@ function _srGewMark(c, rec) {
   return _srHzMark(c, rec);
 }
 /* K1 (R5, Nov 2026): Heizkosten / Warmwasser are split as the Heizkostenverordnung allows and as is best for you — 30 %
-   Grundkosten by days (the empty days carry only these, by law), 70 % by consumption among the stays only: by the
-   Zählerstände when they are entered, else by the days each one lived there (_srConsSplit). From the first Abrechnung with
+   Grundkosten by days, 70 % by consumption: by the Zählerstände when they are entered, else by days over the whole period
+   — the empty days keep their part, by law (HeizkostenV § 9b: no Zwischenablesung → by time) (_srConsSplit). From the first Abrechnung with
    no tenant letter out yet on (was: only for a cost saved with the key 'Verbrauch', which no screen sets — the costs were
    split by days, the Leerstand carried its consumption share). 'per tenant' (Zwischenablesung) still wins. An Abrechnung
    with a letter out stays as it went out: the choice is kept with the record (keys.hz) when its first letter goes out.
@@ -334,6 +335,10 @@ function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   return { u: cxR(u), nu: cxR(nu), missing, n, ok };
 }
 
+/* A tenant letter sent before the K1 rules (credits keep their minus, the Vorauszahlungen of the Abrechnung's own period)
+   keeps the rules it went out with — every amount positive, the Vorauszahlungen of the tenant's line — so its window and
+   "Open letter (PDF)" show what the tenant got. A letter sent with the K1 rules is marked (ts.k1, _srSendNow). */
+const _srOldCalc = (c, it, ts) => !ts.k1 && !!it.r && (['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status) || !!_srLine(c, it).state.res);
 /* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct } */
 function _srCalc(c, it, rec) {
   const r = it.r, per = _srPer(c, rec);
@@ -341,16 +346,16 @@ function _srCalc(c, it, rec) {
   const to = _srD(r.period_to) < per.to ? _srD(r.period_to) : per.to;
   const perDays = _srDays(per.from, per.to), tDays = Math.max(0, _srDays(from, to));
   const t = _srTenantOf(r), apt = _srAptOf(c, t);
-  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {};
+  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = _srOldCalc(c, it, ts);
   const lines = [], hz = _srHz(c, rec); let sum = 0, missing = 0, direct = false;
   for (const pos of (rec && rec.positions) || []) {
     if (!_srInNk(pos, rec)) continue;
-    const unit = _srUnitAmt(rec, pos, apt);
+    const unit = _srUnitAmt(rec, pos, apt, old);
     if (unit === null && pos.split !== 'mieter') continue;          // no amount typed yet → not part of the NK
     let amt = null, cons = null;
     if (pos.split === 'mieter') {
       const d = _srNum(ts.direct && ts.direct[pos.id]);
-      if (d !== null) { amt = cxR(_srSgn(pos, d)); direct = true; } else missing++;
+      if (d !== null) { amt = cxR(_srSgn(pos, d, old)); direct = true; } else missing++;
     } else if (unit !== null && _srIsCons(pos, hz)) {
       const sp = _srConsSplit(c, rec, pos, unit), id = String(it.r.id);
       if (sp.g[id] !== undefined) { amt = cxR(sp.g[id] + (sp.v[id] || 0)); cons = sp.active ? { text: _srConsText(sp, id, true), en: _srConsText(sp, id, false), how: sp.how } : null; }
@@ -362,7 +367,7 @@ function _srCalc(c, it, rec) {
   }
   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
   const since = _srBought(c.p);
-  const rf = from, rt = to;                     // K1: the Vorauszahlungen of this Abrechnung's own period (was: the whole standard year)
+  const rf = old ? _srD(r.period_from) : from, rt = old ? _srD(r.period_to) : to;   // K1: the Vorauszahlungen of this Abrechnung's own period (was: the whole standard year)
   let vzSoll, vzIst, pre = null, vzPartialFlag = false, mlist = [];
   if (since && since > rf && since <= rt) {
     // year of purchase: months before it → contract Soll (the seller collected them), after it → what Controlling shows
@@ -390,15 +395,15 @@ function _srCalc(c, it, rec) {
   const einbehalt = kauAvail;                                       // K1: always offset — no choice (an old draft's 'via' is not read)
   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
-           tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
+           tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt, old };
 }
 /* ── Consumption costs (Oct 2026) ─────────────────────────────
    A cost with key "Verbrauch" (Heizung, Warmwasser, metered Wasser) is split in two:
      Grundkosten  pos.gk % (default 30 for Heizung / Warmwasser by the Heizkostenverordnung, else 0) → by days,
                   like every fixed cost (the empty days' part stays with you, by law)
-     Verbrauch    the rest → only among the stays that lived there, never the Leerstand:
-                  by Zählerstand when every reading is there (Übergabe Einzug / Auszug + start / end typed
-                  in the NK window), else by the days lived.
+     Verbrauch    the rest → by Zählerstand when every reading is there (Übergabe Einzug / Auszug + start / end typed
+                  in the NK window; the Leerstand keeps what was measured for it), else by days over the whole period
+                  like the Grundkosten — the empty days stay with you (HeizkostenV § 9b; was: only among the stays).
    One stay for the whole period → the same amounts as before. "per tenant" (Zwischenablesung) still wins. */
 const SR_METER_RX = { heizung: /^(heizung|w(ä|ae)rme)/i, warmwasser: /^warmwasser/i, wasser: /^(kaltwasser|warmwasser)/i, abwasser: /^(kaltwasser|warmwasser)/i };
 const _srIsCons = (pos, hz) => !!pos && pos.split !== 'mieter' && (pos.key === 'verbrauch' || (!!hz && _srHeat(pos)));   // hz: _srHz
@@ -440,7 +445,7 @@ function _srConsSplit(c, rec, pos, U) {
   const leerG = G * Math.max(0, perDays - occ) / perDays;
   const rx = SR_METER_RX[pos.kind], missing = [];
   const M = rx && stays.length ? _srMetersFor(c, rec, rx, stays) : [];
-  let how = 'days', total = 0, leerV = occ > 0 ? 0 : V;
+  let how = 'days', total = 0, leerV = V * Math.max(0, perDays - occ) / perDays;   // not measured: the empty days' part by time
   if (M.length) {
     const K = (rec && rec.keys && rec.keys.meters) || {};
     const at = (x, edge) => {                       // sum over the meters at a stay's start or end
@@ -466,7 +471,7 @@ function _srConsSplit(c, rec, pos, U) {
       leerV = V * Math.max(0, vac) / total;
     }
   }
-  if (how === 'days') stays.forEach(x => { v[x.id] = occ > 0 ? V * x.days / occ : 0; });
+  if (how === 'days') stays.forEach(x => { v[x.id] = V * x.days / Math.max(perDays, occ); });
   return { g, v, gk, how, total, units, days, occ, perDays, leerG, leerV, missing: [...new Set(missing)], meters: M,
            active: stays.length > 1 || occ < perDays };
 }
@@ -476,7 +481,7 @@ function _srConsText(sp, id, de) {
   const gkT = sp.gk ? (de ? 'Grundkosten ' + sp.gk + ' % nach Tagen · ' : 'Grundkosten ' + sp.gk + ' % by days · ') : '';
   return sp.how === 'meter'
     ? gkT + (de ? 'Verbrauch ' + _srN(sp.units[id]) + ' von ' + _srN(sp.total) + ' lt. Zählerstand' : 'consumption ' + _srN(sp.units[id]) + ' of ' + _srN(sp.total) + ' by meter')
-    : gkT + (de ? 'Verbrauch nach bewohnten Tagen ' + (sp.days[id] || 0) + ' von ' + sp.occ : 'consumption by days lived ' + (sp.days[id] || 0) + ' of ' + sp.occ);
+    : gkT + (de ? 'Verbrauch nach bewohnten Tagen ' + (sp.days[id] || 0) + ' von ' + Math.max(sp.perDays, sp.occ) : 'consumption by days lived ' + (sp.days[id] || 0) + ' of ' + Math.max(sp.perDays, sp.occ));
 }
 
 /* ── What stays with you (Oct 2026) ─────────────────────────
@@ -494,10 +499,10 @@ function _srSpanShare(c, rec, from, to, apt, stayId) {
     if (!_srInNk(pos, rec)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null) { if (pos.split === 'mieter') missing++; continue; }   // typed per tenant only: unknown here
-    if (_srIsCons(pos, hz)) {                                                 // Grundkosten by days · Verbrauch only where someone lived
-      const sp = _srConsSplit(c, rec, pos, unit);
-      if (stayId) { fixed += sp.g[stayId] || 0; cons += sp.v[stayId] || 0; }
-      else { fixed += sp.leerG * days / leerDays; cons += sp.leerV * days / leerDays; }
+    if (_srIsCons(pos, hz)) {                                                 // Grundkosten by days · Verbrauch as measured, else by days
+      const sp = _srConsSplit(c, rec, pos, unit), f = stayId ? 1 : days / leerDays;
+      const g = stayId ? sp.g[stayId] || 0 : sp.leerG, v = stayId ? sp.v[stayId] || 0 : sp.leerV;
+      fixed += g * f; if (sp.how === 'meter') cons += v * f; else fixed += v * f;   // not measured: split by days like the fixed costs
     } else if (pos.split === 'mieter') cons += unit * days / perDays;
     else fixed += unit * days / perDays;
   }
@@ -850,7 +855,7 @@ function _srLetterData(c, it, rec, x, ts) {
   const t = x.t, apt = x.apt || c.apt || {};
   const date = ts.date || cxToday();
   const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
-  const per = x.per || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file)
+  const per = (!x.old && x.per) || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file) — a letter sent before: as it went out
   const sentRes = _srLine(c, it).state.res;                                  // K1: a letter already sent keeps its way
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
@@ -950,6 +955,7 @@ async function _srSendNow(btn, got, key) {
   // K1 (R5): the first letter out keeps how Heizkosten / Warmwasser are split (the other tenants' letters follow it)
   const hzKeep = !(rec.keys && rec.keys.hz !== undefined) && (rec.positions || []).some(_srHeat);
   if (hzKeep) rec.keys = Object.assign({}, rec.keys, { hz: rec._hz });
+  ts.k1 = true;                                              // this letter goes out with the K1 rules (_srOldCalc)
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
@@ -1942,9 +1948,9 @@ function _srConsCard(c, d) {
       ch.map(t => '<small>' + stEsc(t) + '</small>').join('') +
       '<label class="sr-mtr__f"><span>End ' + stDate(per.to) + '</span><input inputmode="decimal" data-srf="mtr" data-m="' + stEsc(m) + '" data-w="end" value="' + stEsc(fv((K[m] || {}).end)) + '"/></label></div>';
   }).join('');
-  return '<section class="srm__card" id="srCons"><div class="srm__ch"><p class="srm__ct">Consumption</p><span class="srm__cs">only among the stays · never the Leerstand</span></div>' + rows +
+  return '<section class="srm__card" id="srCons"><div class="srm__ch"><p class="srm__ct">Consumption</p><span class="srm__cs">the empty days stay with you</span></div>' + rows +
     (M.length ? '<p class="st-hint">Zählerstände: start and end from the HV / heat statement · changes from the Übergaben.</p>' + meters
-              : '<p class="st-hint">No Zählerstände for this flat, so consumption is split by the days lived. For meters: add them on the apartment card and record them in the Übergabe.</p>') + '</section>';
+              : '<p class="st-hint">No Zählerstände for this flat, so consumption is split by days. For meters: add them on the apartment card and record them in the Übergabe.</p>') + '</section>';
 }
 function _srConsStatus(sp, perDays) {
   return sp.how === 'meter' ? 'by Zählerstand · ' + _srN(sp.total) + ' measured' + (sp.gk ? ' · Grundkosten by days' : '')
@@ -2062,7 +2068,10 @@ function _srTenView(c) {
   // With the Kaution the Money step is the real transfer T = NK result − held part (a balanced result: the held part goes back)
   const resVia0 = sent ? (ti.st.res.via || 'zahlung') : via, kau = resVia0 === 'kaution' && x.einbehalt > 0;
   const T = kau ? cxR(v - x.einbehalt) : null;
-  const hasMoney = Math.abs(v) >= 0.005 || kau;
+  // a balanced result sent with a held part that the Kaution card no longer holds (given back there): nothing moves — the
+  // step stays so the line can be settled ('Done', confirmed without a booking) (was: no step, the line stayed 'sent')
+  const kauGone = sent && !settledT && !kau && resVia0 === 'kaution' && Math.abs(v) < 0.005;
+  const hasMoney = Math.abs(v) >= 0.005 || kau || kauGone;
   const pdf = stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
@@ -2074,11 +2083,11 @@ function _srTenView(c) {
     const resVia = resVia0, b = ti.st.booking;
     // K1: with a held part (a balanced result too) the date and the amount of the one real transfer, prefilled
     const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || kau || (resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';
-    const kauSay = !kau ? '' : T < -0.004 ? 'You pay back ' + stEur(-T) : T > 0.004 ? first + ' transfers ' + stEur(T) : 'You keep ' + stEur(x.einbehalt) + ' of the Kaution';
+    const kauSay = kauGone ? 'Nothing held back any more · nothing to transfer' : !kau ? '' : T < -0.004 ? 'You pay back ' + stEur(-T) : T > 0.004 ? first + ' transfers ' + stEur(T) : 'You keep ' + stEur(x.einbehalt) + ' of the Kaution';
     s2 = { n: 2, state: settledT ? 'done' : sent ? 'open' : 'wait', title: 'Money',
-      sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc(kau ? kauSay : (v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
+      sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc(kauSay || (v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
       undo: settledT ? '<button type="button" class="tp-undo" data-sr="setUndo" ' + idAttr + '>undo</button>' : '',
-      body: sent && !settledT ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', (kau ? T >= -0.004 : v > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
+      body: sent && !settledT ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', kauGone ? 'Done' : (kau ? T >= -0.004 : v > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
   }
   // ── calculation · one right-hand column for every amount
   const since = _srBought(c.p);

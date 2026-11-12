@@ -555,10 +555,11 @@ function scModel(y) {
     const ld = st && st.res ? scD(st.res.date) : scD((ts[t.key] || {}).date) || today;
     const einbehalt = kAvail > 0 && (!since || ld >= since) && (!(st && st.res) || st.res.via === 'kaution') ? kAvail : 0;
     // K1 (C11): a balanced result with a held part waits until that part went back ("Paid back": nothing is booked when
-    // all of it went back, else held part − paid back) · done once confirmed or booked
+    // all of it went back, else held part − paid back) · done once confirmed or booked — also when the Kaution card gave
+    // it back meanwhile ("Done" on the Money step), so the stored line is settled too (was: shown settled, stored 'sent')
     if (st && st.res && st.res.via === 'kaution' && (!st.res.amount || !st.res.dir) && !src.extra) {
       const bk = st.booking || (einbehalt > 0 ? ctlAbrBooking(st.res) : null);
-      st = Object.assign({}, st, { booking: bk, k: einbehalt > 0 && !bk && !_stConfirmed(it.r) ? 'verschickt' : 'erledigt' });
+      st = Object.assign({}, st, { booking: bk, k: !bk && !_stConfirmed(it.r) ? 'verschickt' : 'erledigt' });
     }
     const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
@@ -758,7 +759,8 @@ function scSay(t) {
     return [r.dir > 0 ? 'pos' : 'neg', (r.dir > 0 ? 'paid you ' : 'returned ') + scE(r.amount) + how];
   }
   if (t.k === 'sent') {
-    const r = t.st.res;
+    const r = t.st.res, kb = r.via === 'kaution' && (!r.dir || !r.amount) ? scKau(t, 0) : null;
+    if (kb) return ['neg', 'you pay back ' + scE(kb.E) + ' (Kaution)'];   // balanced: the held part still goes back
     const how = t.st.confirm || r.via === 'kaution' ? (r.via === 'miete' ? ' · with the rent' : ' · via Kaution') : '';
     return r.dir > 0 ? ['pos', 'pays you ' + scE(r.amount) + how] : r.dir < 0 ? ['neg', 'gets ' + scE(r.amount) + ' back' + how] : ['', 'balanced'];
   }
@@ -827,8 +829,9 @@ function scSumTen(M) {
   // Nov 2026 · an overview: one line per tenant, grouped by what is next — tap a name to check, send or settle (not here)
   const rows = M.ten.filter(t => t.k !== 'none' && !t.skipped).map(t => {
     const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : t.saldo, c = scAv(t.room), amt = Math.abs(v) >= 0.005 ? Math.abs(v) : 0;
+    const kb = t.k === 'sent' && !amt && t.st.res.via === 'kaution' ? scKau(t, 0) : null;   // balanced, sent: the held part still goes back
     return { av: c, ab: scAbbr(t.room), name: t.name, sub: t.room + ' · ' + stPer(t.from, t.to) + (t.k === 'open' && !M.locked ? ' · preview' : ''),
-             amount: amt, dir: v > 0 ? 1 : -1, chip: amt ? null : ['grey', 'balanced'], k: t.k, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' };
+             amount: kb ? kb.E : amt, dir: kb ? -1 : v > 0 ? 1 : -1, chip: amt || kb ? null : ['grey', 'balanced'], k: t.k, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' };
   });
   // the one action: send the letters (replaces the NK-Abrechnung row and the "letters ready" to-do)
   const nOpen = M.ten.filter(t => t.k === 'open').length;
@@ -2108,17 +2111,20 @@ function scTenView(M, m) {
   // K1 (C11): with a Kaution part held for this NK the step names the real bank transfer T = result − held part
   // (> 0 the tenant transfers the rest · < 0 you pay back) — the amount typed there is that transfer
   const kt = via === 'kaution' ? scKau(t, saldo) : null;
-  if (hasMoney || kt) {                                         // balanced with a held part: it goes back by transfer (the amount paid back)
+  // a balanced result sent with a held part that the Kaution card no longer holds (given back there): nothing moves — the
+  // step stays so the line can be settled ('Done', confirmed without a booking) (was: no step, the line stayed 'sent')
+  const kGone = sent && !done && !kt && via === 'kaution' && Math.abs(saldo) < 0.005;
+  if (hasMoney || kt || kGone) {                                // balanced with a held part: it goes back by transfer (the amount paid back)
     const bk = t.st && t.st.booking;
-    const amtF = via === 'zahlung' || (via === 'kaution' && (!kt || Math.abs(kt.T) >= 0.005));   // nothing moves (T = 0) → no amount
+    const amtF = !kGone && (via === 'zahlung' || (via === 'kaution' && (!kt || Math.abs(kt.T) >= 0.005)));   // nothing moves (T = 0) → no amount
     const payBox = sent && !done && !t.extra ? '<div class="mx-pay">' +
       '<label class="mx-f"><span>On</span><input type="date" data-scpay="date" ' + kAttr + ' value="' + stEsc(bk ? scD(bk.invoice_date) : (t.it && scD(t.it.r.paid_date)) || cxToday()) + '"/></label>' +
       (amtF ? '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scpay="amt" ' + kAttr + ' value="' + stEsc(cxE2(kt ? scKauX(t, kt, bk) : bk ? cxR(bk.amount) : res.amount)) + '"/><em>€</em></span></label>' : '') + '</div>' : '';
-    const kSub = !kt ? null : kt.T < -0.004 ? 'You pay back ' + scE(-kt.T) : kt.T > 0.004 ? first + ' transfers ' + scE(kt.T) : 'You keep ' + scE(kt.E) + ' of the Kaution';
+    const kSub = kGone ? 'Nothing held back any more · nothing to transfer' : !kt ? null : kt.T < -0.004 ? 'You pay back ' + scE(-kt.T) : kt.T > 0.004 ? first + ' transfers ' + scE(kt.T) : 'You keep ' + scE(kt.E) + ' of the Kaution';
     s2 = { n: 2, state: done ? 'done' : sent ? 'open' : 'wait', title: 'Money',
       sub: done ? stEsc(scSay(t)[1]) : sent ? stEsc(kSub || (saldo > 0 ? first + ' pays you ' : first + ' gets back ') + scE(Math.abs(saldo)) + ' · ' + how[via]) : 'after the letter',
       undo: done ? '<button type="button" class="tp-undo" data-sc="setUndo" ' + kAttr + '>undo</button>' : '',
-      body: sent && !done ? payBox + '<div class="tp-acts">' + stTpBtn('data-sc="payOn" ' + kAttr, 'check', (kt ? kt.T >= 0 : saldo > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
+      body: sent && !done ? payBox + '<div class="tp-acts">' + stTpBtn('data-sc="payOn" ' + kAttr, 'check', kGone ? 'Done' : (kt ? kt.T >= 0 : saldo > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
   }
   // ── calculation · one right-hand column for every amount
   const q = M.quota || {}, vzOpen = SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz';
@@ -2133,7 +2139,7 @@ function scTenView(M, m) {
     stTpRow({ title: '− Vorauszahlungen', sub: stEsc(vzSrc) + ' · per month', value: scE(t.vz), act: 'data-sc="pill" data-p="vz" ' + kAttr, icon: vzOpen ? 'chevron-up' : 'chevron-down' }) + vzEd +
     scTbTenRows(t) +                                                                   // D39: = Teil A · + B1 · + B2 (only with Teil B)
     stTpRow({ title: '= ' + (saldo > 0 ? first + ' pays you' : saldo < 0 ? first + ' gets back' : 'all even'), value: scE(Math.abs(saldo)), tone: saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : '', tot: true }) +
-    (kt ? stTpRow({ title: 'Kaution held back', sub: stEsc((kt.T <= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + scE(Math.abs(kt.T))), value: scE(kt.E) }) : '');   // K1 (C11): as in Rentals
+    (kt ? stTpRow({ title: 'Kaution held back', sub: stEsc(scKauRowTxt(t, kt, done)), value: scE(kt.E) }) : '');   // K1 (C11): as in Rentals
   // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (M.sendable && t.k === 'open') {
@@ -2196,6 +2202,14 @@ function scKau(t, saldo) {
   return E > 0 ? { E, T: cxR((Number(saldo) || 0) - E) } : null;
 }
 const scKauB = (kt, x) => cxR(kt.E + (kt.T < 0 ? -1 : 1) * (Number(x) || 0));                 // transfer x → the booking (signed)
+/* The 'Kaution held back' row of the Calculation: the transfer the letter names (none: 'nothing to transfer'), once settled
+   what really moved — back from the booking as the Money step (scSay) says it (balanced, no booking: the held part went back) */
+function scKauRowTxt(t, kt, done) {
+  const r = t.st && t.st.res, bk = t.st && t.st.booking, moved = done && !!r && (!!bk || !r.dir || !r.amount);
+  const tr = moved ? (bk ? cxR(scKauBk(bk) - kt.E) : -kt.E) : kt.T;
+  if (Math.abs(tr) < 0.005) return moved ? 'nothing transferred' : 'nothing to transfer';
+  return moved ? (tr > 0 ? 'received ' : 'paid back ') + scE(Math.abs(tr)) : (tr < 0 ? 'pay back to the tenant ' : 'tenant still pays ') + scE(Math.abs(tr));
+}
 const scKauBk = b => cxR((Number(b.direction) === 1 ? 1 : -1) * (Number(b.amount) || 0));      // a booking, signed
 const scKauX = (t, kt, bk) => bk ? cxR(Math.max(0, (kt.T < 0 ? -1 : 1) * (scKauBk(bk) - kt.E))) : Math.abs(kt.T);   // the Amount prefill (≥ 0, in the letter's direction · booked: back from it) — the done text (scSay) takes the transfer signed
 /* D39 (bug 29): the NK years by the Casa period ("beginnt am"), not by the calendar — a year is the period that
