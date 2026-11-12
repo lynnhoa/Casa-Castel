@@ -1299,6 +1299,7 @@ function _srFindBooking(c, res, rec) {
   const all = (window._ctrl.one_time || []).concat(window._src.abrPay || []);
   return all.find(o => Number(o.property_id) === Number(c.p.id) && Math.abs(Math.abs(Number(o.amount)) - res.amount) < 0.005 &&
     _srD(o.invoice_date) >= from && !/^abr:/.test(String(o.source_ref || '')) &&
+    !_stIsKauLine(o) &&                                      // CARD-2: a damage line kept from a Kaution is no Hausgeld payment
     _stBLOff(o) !== 'abr:' + res.id &&                       // C3: an entry you unlinked from this result stays unlinked
     (o.direction === undefined || o.direction === null || Number(o.direction) === res.dir)) || null;
 }

@@ -2155,7 +2155,8 @@ function scTenView(M, m) {
         '<span class="tp-r__i"><i class="ti ti-chevron-' + (lOpen ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
       (lOpen ? '<div class="tp-form">' +
         '<label class="tp-f"><span>Address' + (t.movedOut ? ' · new address after moving out' : '') + '</span><textarea class="st-in sc-ta" rows="2" data-sc-in="addr" ' + kAttr + '>' + stEsc(addr) + '</textarea></label>' +
-        (saldo < 0 || t.einbehalt > 0 ? '<label class="tp-f"><span>' + stEsc(first) + '’s IBAN · for the Guthaben</span><input class="st-in" data-sc-in="iban" ' + kAttr + ' value="' + stEsc(s.iban || '') + '" placeholder="DE…"/></label>' : '') +
+        // F4: as in Rentals — only when money goes back to the tenant (a Guthaben, or less than the held part); 'money back' with a held part
+        (cxR((t.einbehalt || 0) - saldo) > 0 ? '<label class="tp-f"><span>' + stEsc(first) + '’s IBAN · for the ' + (t.einbehalt > 0 ? 'money back' : 'Guthaben') + '</span><input class="st-in" data-sc-in="iban" ' + kAttr + ' value="' + stEsc(s.iban || '') + '" placeholder="DE…"/></label>' : '') +
         '<div class="tp-g2"><label class="tp-f"><span>Pay within (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" ' + kAttr + ' value="' + stEsc(s.days ?? 30) + '"/></label>' +
           '<div class="tp-f"><span>Belegliste</span><button class="sc-pill' + (list ? ' is-ok' : '') + '" data-sc="tg" data-f="list" ' + kAttr + ' aria-pressed="' + list + '"><i class="ti ti-' + (list ? 'check' : 'list') + '" aria-hidden="true"></i>' + (list ? 'on' : 'off') + '</button></div></div>' +
         scToggle('former', t.key, s.former !== undefined ? !!s.former : t.movedOut, 'Former tenant', 'the letter says "das ehemalige Zimmer"', true) +
