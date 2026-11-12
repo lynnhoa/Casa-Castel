@@ -1,0 +1,111 @@
+From 8442d1d4649d93157725bb1b4498a96152bda9bc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 13:05:50 +0000
+Subject: [PATCH 2/2] Settlements: sent Rentals letters keep their rules after
+ a failed save; older own NK drafts follow the tenant's days
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Rentals: a letter sent with the new rules reopens with them even when
+  the save of its letter settings failed during "Mark as sent" (the stored
+  result decides), and a later save from an older copy keeps that mark.
+  Before, the window and PDF could show 560 € although 680 € was sent.
+- Own NK (Dashboard): a draft saved before the update and not sent yet
+  counts its 'Whole' costs by days when its tenant lived only part of the
+  period (Eva: Guthaben 152,33 € instead of Nachzahlung 1.120 €). A
+  'Whole' chosen by hand from now on is kept; sent letters stay as sent.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019KpxJnvkjZGuK7VLMUYpHY
+---
+ settlements-tab-dashboard.js | 13 +++++++++++--
+ settlements-tab-rentals.js   | 20 +++++++++++++++++---
+ 2 files changed, 28 insertions(+), 5 deletions(-)
+
+diff --git a/settlements-tab-dashboard.js b/settlements-tab-dashboard.js
+index a57abec..528cdd1 100644
+--- a/settlements-tab-dashboard.js
++++ b/settlements-tab-dashboard.js
+@@ -46,7 +46,7 @@ async function _sdLoadNow() {
+     if (typeof SC !== 'undefined' && !SC.loaded && typeof scLoadRows === 'function') tasks.push(scLoadRows());
+     tasks.push((async () => {
+       const r = await _ctlSupa.from(SD_TABLE).select('*').order('updated_at', { ascending: false });
+-      if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = r.data || []; }
++      if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = (r.data || []).map(sdSplitOld); }
+     })());
+     await Promise.all(tasks);
+     const y = SD.year || sdYearBounds().def, rec = typeof scRec === 'function' ? scRec(y) : null;
+@@ -521,6 +521,15 @@ function sdPickTenant(d, t) {
+   sdTenantPeriod(d, t);
+   sdSplitFollow(d, was);
+ }
++/* K1 (tracking-dash-1): a draft saved before this rule kept 'Whole' positions typed before its tenant was picked, though he
++   lived only part of the period (Eva: Nachzahlung 1.120 € instead of Guthaben 152,33 €; the letter said "nach Tagen
++   anteilig" all the same). Read again, a draft not sent yet follows the rule as if the tenant were picked now: its 'Whole'
++   positions count by days. A 'Whole' chosen by hand since this rule is marked (l.hand, data-sd="split") and stays ·
++   a sent one stays as it went out */
++function sdSplitOld(d) {
++  if (d && d.status !== 'sent' && (d.use_from || d.use_to)) (d.lines || []).forEach(l => { if (l && l.split === 'full' && !l.hand) l.split = 'days'; });
++  return d;
++}
+ 
+ /* ── Inputs ── */
+ function sdInput(e) {
+@@ -796,7 +805,7 @@ async function sdClick(e) {
+   }
+   if (a === 'delLine') { d.lines.splice(Number(b.dataset.i), 1); SD.open = null; SD.dirty = true; return sdRenderModal(); }
+   if (a === 'openLine') { const i = Number(b.dataset.i); SD.open = SD.open === i ? null : i; return sdRenderModal(); }
+-  if (a === 'split') { const l = d.lines[Number(b.dataset.i)]; if (l) { l.split = b.dataset.v; if (l.split === 'full' || l.split === 'days') l.value = null; } SD.dirty = true; return sdRenderModal(); }
++  if (a === 'split') { const l = d.lines[Number(b.dataset.i)]; if (l) { l.split = b.dataset.v; if (l.split === 'full' || l.split === 'days') l.value = null; if (l.split === 'full') l.hand = true; else delete l.hand; } SD.dirty = true; return sdRenderModal(); }
+   if (a === 'pickTen') { const t = sdTenants(d).find(z => String(z.id) === String(b.dataset.id)); if (t) { sdPickTenant(d, t); SD.dirty = true; } return sdRenderModal(); }
+   if (a === 'pyear') { const same = sdSameVz(d); d.period_from = b.dataset.v + '-01-01'; d.period_to = b.dataset.v + '-12-31'; SD.customPeriod = false; sdAfterPeriod(d, same); SD.dirty = true; return sdRenderModal(); }
+   if (a === 'customPeriod') { SD.customPeriod = true; return sdRenderModal(); }
+diff --git a/settlements-tab-rentals.js b/settlements-tab-rentals.js
+index 79f6706..615d7dc 100644
+--- a/settlements-tab-rentals.js
++++ b/settlements-tab-rentals.js
+@@ -154,8 +154,11 @@ function srSaveRow(rec, from, only) {
+   const p = Promise.resolve(SR._wq[k]).catch(() => {}).then(async () => {
+     if (!rec.id && from && from.id) rec.id = from.id;
+     if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
++    const cur = rec.id && SR.rows.find(x => x.id === rec.id), k1 = cur && cur !== rec ? Object.keys(cur.tenants || {}).filter(t => cur.tenants[t] && cur.tenants[t].k1) : [];
+     const now = only && rec.id && SR.rows.find(x => x.id === rec.id);
+     if (now && now !== rec) { only.forEach(f => { if (f === 'keys.gv') now.keys = Object.assign({}, now.keys, { gv: rec.keys.gv }); else now[f] = rec[f]; }); rec = now; }
++    // K1: a save from a copy made before a letter went out keeps that letter's mark (ts.k1, _srOldCalc) — was: lost
++    for (const t of k1) if (!(rec.tenants && rec.tenants[t] && rec.tenants[t].k1)) rec.tenants = Object.assign({}, rec.tenants, { [t]: Object.assign({}, rec.tenants && rec.tenants[t], { k1: true }) });
+     const data = await _srSaveRowNow(rec);
+     if (from && !from.id) from.id = data.id;
+     return data;
+@@ -318,14 +321,25 @@ function _srRecSummary(rec, apt) {                     // the Hausgeld side only
+    keeps the rules it went out with — every amount positive, the Vorauszahlungen of the tenant's line — so its window and
+    "Open letter (PDF)" show what the tenant got. A letter sent with the K1 rules is marked (ts.k1, _srSendNow). */
+ const _srOldCalc = (c, it, ts) => !ts.k1 && !!it.r && (['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status) || !!_srLine(c, it).state.res);
+-/* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct } */
+-function _srCalc(c, it, rec) {
++/* K1: the mark can be lost (the save of the letter settings inside "Mark sent" failed, a save from an older copy) — the result
++   stored by the same send decides: a sent line whose stored result only the K1 rules give went out with them
++   (was: it reopened under the old rules — 680 € sent and stored, its window and PDF 560 €) */
++function _srSentCalc(c, it, rec) {
++  const res = _srLine(c, it).state.res, x = _srCalc(c, it, rec, true);
++  if (!res || Math.abs(x.saldo - res.dir * res.amount) < 0.005) return x;
++  const y = _srCalc(c, it, rec, false);
++  return Math.abs(y.saldo - res.dir * res.amount) < 0.005 ? y : x;
++}
++/* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct }
++   rule: true = the rules before K1, false = the K1 rules · left out: as the line went out (_srOldCalc, _srSentCalc) */
++function _srCalc(c, it, rec, rule) {
+   const r = it.r, per = _srPer(c, rec);
+   const from = _srD(r.period_from) > per.from ? _srD(r.period_from) : per.from;
+   const to = _srD(r.period_to) < per.to ? _srD(r.period_to) : per.to;
+   const perDays = _srDays(per.from, per.to), tDays = Math.max(0, _srDays(from, to));
+   const t = _srTenantOf(r), apt = _srAptOf(c, t);
+-  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = _srOldCalc(c, it, ts);
++  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = rule !== undefined ? !!rule : _srOldCalc(c, it, ts);
++  if (rule === undefined && old) return _srSentCalc(c, it, rec);
+   const lines = []; let sum = 0, missing = 0, direct = false;
+   for (const pos of (rec && rec.positions) || []) {
+     if (!_srInNk(pos, rec)) continue;
+-- 
+2.43.0
+

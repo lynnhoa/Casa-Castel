@@ -1,0 +1,447 @@
+From b7946eabab01221cc79dece1119ea8e301b7c3e3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 11:04:32 +0000
+Subject: [PATCH 1/2] Settlements: the six critical NK calculation fixes
+
+- Rentals: a credit (a Versorger refund marked for the NK, an amount typed
+  with a minus) now lowers the tenant's costs instead of being charged.
+- Rentals: an Abrechnung with its own shorter period now uses the costs,
+  Vorauszahlungen, Grundsteuer and Hausgeld of that period, and a tenant who
+  left before that period gets no line.
+- Rentals: in the purchase year the tenant pays the yearly Grundsteuer for
+  his days, not only the quarters due after the purchase.
+- Casa Castel: the NK inside a Pauschale is counted day by day, so a
+  'davon NK' change or a switch to Kalt + NK gives the right Kurzzeit share.
+- Casa Castel: in a change month each tenant is credited the NK
+  prepayment he really paid, not a split by days.
+- Own NK (Dashboard): the costs follow the tenant's days when the tenant or
+  the year is picked after the costs were typed.
+
+Letters already sent keep the figures they went out with (Rentals letters
+sent before this update, locked Casa years, sent own NK letters).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019KpxJnvkjZGuK7VLMUYpHY
+---
+ settlements-tab-casa.js      | 76 ++++++++++++++++++++++++++----
+ settlements-tab-dashboard.js | 10 ++++
+ settlements-tab-rentals.js   | 90 +++++++++++++++++++++++-------------
+ settlements.html             |  6 +--
+ 4 files changed, 138 insertions(+), 44 deletions(-)
+
+diff --git a/settlements-tab-casa.js b/settlements-tab-casa.js
+index d1fb357..caa0410 100644
+--- a/settlements-tab-casa.js
++++ b/settlements-tab-casa.js
+@@ -190,14 +190,53 @@ function scContractNk(t, ym, day) {
+   const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
+   return Number(tr && tr.nebenkosten) || 0;
+ }
+-/* Pauschal tenants: the NK part inside the Pauschale (rent history "davon NK", per month) */
++/* Pauschal tenants: the NK part inside the Pauschale (rent history "davon NK", per month)
++   K1 (casa-calc-1): day by day, as Controlling counts it (ctlPauschalNkCovered) — each day takes the rent row in force
++   on that day (was: the newest row up to the period end, also a later price or the Kalt + NK row after the stay).
++   A day with a Kalt + NK row covers 0 €. A day before the stay's first row covers what Controlling counts for it
++   (scPnkLegacy · main counted the first row's "davon NK" there) · a stay with no rent row counts 0 €, as before.
++   t.pnkMon = the € covered in each month (scVzMonths) · t.pnk = the month average, so pnk × months = what is covered
++   (one row for the whole stay: its "davon NK", as before) */
++function scPnkMonths(t, from, to) {
++  const rows = (window._src.rentP || []).filter(r => r.app === 'casa' && String(r.tenant_id) === String(t.tenantId))
++    .sort((a, b) => String(b.valid_from).localeCompare(String(a.valid_from)));
++  let leg = null;
++  const vAt = d => { const r = rows.find(x => String(x.valid_from || '').slice(0, 10) <= d); return !r ? (rows.length ? (leg = leg || scPnkLegacy(t))(d) : 0) : r.mode === 'pauschal' ? Number(r.nebenkosten) || 0 : 0; };
++  const cuts = [...new Set(rows.map(r => String(r.valid_from || '').slice(0, 10)))].filter(d => d > from && d <= to).sort();
++  const out = {}, vals = new Set();
++  let months = 0;
++  // one stretch = one month, or the part of it up to the next row → davon NK × days ÷ days of the month
++  for (let a = from; a <= to; ) {
++    const ym = a.slice(0, 7), dim = new Date(Number(a.slice(0, 4)), Number(a.slice(5, 7)), 0).getDate(), v = vAt(a);
++    const mEnd = ym + '-' + String(dim).padStart(2, '0');
++    let b = mEnd < to ? mEnd : to;
++    for (const c of cuts) if (c > a && c <= b && vAt(c) !== v) { b = NkCasa.addDays(c, -1); break; }
++    const n = NkCasa.daysBetween(a, b);
++    out[ym] = (out[ym] || 0) + v * n / dim; vals.add(v); months += n / dim;
++    a = NkCasa.addDays(b, 1);
++  }
++  return { mon: out, pnk: !vals.size ? 0 : vals.size === 1 ? [...vals][0] : Object.values(out).reduce((x, y) => x + y, 0) / months };
++}
++/* K1 (casa-calc-1): day → the "davon NK" of a Pauschal day before the stay's first rent row, exactly as Controlling counts
++   that day (ctlPauschalNkCovered → _cxRentDay without a row: the tenant record by the room's rule) · not found → 0 € */
++function scPnkLegacy(t) {
++  const p = typeof ctlProp === 'function' && typeof _cxRentDay === 'function' ? ctlProp(CASA_PROP_ID) : null;
++  for (const u of (p ? ctlUnitsFor(p.id) : [])) {
++    const link = ctlUnitLink(u, p); if (!link || link.type !== 'casa_room') continue;
++    const all = _cxTenancies(link), w = all.find(x => x.id === String(t.tenantId)), memo = new Map();
++    if (w && w.from) return d => { const rd = _cxRentDay(link, w, u, Number(d.slice(0, 4)), Number(d.slice(5, 7)), d, all, memo); return rd.mode === 'pauschal' ? Number(rd.nk) || 0 : 0; };
++  }
++  return () => 0;
++}
+ function scPauschalNk(input) {
+-  const P = input.period || {};
++  const P = input.period || {}, F = input.fullPeriod || P;
++  const clip = (Q, t) => { const a = t.from && t.from > Q.from ? t.from : Q.from, b = t.to && t.to < Q.to ? t.to : Q.to; return a && b && a <= b ? [a, b] : null; };
+   for (const t of (input.tenancies || [])) {
+     if (t.mode !== 'pauschal' || t.extra) continue;
+-    const rp = (window._src.rentP || []).filter(r => r.app === 'casa' && String(r.tenant_id) === String(t.tenantId) && String(r.valid_from || '') <= String(P.to || '9999'))
+-      .sort((a, b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0];
+-    t.pnk = rp && rp.mode === 'pauschal' ? Number(rp.nebenkosten) || 0 : 0;
++    const p = clip(P, t), f = clip(F, t);                    // the engine counts the months of (this preview of) the period
++    const fm = f ? scPnkMonths(t, f[0], f[1]) : null, pm = p && f && p[0] === f[0] && p[1] === f[1] ? fm : p ? scPnkMonths(t, p[0], p[1]) : null;
++    t.pnk = pm ? pm.pnk : 0;
++    t.pnkMon = fm ? fm.mon : {};
+   }
+ }
+ function scVzMonths(input, y) {
+@@ -214,21 +253,38 @@ function scVzMonths(input, y) {
+       const a = t.from > mFrom ? t.from : mFrom, b = t.to < mTo ? t.to : mTo; if (a > b) continue;
+       const days = NkCasa.daysBetween(a, b);
+       if (t.mode !== 'nk') {                                   // Nov 2026: a Pauschal stay's "davon NK" is booked in the same room-month —
+-        if (t.unitId !== null && t.unitId !== undefined && Number(t.pnk) > 0) pausch[String(t.unitId)] = (pausch[String(t.unitId)] || 0) + Number(t.pnk) * days / dim;
++        const pm = t.pnkMon ? Number(t.pnkMon[ym]) || 0 : Number(t.pnk) > 0 ? Number(t.pnk) * days / dim : 0;   // K1: the "davon NK" of these days
++        if (t.unitId !== null && t.unitId !== undefined && pm > 0) pausch[String(t.unitId)] = (pausch[String(t.unitId)] || 0) + pm;
+         continue;                                              // … it is not NK the Kalt + NK tenant paid (e.g. Dhruv → Yuika, LA)
+       }
+       const g = t.unitId === null || t.unitId === undefined ? 'solo:' + t.key : t.unitId;
+-      (groups[g] = groups[g] || []).push({ t, days, a });
++      (groups[g] = groups[g] || []).push({ t, days, a, b });
+     }
+     for (const g of Object.keys(groups)) {
+       const list = groups[g], row = g.startsWith('solo:') ? null : inc.find(r => String(r.unit_id) === String(g) && Number(r.year) === yy && Number(r.month) === m);
+       const sumDays = list.reduce((a, x) => a + x.days, 0);
+       const nkRow = row ? Math.max(0, (Number(row.nebenkosten) || 0) - (pausch[String(g)] || 0)) : 0;
++      // K1 (casa-calc-2): a month typed per tenant in Controlling › Income (row.split, e.g. a change month) → each tenant
++      // the NK share of what HE paid (split × his NK Soll of these days ÷ his rent Soll of the month), as ctlSettlementFigures ·
++      // no entry for him = not paid · the day split stays only for an old one-sum row
++      const sp = row && row.split && typeof row.split === 'object' && !Array.isArray(row.split) && Object.keys(row.split).length ? row.split : null;
++      const u = sp && typeof ctlUnitSoll === 'function' ? (typeof ctlUnitsOf === 'function' ? ctlUnitsOf(CASA_PROP_ID) : []).find(z => String(z.id) === String(g)) : null;
++      const parts = u ? (ctlUnitSoll(u, CASA_PROP_ID, yy, m).parts || []) : null;
+       for (const x of list) {
++        let paid = !!row, amt = 0;
++        if (parts) {
++          const part = parts.find(p => p.tid === String(x.t.tenantId)), i = x.t.extra ? null : sp[String(x.t.tenantId)];
++          paid = i !== undefined && i !== null && !!part && Number(part.amount) > 0;
++          if (paid) {
++            let nk = x.t._exp && typeof ctlNkSollAt === 'function' ? 0 : null;   // his NK Soll of these days (as Controlling: Pauschal days 0)
++            for (let d = x.a; nk !== null && d <= x.b; d = NkCasa.addDays(d, 1)) { const v = ctlNkSollAt(x.t._exp, d); nk = v === null ? null : nk + v / dim; }
++            amt = (Number(i) || 0) * (nk === null ? Number(part.nk) || 0 : nk) / Number(part.amount);
++          }
++        } else if (row) amt = nkRow * x.days / sumDays;
+         // Nov 2026 · real only in the running year: not booked yet = 0 € ("open") · finished years: the contract, flagged as a to-do
+-        const amt = row ? nkRow * x.days / sumDays : live ? 0 : scContractNk(x.t, ym, x.a) * x.days / dim;
+-        x.t.vzMap[ym] = { amt: cxR(amt), src: row ? 'paid' : live ? 'open' : 'contract' };
+-        x.t.vzAuto += cxR(amt); if (!row && !live) x.t.vzContract++;   // D39 (bug 34): the total = the sum of the months shown
++        if (!paid) amt = live ? 0 : scContractNk(x.t, ym, x.a) * x.days / dim;
++        x.t.vzMap[ym] = { amt: cxR(amt), src: paid ? 'paid' : live ? 'open' : 'contract' };
++        x.t.vzAuto += cxR(amt); if (!paid && !live) x.t.vzContract++;   // D39 (bug 34): the total = the sum of the months shown
+       }
+     }
+   }
+diff --git a/settlements-tab-dashboard.js b/settlements-tab-dashboard.js
+index f4c6733..a57abec 100644
+--- a/settlements-tab-dashboard.js
++++ b/settlements-tab-dashboard.js
+@@ -498,18 +498,28 @@ function sdResLabel(d, x) {
+ /* NK paid typed as one amount: keep it on the months actually lived (after a period / lived change) */
+ function sdSameVz(d) { const v = sdUseMonths(d).map(ym => sdNum(sdVzOf(d, ym))); return v.length && v.every(z => z !== null && z === v[0]) ? v[0] : null; }
+ function sdRespread(d, same) { if (same !== null && !SD.perMonth) d.vz = sdUseMonths(d).map(ym => ({ ym, amount: cxR(same) })); }
++/* K1 (tracking-dash-1): the positions follow "Lived here the whole period" as its switch does — a tenant who lived only
++   part of the period turns 'Whole' positions into 'By days', the whole period turns them back (picked tenant, other year) */
++function sdSplitFollow(d, wasWhole) {
++  const whole = !d.use_from && !d.use_to; if (whole === wasWhole) return;
++  (d.lines || []).forEach(l => { if (l.split === (whole ? 'days' : 'full')) l.split = whole ? 'full' : 'days'; });
++}
+ function sdAfterPeriod(d, same) {
++  const was = !d.use_from && !d.use_to;
+   const t = d.tenant_ref ? sdTenants(d).find(z => String(z.id) === String(d.tenant_ref)) : null;
+   if (t) sdTenantPeriod(d, t);
+   if (d.use_from && (d.use_from < d.period_from || d.use_from > d.period_to)) d.use_from = '';
+   if (d.use_to && (d.use_to < d.period_from || d.use_to > d.period_to)) d.use_to = '';
++  sdSplitFollow(d, was);
+   sdRespread(d, same);
+ }
+ function sdPickTenant(d, t) {
+   d.tenant_ref = String(t.id); d.tenant_name = [t.first_name, t.last_name].filter(Boolean).join(' ');
+   const out = t.mietende && sdD(t.mietende) < cxToday(); d.former = !!out;
+   d.address = out && t.address ? String(t.address).split(/\s*,\s*|\n/).filter(Boolean).join('\n') : sdPropAddr(d).join('\n');
++  const was = !d.use_from && !d.use_to;
+   sdTenantPeriod(d, t);
++  sdSplitFollow(d, was);
+ }
+ 
+ /* ── Inputs ── */
+diff --git a/settlements-tab-rentals.js b/settlements-tab-rentals.js
+index 6f4ee3c..79f6706 100644
+--- a/settlements-tab-rentals.js
++++ b/settlements-tab-rentals.js
+@@ -247,15 +247,18 @@ function _srKeyVals(rec, pos, apt) {
+   if (pos.key === 'personen')  return { u: ku, t: kt };
+   return null;
+ }
+-/* Amount of one position for the whole Wohnung (override › Gesamtkosten × Anteil) */
+-function _srUnitAmt(rec, pos, apt) {
+-  const sign = _srKind(pos.kind).neg ? -1 : 1;
++/* Amount of one position for the whole Wohnung (override › Gesamtkosten × Anteil)
++   K1: a credit keeps its minus (a Versorger-Guthaben marked for the NK, a refund typed −80 €) — it lowers the costs;
++   only a kind that is always a credit (CO₂ Anteil Vermieter) is made negative (was: every amount made positive).
++   old: a tenant letter sent before this rule (_srOldCalc) keeps the old one, so it reopens as it went out */
++const _srSgn = (pos, v, old) => _srKind(pos.kind).neg ? -Math.abs(v) : old ? Math.abs(v) : v;
++function _srUnitAmt(rec, pos, apt, old) {
+   const ov = _srNum(pos.amount);
+-  if (ov !== null) return cxR(sign * Math.abs(ov));
++  if (ov !== null) return cxR(_srSgn(pos, ov, old));
+   if (!_srShareKey(pos.key)) return null;
+   const kv = _srKeyVals(rec, pos, apt), tot = _srNum(pos.total);
+   if (tot === null || !kv || !(kv.t > 0) || kv.u === null) return null;
+-  return cxR(sign * Math.abs(tot) * kv.u / kv.t);
++  return cxR(_srSgn(pos, tot, old) * kv.u / kv.t);
+ }
+ function _srKeyText(rec, pos, apt) {
+   const kv = _srKeyVals(rec, pos, apt);
+@@ -311,6 +314,10 @@ function _srRecSummary(rec, apt) {                     // the Hausgeld side only
+   return { u: cxR(u), nu: cxR(nu), missing, n, ok };
+ }
+ 
++/* A tenant letter sent before the K1 rules (credits keep their minus, the Vorauszahlungen of the Abrechnung's own period)
++   keeps the rules it went out with — every amount positive, the Vorauszahlungen of the tenant's line — so its window and
++   "Open letter (PDF)" show what the tenant got. A letter sent with the K1 rules is marked (ts.k1, _srSendNow). */
++const _srOldCalc = (c, it, ts) => !ts.k1 && !!it.r && (['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status) || !!_srLine(c, it).state.res);
+ /* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct } */
+ function _srCalc(c, it, rec) {
+   const r = it.r, per = _srPer(c, rec);
+@@ -318,16 +325,16 @@ function _srCalc(c, it, rec) {
+   const to = _srD(r.period_to) < per.to ? _srD(r.period_to) : per.to;
+   const perDays = _srDays(per.from, per.to), tDays = Math.max(0, _srDays(from, to));
+   const t = _srTenantOf(r), apt = _srAptOf(c, t);
+-  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {};
++  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = _srOldCalc(c, it, ts);
+   const lines = []; let sum = 0, missing = 0, direct = false;
+   for (const pos of (rec && rec.positions) || []) {
+     if (!_srInNk(pos, rec)) continue;
+-    const unit = _srUnitAmt(rec, pos, apt);
++    const unit = _srUnitAmt(rec, pos, apt, old);
+     if (unit === null && pos.split !== 'mieter') continue;          // no amount typed yet → not part of the NK
+     let amt = null, cons = null;
+     if (pos.split === 'mieter') {
+       const d = _srNum(ts.direct && ts.direct[pos.id]);
+-      if (d !== null) { amt = cxR((_srKind(pos.kind).neg ? -1 : 1) * Math.abs(d)); direct = true; } else missing++;
++      if (d !== null) { amt = cxR(_srSgn(pos, d, old)); direct = true; } else missing++;
+     } else if (unit !== null && _srIsCons(pos)) {
+       const sp = _srConsSplit(c, rec, pos, unit), id = String(it.r.id);
+       if (sp.g[id] !== undefined) { amt = cxR(sp.g[id] + (sp.v[id] || 0)); cons = sp.active ? { text: _srConsText(sp, id, true), en: _srConsText(sp, id, false), how: sp.how } : null; }
+@@ -339,7 +346,7 @@ function _srCalc(c, it, rec) {
+   }
+   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
+   const since = _srBought(c.p);
+-  const rf = _srD(r.period_from), rt = _srD(r.period_to);
++  const rf = old ? _srD(r.period_from) : from, rt = old ? _srD(r.period_to) : to;   // K1: the Vorauszahlungen of this Abrechnung's own period (was: the whole standard year)
+   let vzSoll, vzIst, pre = null, vzPartialFlag = false, mlist = [];
+   if (since && since > rf && since <= rt) {
+     // year of purchase: months before it → contract Soll (the seller collected them), after it → what Controlling shows
+@@ -367,7 +374,7 @@ function _srCalc(c, it, rec) {
+   const einbehalt = kauAvail > 0 && ((ts && ts.via) || 'kaution') === 'kaution' ? kauAvail : 0;
+   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
+   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
+-           tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
++           tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt, old };
+ }
+ /* ── Consumption costs (Oct 2026) ─────────────────────────────
+    A cost with key "Verbrauch" (Heizung, Warmwasser, metered Wasser) is split in two:
+@@ -817,7 +824,7 @@ function _srLetterData(c, it, rec, x, ts) {
+   const t = x.t, apt = x.apt || c.apt || {};
+   const date = ts.date || cxToday();
+   const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
+-  const periodLabel = _srPerLabel(c.per.from, c.per.to);
++  const per = (!x.old && x.per) || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file) — a letter sent before: as it went out
+   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
+   return {
+     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
+@@ -828,7 +835,7 @@ function _srLetterData(c, it, rec, x, ts) {
+     vermieter: s.vermieter_name || '', sender,
+     bank: { inhaber: s.kontoinhaber || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
+     names: _srTNames(t), addr: String(addr || '').split('\n').map(z => z.trim()).filter(Boolean),
+-    date, due: _srAdd(date, _srNum(ts.days) ?? 30), periodLabel, perFrom: c.per.from, perTo: c.per.to, perDays: x.perDays,
++    date, due: _srAdd(date, _srNum(ts.days) ?? 30), periodLabel, perFrom: per.from, perTo: per.to, perDays: x.perDays,
+     useFrom: x.from, useTo: x.to, tDays: x.tDays, partial: x.partial,
+     hvName: (c.verw && c.verw.hausverwaltung) || '', hvDate: rec.hv_date,
+     lines: x.lines.filter(l => l.amt !== null), direct: x.direct,
+@@ -913,6 +920,7 @@ async function _srSendNow(btn, got, key) {
+   _srGewMark(c, rec);
+   if (gvKeep && _srGewDrawnOff(c, rec)) { if (btn) btn.disabled = false; return; }   // the screen first shows what goes out
+   if (gvKeep) rec.keys = Object.assign({}, rec.keys, { gv: rec._gv });
++  ts.k1 = true;                                              // this letter goes out with the K1 rules (_srOldCalc)
+   const x = _srCalc(c, it, rec);
+   if (x.missing) { stSay('Please enter all amounts first'); return; }
+   const l = _srLine(c, it), r = it.r, t = x.t;
+@@ -1030,15 +1038,22 @@ function _srYearModel(Y) {
+     const c = { ck: _srCk(p.id, per.from), p, per, year: Y, apt, verw, items: [], weg: null, before: false, running: per.to >= cxToday() };
+     if (since && per.to < since) { c.before = true; return c; }
+     const x = _srItemsFor(p, per); c.items = x.items; c.weg = x.weg;
++    // K1 (rentals-flow-1): an own Abrechnung period ("This Abrechnung from/to") — a tenant who lived there only outside it
++    // has nothing to settle: no line (was: an open line, 'Zeitraum 01.09.2025 – 31.08.2025'). A line already sent / settled stays.
++    const own = _srPer(c, _srRec(p, per));
++    if (own.custom) c.items = c.items.filter(it => !it.r.tenant_id || (_srD(it.r.period_to) >= own.from && _srD(it.r.period_from) <= own.to) ||
++      ['verschickt', 'bezahlt', 'erledigt', 'nicht durchgeführt'].includes(it.r.status) || !!_srLine(c, it).state.res);
+     _srGewMark(c, _srRec(p, per));                          // Gewerbe: its Verwaltung in the NK (_srGewSent)
+     return c;
+   });
+ }
+-/* Hausgeld you paid in the period (Soll per Rentals, months after the purchase) — for the WEG check */
+-function _srHausgeldPaid(c) {
++/* Hausgeld you paid in the period (Soll per Rentals, months after the purchase) — for the WEG check
++   K1: the months of this Abrechnung's own period (rec: the record or the draft; else the stored record) */
++const _srPerOf = (c, rec) => _srPer(c, rec === undefined ? _srRec(c.p, c.per) : rec);
++function _srHausgeldPaid(c, rec) {
+   let sum = 0;
+-  const since = _srBought(c.p);
+-  for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
++  const since = _srBought(c.p), per = _srPerOf(c, rec);
++  for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+     if (since && _srLastOfMonth(y, m) < since) continue;
+     try { const r = ctlCostRows(c.p, y, m).rows.find(x => x.key === 'hausgeld'); if (r) sum += Number(r.soll) || 0; } catch (e) {}
+@@ -1046,10 +1061,10 @@ function _srHausgeldPaid(c) {
+   return cxR(sum);
+ }
+ /* #11: Hausgeld actually paid (Ist) in Controlling for the same months as the Soll — shown as a hint only */
+-function _srHausgeldIst(c) {
++function _srHausgeldIst(c, rec) {
+   let sum = 0, need = 0, got = 0;
+-  const since = _srBought(c.p), rows = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
+-  for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
++  const since = _srBought(c.p), rows = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id)), per = _srPerOf(c, rec);
++  for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+     if (since && _srLastOfMonth(y, m) < since) continue;
+     need++;
+@@ -1058,8 +1073,8 @@ function _srHausgeldIst(c) {
+   }
+   return { sum: cxR(sum), need, got };
+ }
+-function _srIstHint(c, soll) {
+-  const I = _srHausgeldIst(c);
++function _srIstHint(c, soll, rec) {
++  const I = _srHausgeldIst(c, rec);
+   if (!I.got) return '';                                              // nothing entered in Controlling for these months
+   const line = t => '<p class="mx-ok is-info"><i class="ti ti-info-circle" aria-hidden="true"></i> Controlling (Ist): ' + stEur(I.sum) + ' paid · ' + t + '</p>';
+   if (I.got < I.need) return line(I.got + ' of ' + I.need + ' months entered');
+@@ -1113,18 +1128,31 @@ function _srCardInfo4(c) {
+   return { c, rec, sum, rows, hv, k: open ? 'open' : 'settled', onYou: _srOnYou(c, rec, sumOk) };
+ }
+ 
++/* K1: the Rentals Grundsteuer of a quarter due in month m (Apartments › Verwaltung, as Controlling's cost rows) — 0 when none */
++function _srGsDue(c, m) {
++  const months = Array.isArray(c.p.grundsteuer_months) && c.p.grundsteuer_months.length ? c.p.grundsteuer_months.map(Number) : _CX_Q;
++  if (!months.includes(m)) return 0;
++  const q = c.apt ? (c.verw ? _srNum(c.verw.grundsteuer_mtl) : null) : _srNum(c.p.def_grundsteuer);
++  return q ? cxR(q) : 0;
++}
+ /* WEG result of a complete Jahresabrechnung → tracker (no "edit → Done" after an import);
+    money already booked in Controlling with the same amount → linked instead of booked twice */
+ /* Nov 2026 · what comes into "NK only" by itself (you can untick each):
+    Grundsteuer — booked in Controlling for the months of the NK period, else the Rentals amount per quarter due then;
+    every one-off of the apartment marked "Show in Settlements" (Controlling › One-off, also from Maintenance) dated in the period */
+-function _srAutoNkItems(c, zero) {
+-  const out = [], since = _srBought(c.p), per = c.per;
++function _srAutoNkItems(c, zero, rec) {
++  const out = [], since = _srBought(c.p), per = _srPerOf(c, rec);       // K1: the months of this Abrechnung's own period
+   let gs = 0, nBk = 0, nSoll = 0;
+   const ist = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
+   for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+-    if (since && _srLastOfMonth(y, m) < since) continue;
++    if (since && _srLastOfMonth(y, m) < since) {
++      // K1: year of purchase — the NK covers the whole year (its Vorauszahlungen too), so a quarter due before the
++      // purchase counts with the Rentals amount: the tenant pays the yearly Grundsteuer for exactly his days
++      // (was: only the quarters after the purchase, split over all 365 days — too little for every tenant)
++      const q = _srGsDue(c, m); if (q) { gs += q; nSoll++; }
++      continue;
++    }
+     const hit = ist.filter(x => Number(x.year) === y && Number(x.month) === m && x.grundsteuer !== null && x.grundsteuer !== undefined && x.grundsteuer !== '');
+     if (hit.length) { nBk++; hit.forEach(x => { gs += Number(x.grundsteuer) || 0; }); continue; }
+     try { const r = ctlCostRows(c.p, y, m).rows.find(x => x.key === 'grundsteuer'); if (r && Number(r.soll)) { gs += Number(r.soll); nSoll++; } } catch (e) {}
+@@ -1153,7 +1181,7 @@ function _srAutoNkItems(c, zero) {
+ function _srRetPatchDraft() {
+   const d = SR.draft, c = d && _srCards[d._ck]; if (!c) return;
+   try { if ((_srCardInfo4(c).rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) return; } catch (e) { return; }   // a letter went out
+-  const want = _srAutoNkItems(c).filter(w => /^ot:/.test(String(w.auto)));
++  const want = _srAutoNkItems(c, null, d).filter(w => /^ot:/.test(String(w.auto)));
+   d.positions = (d.positions || []).filter(p => !/^ot:/.test(String(p.auto || '')) || want.some(w => w.auto === p.auto))
+     .map(p => { const w = /^ot:/.test(String(p.auto || '')) && want.find(x => x.auto === p.auto); return w ? Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src }) : p; });
+   for (const w of want) if (!d.positions.some(p => p.auto === w.auto)) d.positions.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
+@@ -1187,7 +1215,7 @@ function _srNkAutoSync(infos) {
+ }
+ /* The positions with the NK auto items (Grundsteuer, costs marked for the NK) brought up to date · null = nothing to change */
+ function _srNkAutoNext(c, rec) {
+-  const pos = rec.positions || [], want = _srAutoNkItems(c);
++  const pos = rec.positions || [], want = _srAutoNkItems(c, null, rec);
+   const manualGs = pos.some(p => !p.auto && p.kind === 'grundsteuer' && _srIsNkOnly(p));
+   const list = want.filter(w => !(w.auto === 'gs' && manualGs));
+   const next = pos.filter(p => !p.auto || list.some(w => w.auto === p.auto)).map(p => {
+@@ -1635,7 +1663,7 @@ function _srHvView(c) {
+       : can ? payBox + '<button class="cx-btn cx-btn--p mx-step__go" data-sr="payOnW" data-k="' + stEsc(c.ck) + '"><i class="ti ti-check" aria-hidden="true"></i> ' + (wDir < 0 ? 'Paid' : 'Received') + '</button>' : '';
+   }
+   // ── costs (summary; all rows editable behind "Show all costs")
+-  const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c);
++  const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c, d);
+   const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (wAmt || 0)), diff = entered === null ? null : cxR(calc - entered);
+   const mx = Math.max(Math.abs(tu) + Math.abs(tn), 1);
+   let costs = '<div class="mx-mini"><i style="flex:' + Math.max(1, Math.abs(tu) / mx * 100) + ';background:#9DBF7A"></i><i style="flex:' + Math.max(1, Math.abs(tn) / mx * 100) + ';background:#E8C98F"></i></div>' +
+@@ -1656,7 +1684,7 @@ function _srHvView(c) {
+       '<div class="mx-er"><span>− Hausgeld Soll <small>per Rentals</small></span><span class="mx-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld Soll" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></span></div>' +
+       '<div class="mx-er is-b"><span>= calculated <span data-sr-tot="cl">' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</span></span><span data-sr-tot="c">' + stEur(Math.abs(calc)) + '</span></div>' +
+       (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="mx-ok"><i class="ti ti-check" aria-hidden="true"></i> matches the HV result</p>' : '<p class="mx-ok is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') +
+-      _srIstHint(c, hgPaid) + '</div>';
++      _srIstHint(c, hgPaid, d) + '</div>';
+   }
+   costs += '<button class="mx-lnk" data-sr="costs">' + (SR.costsOpen ? 'Hide the costs' : 'Show all ' + (U.length + N.length) + ' costs · edit') + '</button>';
+   // ── settings (period · expected month) — folded at the end
+@@ -1720,7 +1748,7 @@ function _srCleanRec(d, c) {
+   if (!clean.weg_direction) { clean.weg_amount = null; clean.weg_due = null; }
+   if (clean.weg_direction && !clean.weg_via) clean.weg_via = 'zahlung';
+   clean.keys = Object.assign({}, clean.keys || {}, { ja_v: 2 });
+-  const hgDef = _srHausgeldPaid(c);
++  const hgDef = _srHausgeldPaid(c, clean);
+   if (_srNum(clean.keys.hg_paid) !== null && Math.abs(_srNum(clean.keys.hg_paid) - hgDef) < 0.005) clean.keys.hg_paid = null;
+   return clean;
+ }
+@@ -1794,7 +1822,7 @@ function _srNkView(c) {
+     };
+     // a receipt returned in full: in no line, never in a letter — here (0,00 €) with its returns and switches
+     const zero = [];
+-    if (typeof stRetZeroHtml === 'function') _srAutoNkItems(c, zero);
++    if (typeof stRetZeroHtml === 'function') _srAutoNkItems(c, zero, d);
+     const zRows = zero.filter(o => !(d.positions || []).some(p => p.auto === 'ot:' + o.id))
+       .map(o => stRetZeroHtml(o.item || o.company || 'Cost', 'returned in full · not in the NK · ' + stDe(_srD(o.invoice_date)), o.maint_cost_id, { locked: sentNk ? 'sent' : '', gross: Math.abs(Number(o.amount) || 0), frozen: 0 })).join('');
+     const retWarn = typeof ST_RET !== 'undefined' && ST_RET.error && !sentNk ? '<p class="st-ret__warn">' + stEsc(stRetFailTxt + ' – the costs marked for the NK wait until then.') + '</p>' : '';
+@@ -2223,7 +2251,7 @@ async function _srHvSave4(btn, thenView) {
+   if (d.weg_direction && !(_srNum(d.weg_amount) > 0)) { stSay('Please enter the amount of the WEG result'); return; }
+   if (!d.weg_direction) { d.weg_amount = null; d.weg_due = null; }
+   if (d.weg_direction && !d.weg_via) d.weg_via = 'zahlung';
+-  const hgDef = _srHausgeldPaid(c);
++  const hgDef = _srHausgeldPaid(c, d);
+   if (_srNum(d.keys.hg_paid) !== null && Math.abs(_srNum(d.keys.hg_paid) - hgDef) < 0.005) d.keys.hg_paid = null;   // equal to Rentals → keep following Rentals
+   if (btn) btn.disabled = true;
+   try {
+diff --git a/settlements.html b/settlements.html
+index a2ce6de..e21c082 100644
+--- a/settlements.html
++++ b/settlements.html
+@@ -99,12 +99,12 @@
+   <script src="settlements-ui.js?v=2026-11-01-ZR19"></script>
+   <script src="settlements-returns.js?v=2026-11-07-SR2"></script>   <!-- Nov 2026: Maintenance returns (net receipts, switch) -->
+   <script src="settlements-tab-tracking.js?v=2026-11-10-C6"></script>
+-  <script src="settlements-tab-rentals.js?v=2026-11-11-GV7"></script>
++  <script src="settlements-tab-rentals.js?v=2026-11-12-CF"></script>
+   <!-- Casa Castel: day-exact NK engine, shared letter frame, the tab -->
+   <script src="nk-casa-engine.js?v=2026-11-05-D39"></script>
+   <script src="nk-letter.js?v=2026-11-05-D39"></script>
+-  <script src="settlements-tab-casa.js?v=2026-11-10-C6"></script>
+-  <script src="settlements-tab-dashboard.js?v=2026-11-10-C6"></script>
++  <script src="settlements-tab-casa.js?v=2026-11-12-CF"></script>
++  <script src="settlements-tab-dashboard.js?v=2026-11-12-CF"></script>
+ 
+   <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
+   <script>var sbL = _ctlSupa;</script>
+-- 
+2.43.0
+
