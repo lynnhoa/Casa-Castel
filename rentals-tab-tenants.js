@@ -996,21 +996,36 @@ function _rntNkHasOpen(tid) {
   return (_rntNK[tid] || []).some(e => !e.paid);
 }
 
-function _rntKautionOpen(tid) {
+/* K1 (Nov 2026): "Kept · for NK-Abrechnung" only for a tenant who gets one — a flat, not Pauschal for the whole tenancy */
+function _rntHasNkAbr(rec) { return !!(rec && rec.apartment_id) && !_rntAllPauschal(rec.id); }
+/* K1: the part of a settled Kaution kept for the NK that is still held (the NK not settled yet) — 0 when none */
+function _rntKautionNkHeld(tid) {
   const k = _rntKaution[tid];
-  return k && k.received > 0 && !k.settled;
+  if (!k || !k.settled || !(Number(k.nk_einbehalt) > 0) || typeof ccTnNkHeld !== 'function') return 0;
+  const rec = (_rntRecords || []).find(r => String(r.id) === String(tid));
+  if (!rec || !_rntHasNkAbr(rec)) return 0;
+  const nks = typeof CC_NKS !== 'undefined' ? CC_NKS : {};
+  return ccTnNkHeld(k, tid, 'rentals', nks.res, nks.rows);
 }
 
+function _rntKautionOpen(tid) {
+  const k = _rntKaution[tid];
+  return (k && k.received > 0 && !k.settled) || _rntKautionNkHeld(tid) > 0;   // K1: also while held for the NK
+}
+
+/* Money still held: everything received until settled (a refund typed but not paid yet is still held) —
+   then the part kept for the NK until that NK is settled (K1) */
 function _rntKautionKept(tid) {
   const k = _rntKaution[tid];
   if (!k) return 0;
-  return Math.max(0, (k.received || 0) - (k.returned || 0));
+  return k.settled ? _rntKautionNkHeld(tid) : Math.max(0, Number(k.received) || 0);
 }
 /* Former tenant's Kaution line on the card — n37: the money still held is "open" (the Former list's words), never "kept" */
 function _rntNudgeText(tid) {
   const kk = _rntKaution[tid], held = _rntKautionKept(tid);
+  if (kk && kk.settled) return { keptStr: held > 0 ? 'Kaution ' + _rntFmtEUR(held) + ' held for NK' : '', statusStr: '' };   // K1
   const allReturned = !!(kk && kk.returned >= kk.received);
-  return { keptStr: held > 0 ? 'Kaution ' + _rntFmtEUR(held) + ' open' : allReturned ? 'fully returned' : 'full refund',
+  return { keptStr: !allReturned && held > 0 ? 'Kaution ' + _rntFmtEUR(held) + ' open' : allReturned ? 'fully returned' : 'full refund',
            statusStr: allReturned ? 'Mark settled' : 'Refund pending' };
 }
 
@@ -1207,6 +1222,7 @@ async function _rntLoad(unitsReady) {
 let _rntRenderedSig = null;
 function _rntRenderIfChanged() {
   const sig = ccStableJSON([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
+                              (_rntRecords || []).map(r => _rntKautionNkHeld(r.id)),   // K1: a part held for the NK follows its NK
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse, a.wohnungsnummer]),
                               (appParking    || []).map(p => [p.id, p.name, p.vacant, p.pricing, p.adresse])]);
@@ -1257,7 +1273,7 @@ function _rntRender() {
   document.querySelectorAll('.tn-card.open').forEach(el => _rntOpenCards.add(el.id));
 
   // Kaution held summary
-  const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution);   // received − returned, unsettled
+  const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution, _rntKautionNkHeld);   // not paid out yet (K1: + the part held for the NK)
   _rntKautionLine(document.getElementById('rnt-kaution-summary'), totalHeld);
 
   // Same cards in the same order as on screen → redraw only the cards whose
@@ -1332,7 +1348,7 @@ function _rntCardHTML({ type, unit }) {
   ).sort((a,b) => new Date(b.mietende||0) - new Date(a.mietende||0));
 
   const formerNudges = formerRecs
-    .filter(r => { const k = _rntKaution[r.id]; return k && k.received > 0 && !k.settled; })
+    .filter(r => _rntKautionOpen(r.id))   // K1: also a part still held for the NK
     .map(r => {
       const name = _rntFullTenantNames(r) || '\u2014';
       const { keptStr, statusStr } = _rntNudgeText(r.id);
@@ -2010,6 +2026,8 @@ ccKautionRegister('rnt', {
   fmt:  n => _rntFmtEUR(n),
   fmtDate: d => _rntFmtDate(d),
   saveAmounts: (tid, received, returned) => _rntSaveKaution(tid, received, returned),
+  hasNkAbr: rec => _rntHasNkAbr(rec),         // K1: "Kept · for NK-Abrechnung" only with an NK-Abrechnung
+  nkHeld: tid => _rntKautionNkHeld(tid),       // K1: "Settled · 300 € held for NK"
   afterChange: tid => {
     _rntRefreshFormerBadges(tid);
     const r = _rntRecords.find(x => x.id === tid);
@@ -2020,6 +2038,31 @@ ccKautionRegister('rnt', {
       foot.innerHTML = _rntModalFooterHTML(r, _rntIsAllDone(tid));
   },
 });
+/* K1b (Nov 2026): Rent owed and Damage kept from the Kaution count in Controlling by themselves (cc-kaution-book.js).
+   Without KAUTION-K1B.sql nothing of this is used. */
+if (typeof ccKautionBookRegister === 'function') {
+  ccKautionBookRegister('rnt', {
+    rentAt: (rec, iso) => {                                        // Pauschal: "davon NK" of the rent entry (none → 0)
+      const r = _rntCurrentRent(rec, iso);
+      return !r ? { nk: 0, total: 0 } : { nk: r.mode === 'pauschal' ? (Number(r.period && r.period.nebenkosten) || 0) : (Number(r.nk) || 0), total: Number(r.total) || 0 };
+    },
+    unitRef: rec => {                                              // the flat or the parking space (its name in the message)
+      const nm = (list, id) => ((Array.isArray(list) ? list : []).find(x => String(x.id) === String(id)) || {}).name || '';
+      if (rec.apartment_id) return { type: 'rentals_apartment', id: String(rec.apartment_id), label: nm(typeof appApartments !== 'undefined' ? appApartments : [], rec.apartment_id) || 'This flat' };
+      if (rec.parking_id) return { type: 'rentals_parking', id: String(rec.parking_id), label: nm(typeof appParking !== 'undefined' ? appParking : [], rec.parking_id) || 'This parking space' };
+      return null;
+    },
+    months: rec => {                                               // the rent window as Controlling reads it
+      const ce = _ccIso(rec.vertragsende), out = _ccIso(rec.mietende);
+      return { from: _ccIso(rec.mietbeginn), out, end: ce, pay: rec.rent_until === 'move' ? out : (ce || out) };
+    },
+    others: rec => _rntRecords.filter(r => r.id !== rec.id && (rec.apartment_id ? String(r.apartment_id) === String(rec.apartment_id)
+                                                                                : !!rec.parking_id && String(r.parking_id) === String(rec.parking_id))),
+    all: () => _rntRecords,                                        // fix 3: the moved-out tenants' receipts are read once, after the page is drawn
+  });
+  { const open0 = _rntOpenModal, shown = () => { const m = document.getElementById('rntModal'); return m && m.classList.contains('open') ? 'open:' + _rntModalTid : ''; };
+    _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
+}
 
 
 /* ── NK SECTION (apartments only) ── */
@@ -2906,14 +2949,15 @@ function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs, bare) 
     const recv2   = k ? Number(k.received) : 0;
     const ret2    = k ? Number(k.returned) : 0;
     const sdate   = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
-    const kPill   = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate);   // shared: remaining amount, not received
+    const nkHeld  = _rntKautionNkHeld(rec.id);                                // K1: part still held for the NK
+    const kPill   = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate, nkHeld);   // shared: remaining amount, not received
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_rntOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${_rntEsc(name)}</div>
         <div class="tn-former-period">${_rntEsc(period)}</div>
       </div>
       <div class="tn-former-pills">${kPill}</div>
-      ${settled
+      ${settled && !(nkHeld > 0)
         ? `<button class="tn-btn tn-btn-sm" onclick="_rntHideFormer('${rec.id}')" title="Archive">
              <i class="ti ti-eye-off" style="font-size:11px"></i></button>`
         : `<i class="ti ti-chevron-right" onclick="_rntOpenModal('${rec.id}')" style="font-size:13px;color:var(--cc-stone);cursor:pointer"></i>`}
@@ -4168,8 +4212,8 @@ async function _rntMarkDone(tid) {
   const rec = _rntRecords.find(r => r.id === tid);
   if (!rec || rec.status !== 'former') return;               // n30: only a former tenant is archived
   if (_rntKautionOpen(tid)) {                                // n30: the Kaution is settled first
-    const held = _rntKautionKept(tid);
-    if (typeof ccToast === 'function') ccToast('Settle the Kaution first' + (held > 0 ? ' — ' + _rntFmtEUR(held) + ' still held' : ''), true);
+    const held = _rntKautionKept(tid), forNk = !!(_rntKaution[tid] && _rntKaution[tid].settled);   // K1: settled, a part held for the NK
+    if (typeof ccToast === 'function') ccToast((forNk ? 'Settle the NK first' : 'Settle the Kaution first') + (held > 0 ? ' — ' + _rntFmtEUR(held) + (forNk ? ' of the Kaution' : '') + ' still held' : ''), true);
     return;
   }
   rec.done = true; rec.status = 'archived';
@@ -4312,7 +4356,7 @@ function _rntRefreshFormerBadges(tid) {
       if (pills) {
         const ret2   = k ? Number(k.returned) : 0;
         const sdate  = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
-        const kPill  = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate);
+        const kPill  = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate, _rntKautionNkHeld(tid));
         pills.innerHTML = kPill;
       }
     }
@@ -4320,7 +4364,7 @@ function _rntRefreshFormerBadges(tid) {
 
   document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
     if (el.getAttribute('onclick')?.includes(tid)) {
-      if (settled || !hasK) { el.remove(); }
+      if (!_rntKautionOpen(tid)) { el.remove(); }   // K1: stays while a part is held for the NK
       else {
         const { keptStr, statusStr } = _rntNudgeText(tid);   // n37: the same words as the card
         const keptEl  = el.querySelector('.tn-nudge-kept');
@@ -4331,7 +4375,7 @@ function _rntRefreshFormerBadges(tid) {
     }
   });
 
-  _rntKautionLine(document.getElementById('rnt-kaution-summary'), ccTnHeldTotal(_rntRecords, _rntKaution));
+  _rntKautionLine(document.getElementById('rnt-kaution-summary'), ccTnHeldTotal(_rntRecords, _rntKaution, _rntKautionNkHeld));
 }
 
 
@@ -4465,6 +4509,7 @@ async function loadRntTenants() {
   const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
     .then(r => { _rntUnitsFailed = r.includes(false); if (!_rntUnitsFailed) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
   const ok = await _rntLoad(unitsReady);
+  if (ok !== false && _rntLoadedOnce && typeof ccKauPrefetch === 'function') ccKauPrefetch('rnt');   // K1b: the moved-out tenants' receipts, in the background (idle, once)
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));

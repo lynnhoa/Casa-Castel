@@ -401,7 +401,9 @@ const cxPill = (cls, text) => '<span class="cx-pill cx-pill--' + cls + '">' + cx
    cxDiff = Ist \u2212 Soll (0 within half a cent). dir = whose money: +1 Income, \u22121 costs.
    For you: < 0 = less money (red), > 0 = more money (green) \u2014 a cost paid above its Soll is "\u2212 more".
    A mark { ok, reason } (controlling-data.js) makes it neutral grey; it is no longer a difference. */
-const CX_DIFF_IN  = [['agreed', 'Agreed'], ['reduction', 'Rent reduction'], ['kaution', 'Kaution'], ['later', 'Pays later'], ['other', 'Other']];
+/* K1 (Nov 2026): no "Kaution" chip any more — a Kaution is never part of a rent Ist, and rent paid from the Kaution
+   is entered as received. A row marked "Kaution" before keeps its reason and is still shown (CX_DIFF_SHORT). */
+const CX_DIFF_IN  = [['agreed', 'Agreed'], ['reduction', 'Rent reduction'], ['later', 'Pays later'], ['other', 'Other']];
 const CX_DIFF_OUT = [['agreed', 'Agreed'], ['reduction', 'Reduction'], ['later', 'Paid later'], ['other', 'Other']];
 const CX_DIFF_SHORT = { agreed: 'Agreed', reduction: 'Reduction', kaution: 'Kaution', later: 'later', other: 'Other' };
 function cxDiff(soll, ist) {
