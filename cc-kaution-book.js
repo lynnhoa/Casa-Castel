@@ -575,7 +575,8 @@ async function ccKauApply(KB, kid) {
    right after a Save whose Kaution row was not saved (same write queue, best effort — "Your previous values are back"),
    and when a moved-out tenant's pop-up is opened (check: read first, write only when they differ, once per page).
    Quiet: no message, nothing is drawn again. Only the Kaution's own part of a month is set — an amount typed in
-   Controlling stays. Anything that cannot be read or has no unit now is left for the next time. */
+   Controlling stays. Anything that cannot be read or has no unit now is left for the next time. The check waits while a
+   Save of this card runs (one at a time, fix 4) — that Save sets every booking itself. */
 function ccKauCheck(app, tid) {
   const key = app + '|' + tid;
   if (_CCKB.ok[key]) return;
@@ -592,8 +593,8 @@ function ccKauHeal(app, tid, check) {
   if (!A || !A.kb || !k0 || !k0.id || typeof sbL === 'undefined' || !sbL) return Promise.resolve({});
   return ccQueueWrite(A.writeKey + tid, async () => {
     try {
-      const u = A.ui[tid];                                 // typed and not saved yet (or a Save on its way): that Save sets everything
-      if (check && u && u.draft) return { busy: true };
+      const u = A.ui[tid];                                 // a Save of this card is on its way: that Save sets everything
+      if (check && u && u.saving) return { busy: true };   // (fix 4: only then — typed values alone no longer stop the check)
       const sref = 'kau:' + app + ':' + k0.id;
       const res = await Promise.all([sbL.from(A.table).select('*').eq('id', k0.id)].concat(check ? [
         sbL.from('ctrl_income_months').select('*').not('kau_part', 'is', null),
