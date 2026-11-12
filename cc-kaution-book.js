@@ -580,7 +580,7 @@ function ccKauCheck(app, tid) {
   const key = app + '|' + tid;
   if (_CCKB.ok[key]) return;
   _CCKB.ok[key] = 1;
-  ccKauHeal(app, tid, true).then(r => { if (r && r.error) delete _CCKB.ok[key]; });
+  ccKauHeal(app, tid, true).then(r => { if (r && (r.error || r.busy)) delete _CCKB.ok[key]; });
 }
 function ccKauHealAfterFail(app, tid) {
   const key = app + '|' + tid;
@@ -592,6 +592,8 @@ function ccKauHeal(app, tid, check) {
   if (!A || !A.kb || !k0 || !k0.id || typeof sbL === 'undefined' || !sbL) return Promise.resolve({});
   return ccQueueWrite(A.writeKey + tid, async () => {
     try {
+      const u = A.ui[tid];                                 // typed and not saved yet (or a Save on its way): that Save sets everything
+      if (check && u && u.draft) return { busy: true };
       const sref = 'kau:' + app + ':' + k0.id;
       const res = await Promise.all([sbL.from(A.table).select('*').eq('id', k0.id)].concat(check ? [
         sbL.from('ctrl_income_months').select('*').not('kau_part', 'is', null),
