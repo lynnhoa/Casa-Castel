@@ -188,7 +188,7 @@ const _CX_CSS = `
     .cx-r__l { min-width:0; }
     .cx-r__top { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:18px; }
     .cx-r__top .cx-r__u { min-width:0; }
-    .cx-r__mid { display:grid; grid-template-columns:minmax(0,1fr) 112px; gap:8px; align-items:center; margin-top:4px; }
+    .cx-r__mid { display:grid; grid-template-columns:auto minmax(0,1fr) 112px; gap:8px; align-items:center; margin-top:4px; }   /* D1: Soll │ difference │ Ist */
     .cx-soll { justify-self:start; display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:6px;
                border:.5px solid #D4B896; background:#F5EFE6; font-family:inherit; font-size:14px; font-weight:600; color:var(--cx-amt);
                font-variant-numeric:tabular-nums; cursor:pointer; -webkit-tap-highlight-color:transparent; }
@@ -312,29 +312,60 @@ const _CX_CSS = `
     .cx-su-a { display:flex; gap:14px; }
     .cx-su-a:empty { display:none; }
     .cx-su-a .cx-link { color:var(--cx-acc); font-weight:500; font-size:12px; padding:2px 0; }
-    /* CP2 (#10): a difference you meant — "On purpose" (quiet button on the sub line, a mini sheet with reasons) */
+    /* CP2 (#10) · D1 (16.11.2026): a difference says in words what happened — costs "more" / "less", income "missing" / "extra" —
+       between Soll and Ist: red when it costs you, green when it is good for you, also after it was agreed.
+       "Agreed" is the row's own green status: "✓ Agree" on the sub line (one tap); a tap on the green status → reason · Undo */
     .cx-ph__st { display:flex; align-items:center; gap:4px 6px; }
+    .cx-ph__w { display:flex; flex-direction:column; align-items:flex-end; }
+    .cx-ph__v { display:flex; align-items:center; gap:6px; }
     .cx-ph__gh { display:none; }
-    @media (max-width:599px) { .cx-ph__st { flex-direction:column; align-items:flex-end; }   /* "1 open" over "1 difference" on the phone */
-      /* the pills as they were before a mark, invisible and 0 px high: the status keeps its width, so the title never re-wraps */
-      .cx-ph__gh { display:flex; flex-direction:column; align-items:flex-end; height:0; margin-top:-4px; overflow:hidden; visibility:hidden; } }
+    @media (max-width:599px) { .cx-ph__st { flex-direction:column; align-items:flex-end; }   /* "1 open" over "1 to check" on the phone */
+      /* the pills as they were before a mark and the widest while typing, invisible and 0 px high: the status keeps its width,
+         so the title never re-wraps */
+      .cx-ph__gh { display:flex; align-items:center; gap:6px; height:0; overflow:hidden; visibility:hidden; } }
+    /* the header's "done … of …" (Income, Expenses) is one piece, as wide as the widest sum it can show (an invisible copy,
+       0 px high): booking never re-wraps it. The whole line again, invisible, keeps its height on a phone so narrow that the
+       piece has to wrap inside — the card never moves */
+    .cx-src--d { display:grid; } .cx-src--d > * { grid-area:1/1; min-width:0; }
+    .cx-src__d { display:inline-block; max-width:100%; }
+    .cx-src__d::before { content:attr(data-w); display:block; height:0; overflow:hidden; visibility:hidden; }
+    .cx-src__g { visibility:hidden; font-style:normal; } .cx-src__g::before { content:attr(data-p); }
+    .cx-src__g > b { display:inline-block; max-width:100%; font-weight:inherit; } .cx-src__g > b::before { content:attr(data-w); }
     button.cx-pill { font-family:inherit; margin:0; cursor:pointer; -webkit-appearance:none; appearance:none; -webkit-tap-highlight-color:transparent; }
-    .cx-pill--mark { background:#EFE9E0; color:#5F5649; border-color:#D9D1C4; }   /* neutral grey, 6:1 */
+    /* the green status of an agreed row is a button: 24 px+ to tap, drawn as the pill (the extra reaches into the row's gaps) */
+    .cx-pill-tap { position:relative; } .cx-pill-tap::after { content:''; position:absolute; left:-4px; right:-4px; top:-3px; bottom:-3px; }
+    /* the ✓ of a status or of Agree is one em high whatever font draws it: a pill with ✓ is exactly as high as one without */
+    .cx-ck { display:inline-block; height:1em; line-height:1; }
+    /* the difference between Soll and Ist: right-aligned, may wrap once — only at the space before its word (two 16 px lines
+       stay inside the 34 px Ist field, so the row keeps its height) */
+    .cx-dm { justify-self:end; text-align:right; font-size:12.5px; font-weight:700; line-height:16px; }
+    .cx-dm--tn { font-variant-numeric:tabular-nums; }   /* even digits as the Soll ("0,01 €", not "0,01€") — not for 100.000 € and more, which then still fit at 375 px */
+    .cx-dm--out { color:var(--cx-out); } .cx-dm--in { color:var(--cx-in); }
+    .cx-dm__a { white-space:nowrap; }
+    .cx-vh { position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }   /* read aloud, not shown */
+    /* the row's pills: as wide as the widest state they can take (the copies are invisible and 0 px high) */
+    .cx-r__st { display:flex; flex-direction:column; align-items:flex-end; }
+    .cx-r__pv { display:flex; justify-content:flex-end; gap:5px; }
+    .cx-r__gh { display:flex; flex-direction:column; align-items:flex-end; height:0; overflow:hidden; visibility:hidden; }
     .cx-r__sub--dif { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .cx-r__sub--dif > span { min-width:0; }
     /* 24 px to tap, drawn as a 20 px pill; its last 4 px reach into the row padding (margin −4 px), so the sub line stays 19.8 px:
        a row with a difference is exactly as high as without one — nothing below moves */
     .cx-dif { position:relative; z-index:0; flex-shrink:0; width:88px; height:24px; margin:-.5px 0 -4px; padding:0 0 4px; border:0; background:transparent; font-family:inherit;
-              font-size:11.5px; line-height:1; color:#6E6357; white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }   /* one width: On purpose · Undo · kept free */
+              font-size:11.5px; line-height:1; color:#6E6357; white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }   /* one width: Agree · kept free */
     .cx-dif::before { content:''; position:absolute; z-index:-1; left:0; right:0; top:0; height:20px; box-sizing:border-box; border:.5px solid #D9D1C4; border-radius:10px; }
     .cx-dif:focus-visible { outline:none; } .cx-dif:focus-visible::before { outline:2px solid var(--cx-acc); outline-offset:1px; }
     .cx-dif--ph { visibility:hidden; }
-    .cx-dif.on::before { background:#EFE9E0; }
-    .cx-dif--undo { color:var(--cx-ink); } .cx-dif--undo::before { border-color:#D4B896; }   /* neutral: red / green mean money only */
-    .cx-sum__dif { line-height:17px; }   /* a whole 25 px line (with its margin): the row you typed in is kept in place exactly */
-    .cx-dif-sh { margin-top:8px; padding:10px; border-radius:8px; border:.5px solid var(--cx-rule); background:#FAF7F2; display:flex; flex-direction:column; gap:8px; }
-    .cx-dif-sh .cx-chip { height:28px; padding:0 11px; color:#6E6357; background:var(--cx-card); }
-    .cx-dif-sh .cx-chip.on { color:var(--cx-card); background:var(--cx-ink); }
+    .cx-dif--agree { color:#27500A; font-weight:600; } .cx-dif--agree::before { border:1px solid #9AC87A; background:var(--cx-card); }   /* green: "done" */
+    .cx-dif:disabled { cursor:default; opacity:.5; }
+    /* month summary: "2 differences · 1 agreed" and its pill — 20 px with the pill or without (+ 8 px margin): the row you typed in is kept in place exactly */
+    .cx-sum__dif { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:20px; line-height:17px; font-size:12.5px; color:var(--cx-txt); text-align:left; }
+    .cx-dif-sh { margin-top:8px; padding:10px 12px; border-radius:10px; background:var(--cx-bg); display:flex; flex-direction:column; gap:8px; }
+    .cx-dif-sh .cx-chip { height:32px; padding:0 12px; border-radius:16px; color:var(--cx-txt); background:var(--cx-card); }
+    .cx-dif-sh .cx-chip.on { color:var(--cx-card); background:var(--cx-ink); border-color:var(--cx-ink); }
+    .cx-dif-x { align-self:flex-start; height:32px; padding:0; border:0; background:none; font-family:inherit; font-size:12px; font-weight:600; color:#8A6535;
+                text-decoration:underline; text-underline-offset:2px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-dif-sh button:disabled { cursor:default; opacity:.5; }
 `;
 (function () {
   if (typeof document === 'undefined' || document.getElementById('cx-styles')) return;
@@ -353,7 +384,7 @@ const CX = {
   tab: 'dashboard',
   area: null,          // null = Dashboard (everything) · 'rentals' · 'casa'
   sub: 'income',       // sub-tab inside Rentals / Casa Castel: income · expenses · onetime
-  dif: null,           // CP2: the row whose "On purpose" sheet ({ id, sheet, pick }) or Undo ({ id, undo }) is open
+  dif: null,           // CP2 · D1: the agreed row whose reason panel is open ({ id, pick }) — one at a time
 };
 
 /* Area filter (Rentals = all apartments · Casa Castel = the house) */
@@ -395,17 +426,19 @@ function cxToday() {
 const cxFmtDate = iso => { const s = String(iso || '').slice(0, 10); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };
 
 /* ── Pills: one colour = one meaning ── */
-const cxPill = (cls, text) => '<span class="cx-pill cx-pill--' + cls + '">' + cxEsc(text) + '</span>';
+// D1: a status starting with "✓ " draws its ✓ one em high (whatever font has it: the pill keeps its height), not read aloud
+const _cxPillTxt = t => { const s = String(t ?? ''); return s.startsWith('\u2713 ') ? '<span class="cx-ck" aria-hidden="true">\u2713</span> ' + cxEsc(s.slice(2)) : cxEsc(s); };
+const cxPill = (cls, text) => '<span class="cx-pill cx-pill--' + cls + '">' + _cxPillTxt(text) + '</span>';
 
-/* \u2500\u2500 CP2 (#10): differences \u00b7 "On purpose" \u2500\u2500
+/* \u2500\u2500 CP2 (#10) \u00b7 D1 (16.11.2026): differences \u00b7 "Agreed" \u2500\u2500
    cxDiff = Ist \u2212 Soll (0 within half a cent). dir = whose money: +1 Income, \u22121 costs.
-   For you: < 0 = less money (red), > 0 = more money (green) \u2014 a cost paid above its Soll is "\u2212 more".
-   A mark { ok, reason } (controlling-data.js) makes it neutral grey; it is no longer a difference. */
+   The difference itself is drawn between Soll and Ist in words (cxRow): costs "more" / "less", income "missing" / "extra",
+   red when it is less money for you, green when it is more. The status is only the state: open \u00b7 \u2713 Paid \u00b7 To check \u00b7
+   \u2713 Agreed (or the reason's word). A mark { ok, reason } (controlling-data.js) = agreed: the row counts as done. */
 /* K1 (Nov 2026): no "Kaution" chip any more — a Kaution is never part of a rent Ist, and rent paid from the Kaution
-   is entered as received. A row marked "Kaution" before keeps its reason and is still shown (CX_DIFF_SHORT). */
+   is entered as received. A row marked "Kaution" before keeps its reason and still reads "✓ Kaution" (cxMarkText). */
 const CX_DIFF_IN  = [['agreed', 'Agreed'], ['reduction', 'Rent reduction'], ['later', 'Pays later'], ['other', 'Other']];
 const CX_DIFF_OUT = [['agreed', 'Agreed'], ['reduction', 'Reduction'], ['later', 'Paid later'], ['other', 'Other']];
-const CX_DIFF_SHORT = { agreed: 'Agreed', reduction: 'Reduction', kaution: 'Kaution', later: 'later', other: 'Other' };
 function cxDiff(soll, ist) {
   if (ist === null || ist === undefined) return 0;
   const d = cxR(Number(ist) - (Number(soll) || 0));
@@ -413,51 +446,55 @@ function cxDiff(soll, ist) {
 }
 const cxMarked = r => !!(r && r.mark && r.mark.ok);
 const cxUnmarked = r => cxMarked(r) ? Object.assign({}, r, { mark: null }) : r;
-const _cxSgn = (d, dir) => (d * (dir === -1 ? -1 : 1) < 0 ? '\u2212 ' : '+ ');
-function cxMarkText(d, dir, mark) {
-  const why = mark && mark.reason ? (mark.reason === 'later' ? (dir === -1 ? 'Paid later' : 'Pays later') : CX_DIFF_SHORT[mark.reason] || 'on purpose') : 'on purpose';
-  return _cxSgn(d, dir) + cxEur(Math.abs(d)) + ' \u00b7 ' + why;
+/* the word of an agreed mark: its reason as the chip says it (costs "Paid later", income "Pays later" \u2026) \u00b7 no reason = "Agreed" */
+function cxMarkText(dir, mark) {
+  const r = mark && mark.reason, find = l => l.find(x => x[0] === r);
+  const hit = r ? find(dir === -1 ? CX_DIFF_OUT : CX_DIFF_IN) || find(CX_DIFF_IN) || find(CX_DIFF_OUT) || (r === 'kaution' ? [r, 'Kaution'] : null) : null;
+  return hit ? hit[1] : 'Agreed';
 }
 function cxStatus(soll, ist, emptyText, dir, mark) {
   if (!soll && (ist === null || ist === undefined)) return ['grey', emptyText || 'empty'];
   if (ist === null || ist === undefined) return ['open', 'open'];
-  const d = cxDiff(soll, ist);
-  if (!d) return ['ok', 'paid'];
-  if (mark && mark.ok) return ['mark', cxMarkText(d, dir, mark)];
-  const less = d * (dir === -1 ? -1 : 1) < 0;                         // less money for you
-  const word = dir === -1 ? (d > 0 ? ' more' : ' less') : (d < 0 ? ' missing' : ' extra');
-  return [less ? 'out' : 'in', _cxSgn(d, dir) + cxEur(Math.abs(d)) + word];
+  if (!cxDiff(soll, ist)) return ['ok', '\u2713 Paid'];
+  if (mark && mark.ok) return ['ok', '\u2713 ' + cxMarkText(dir, mark)];   // agreed: green, done
+  return ['open', 'To check'];                                          // amber: needs you
 }
-/* Card header: what is still unclear \u2014 open rows AND differences not marked, side by side
-   (an overpayment never hides an open row). Red when one of them is less money, else green. */
+/* Card header: what still needs you \u2014 open rows AND differences not agreed, side by side ("1 open" "1 to check");
+   every row with a Soll or an Ist paid or agreed \u2192 "\u2713 Done" (the card can be closed although Soll and Ist differ) */
 function cxGroupStatus(rows, dir) {
   const has = v => v !== null && v !== undefined;
   const act = rows.filter(r => r.soll || has(r.ist));
   const open = act.filter(r => !has(r.ist)).length;
-  let less = 0, more = 0;
-  for (const r of act) {
-    const d = cxDiff(r.soll, r.ist);
-    if (!d || cxMarked(r)) continue;
-    if (d * ((r.dir || dir) === -1 ? -1 : 1) < 0) less++; else more++;
-  }
-  const n = less + more, out = [];
+  const check = act.filter(r => cxDiff(r.soll, r.ist) && !cxMarked(r)).length, out = [];
   if (open) out.push(['open', open + ' open']);
-  if (n) out.push([less ? 'out' : 'in', n + (n === 1 ? ' difference' : ' differences')]);
-  if (out.length === 1) return out[0];
-  if (out.length) return out;
-  return act.length ? ['ok', 'done'] : ['grey', 'empty'];
+  if (check) out.push(['open', check + ' to check']);
+  const st = out.length === 1 ? out[0] : out.length ? out : act.length ? ['ok', '\u2713 Done'] : ['grey', 'empty'];
+  st.most = rows.length;                                   // D1: no count can grow above it (cxCard keeps that width)
+  return st;
 }
-/* Month summary: all differences and how many of them are on purpose */
+/* Month summary: all differences, how many of them are agreed, and the rows still open (for "\u2713 Done") */
 function cxDiffCount(rows) {
-  let n = 0, ok = 0;
-  for (const r of rows) { if (!cxDiff(r.soll, r.ist)) continue; n++; if (cxMarked(r)) ok++; }
-  return { n, ok };
+  let n = 0, ok = 0, open = 0;
+  for (const r of rows) {
+    if (r.soll && (r.ist === null || r.ist === undefined)) open++;
+    if (!cxDiff(r.soll, r.ist)) continue;
+    n++; if (cxMarked(r)) ok++;
+  }
+  return { n, ok, open };
 }
 function cxDiffLine(c) {
   if (!c || !c.n) return '';
   const t = c.n + (c.n === 1 ? ' difference' : ' differences');
-  return c.ok ? t + ' \u00b7 ' + (c.ok === c.n ? (c.n === 1 ? 'on purpose' : 'all on purpose') : c.ok + ' on purpose') : t;
+  return c.ok ? t + ' \u00b7 ' + (c.ok === c.n ? (c.n === 1 ? 'agreed' : 'all agreed') : c.ok + ' agreed') : t;
 }
+/* C6: marks on their way (row id | year | month) \u2014 its Agree, reasons and Undo stay off until it is saved, also across drawings */
+const _cxDifRun = new Set();
+const cxDifBusy = id => _cxDifRun.has(id + '|' + window._ctrl.year + '|' + CX.month);
+/* D1: a reason panel that closes moves the rows below it up. The second tap of a double tap would land on whatever
+   moved under the finger (a Soll taken over, the next row booked, a card folded), so for one second a tap on the same
+   spot does nothing. A tap anywhere else works at once; keyboard (Enter / Space) is not affected. */
+let _cxQuiet = null;                                     // { until, x, y } — where the tap that closed a panel landed
+const _cxNow = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 /* Is the month after the current one? (nothing is due yet) */
 function cxFuture(y, m) {
   const t = cxToday(), cy = Number(t.slice(0, 4)), cm = Number(t.slice(5, 7));
@@ -524,13 +561,16 @@ function cxSummary(o) {
         '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="allNo">Cancel</button>' +
         '<button class="cx-btn cx-btn--p" data-cx="allYes"' + (o.confirm.n ? '' : ' disabled') + '>Book</button></div></div>'
     : bulkBtn;
-  const dif = cxDiffLine(o.diffs);                        // CP2 (#10): "2 differences · 1 on purpose" — "all done" stays as it is
+  // CP2 (#10) · D1: "2 differences · 1 agreed" — at its right amber "1 to check", or green "✓ Done" once nothing is open and every
+  // difference is agreed (else no pill) · "all done" above stays as it is
+  const dif = cxDiffLine(o.diffs), dc = o.diffs || {};
+  const difPill = dc.n > dc.ok ? cxPill('open', (dc.n - dc.ok) + ' to check') : !dc.open ? cxPill('ok', '\u2713 Done') : '';
   return '<div class="cx-card cx-sum">' +
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' open') : cxPill('ok', 'all done')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + (o.dir ? cxIO(o.dir * o.done) : cxW(o.done)) + '</span><span class="cx-sum__of">of ' + cxW(o.plan) + ' planned</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
     (o.split || '') +                                       // e.g. Kalt / NK / Warm table (Income)
-    undo + action + (dif ? '<div class="cx-sum__hint cx-sum__dif">' + cxEsc(dif) + '</div>' : '') +
+    undo + action + (dif ? '<div class="cx-sum__hint cx-sum__dif"><span>' + cxEsc(dif) + '</span>' + difPill + '</div>' : '') +
     (o.note ? '<div class="cx-sum__hint">' + o.note + '</div>' : '') +
     (o.partial && !o.confirm && !o.future ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 partial month' : o.partial + ' partial months') + ' · please confirm one by one</div>' : '') +
   '</div>';
@@ -561,70 +601,103 @@ function cxRowQ(key, fn) {
   return job.finally(() => { if (_cxRowQ[key] === job) delete _cxRowQ[key]; });
 }
 
+/* D1: the card header's "sub · done X € of Y €" (Income, Expenses). "done … of …" is one piece with an invisible copy of the
+   widest sum it can show (the sum, or the plan + 10 % for a payment above it; every digit a 4 — Inter's widest): it stays on
+   the first line or starts the second whatever is booked, so the header never moves. A whole invisible copy of the line
+   (.cx-src__g) keeps the height where a narrow phone has to wrap the piece inside. The copies are drawn from data-* (not read
+   aloud, no text of their own) */
+function _cxSrcDone(sub, sum, plan) {
+  const of = plan ? ' of ' + cxW(plan) : '', most = 'done ' + cxW(Math.max(Math.abs(sum), Math.abs(plan || 0) * 1.1)).replace(/\d/g, '4') + of;
+  return '<span>' + (sub ? cxEsc(sub) + ' · ' : '') + '<span class="cx-src__d" data-w="' + cxEsc(most) + '">' + cxEsc('done ' + cxW(sum) + of) + '</span></span>' +
+    '<i class="cx-src__g" aria-hidden="true" data-p="' + (sub ? cxEsc(sub + ' · ') : '') + '"><b data-w="' + cxEsc(most) + '"></b></i>';
+}
+
 /* ── Property card with fold-up ── */
 function cxCard(o) {
   const g = o.status;
-  const gs = !g ? [] : Array.isArray(g[0]) ? g : [g];        // CP2: one pill, or several side by side ("1 open" "1 difference")
-  // CP2: o.statusWas = the status without the marks (cxGroupStatus) — kept as an invisible width on the phone, so marking moves nothing
-  const gw = !o.statusWas ? [] : Array.isArray(o.statusWas[0]) ? o.statusWas : [o.statusWas];
+  const gs = !g ? [] : Array.isArray(g[0]) ? g : [g];        // CP2: one pill, or several side by side ("1 open" "1 to check")
+  // CP2: o.statusWas = the status without the marks (cxGroupStatus) — kept as an invisible width on the phone, so marking moves nothing.
+  // D1: + the widest "open" / "to check" its rows can reach (4 is Inter's widest digit), so typing an amount moves nothing either
+  const gw0 = !o.statusWas ? [] : Array.isArray(o.statusWas[0]) ? o.statusWas : [o.statusWas];
+  const most = o.statusWas && o.statusWas.most ? String(o.statusWas.most).replace(/\d/g, '4') : '';
+  const gw = most ? gw0.concat([['open', most + ' open'], ['open', most + ' to check']]) : gw0;
   const gh = gw.length && gw.map(x => x.join('|')).join('/') !== gs.map(x => x.join('|')).join('/') ? gw : null;
   const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key]
-    : (o.defaultOpen !== undefined ? o.defaultOpen : gs.some(x => ['open', 'diff', 'in', 'out'].includes(x[0])));   // only what needs you
+    : (o.defaultOpen !== undefined ? o.defaultOpen : gs.some(x => x[0] === 'open'));   // only what needs you ("open", "to check")
   // CP1 (#18): drawn open because something is open → remembered, so it does not fold up by itself once the
   // last amount is typed (the page would jump); it closes only when you tap its header (month change resets)
   if (isOpen && o.defaultOpen === undefined && CX.open[o.key] === undefined) CX.open[o.key] = true;   // = CX.open[key] ??= isOpen
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
-      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
-        (o.subHTML !== undefined ? o.subHTML :                  // CP1: a sub with a coloured amount (One-off "Income + 407 €")
-        cxEsc([o.sub || '', o.sum !== undefined ? 'done ' + cxW(o.sum) + (o.plan ? ' of ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · '))) + '</span></span>' +
-      '<span class="cx-ph__r">' + (o.extraPill || '') +
-        (gs.length > 1 || gh ? '<span class="cx-ph__st">' + gs.map(x => cxPill(x[0], x[1])).join('') +
-          (gh ? '<span class="cx-ph__gh" aria-hidden="true">' + gh.map(x => cxPill(x[0], x[1])).join('') + '</span>' : '') + '</span>'
-          : gs.map(x => cxPill(x[0], x[1])).join('')) + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
+      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span>' +
+        (o.subHTML !== undefined ? '<span class="cx-src">' + o.subHTML :   // CP1: a sub with a coloured amount (One-off "Income + 407 €")
+        o.sum !== undefined ? '<span class="cx-src cx-src--d">' + _cxSrcDone(o.sub, o.sum, o.plan) :   // D1: Income, Expenses
+        '<span class="cx-src">' + cxEsc(o.sub || '')) + '</span></span>' +
+      '<span class="cx-ph__r">' + (gh
+        // D1: the pills that show, right-aligned on an invisible 0 px high copy (the extra pill + the widest statuses): the extra
+        // pill stays next to the status, and the title keeps its width
+        ? '<span class="cx-ph__w"><span class="cx-ph__v">' + (o.extraPill || '') + '<span class="cx-ph__st">' + gs.map(x => cxPill(x[0], x[1])).join('') + '</span></span>' +
+          '<span class="cx-ph__gh" aria-hidden="true">' + (o.extraPill || '') + '<span class="cx-ph__st">' + gh.map(x => cxPill(x[0], x[1])).join('') + '</span></span></span>'
+        : (o.extraPill || '') + (gs.length > 1 ? '<span class="cx-ph__st">' + gs.map(x => cxPill(x[0], x[1])).join('') + '</span>' : gs.map(x => cxPill(x[0], x[1])).join(''))) +
+        '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
     '</button>' + (isOpen ? o.body : '') + '</div>';
 }
 
 /* ── Soll │ Ist row (#19) ──
-   line 1: label · pills + status      line 2: Soll (tap = take over) │ Ist field
+   line 1: label · pills + status      line 2: Soll (tap = take over) │ difference │ Ist field
    then sub line, change notes, info (grey) and data checks                                  */
 function cxRow(o) {
   const s = cxStatus(o.soll, o.ist, o.emptyText, o.dir, o.mark);
   const can = !!o.soll || (o.ist !== null && o.ist !== undefined);
-  // CP2 (#10): a difference on a row that can be marked (o.mark given, C1 SQL run) → "On purpose" on the sub line;
-  // marked → the grey pill is a button that offers "Undo". The line keeps its height either way (no jump).
+  // CP2 (#10) · D1: a difference on a row that can be marked (o.mark given, C1 SQL run) → "✓ Agree" on the sub line (one tap);
+  // agreed → the green status is a button: the reason panel (reasons · Undo agreed). The line keeps its height either way (no jump).
   const d = cxDiff(o.soll, o.ist), markable = !!d && o.mark !== undefined && o.mark !== null;
   // every row that can be marked keeps the button's place, with or without a difference: a long sub line
   // (e.g. Pauschal on the phone) wraps the same before and after you type — the rows below never move
   const slot = markable || (o.mark !== undefined && o.mark !== null && !!o.sub);
-  const st = markable && CX.dif && CX.dif.id === o.id ? CX.dif : null;
+  const agreed = markable && !!o.mark.ok;
+  // D1: a panel left open on a row that is no longer agreed (its mark went with a new amount, e.g. on the other line of a
+  // tenant change) is forgotten, so it never opens again by itself when the mark comes back
+  if (!agreed && CX.dif && CX.dif.id === o.id && !cxDifBusy(o.id)) CX.dif = null;
+  const st = agreed && CX.dif && CX.dif.id === o.id ? CX.dif : null;
+  const off = markable && cxDifBusy(o.id) ? ' disabled' : '';   // C6: its mark is on its way
   const idA = ' data-id="' + cxEsc(o.id) + '"';
-  const pill = markable && s[0] === 'mark'
-    ? '<button class="cx-pill cx-pill--mark" data-cx="difTap"' + idA + ' aria-expanded="' + !!(st && st.undo) + '" aria-label="' + cxEsc(s[1]) + ' – tap to undo">' + cxEsc(s[1]) + '</button>'
+  const pill = agreed
+    ? '<button class="cx-pill cx-pill--' + s[0] + ' cx-pill-tap" data-cx="difTap"' + idA + ' aria-expanded="' + !!st + '" aria-label="' + cxEsc(s[1].slice(2)) + ' – tap for reason or undo">' + _cxPillTxt(s[1]) + '</button>'
     : cxPill(s[0], s[1]);
   let difBtn = '', sheet = '';
-  if (markable && !o.mark.ok) {
-    difBtn = '<button class="cx-dif' + (st && st.sheet ? ' on' : '') + '" data-cx="difOpen"' + idA + ' aria-expanded="' + !!(st && st.sheet) + '">On purpose</button>';
-    if (st && st.sheet) sheet = '<div class="cx-dif-sh" role="group" aria-label="Why on purpose?"><span class="cx-lbl">Reason · optional</span>' +
-      '<div class="cx-chips">' + (o.dir === -1 ? CX_DIFF_OUT : CX_DIFF_IN).map(([v, t]) =>
-        '<button class="cx-chip' + (st.pick === v ? ' on' : '') + '" data-cx="difPick"' + idA + ' data-r="' + v + '" aria-pressed="' + (st.pick === v) + '">' + t + '</button>').join('') + '</div>' +
-      '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="difCancel"' + idA + '>Cancel</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="difSave"' + idA + (st.busy ? ' disabled' : '') + '>Save</button></div></div>';
-  } else if (markable && st && st.undo) {
-    difBtn = '<button class="cx-dif cx-dif--undo" data-cx="difUndo"' + idA + (st.busy ? ' disabled' : '') + '>Undo</button>';
-  } else if (slot) difBtn = '<span class="cx-dif cx-dif--ph" aria-hidden="true"></span>';   // the place stays: the sub line wraps the same
+  if (markable && !agreed) difBtn = '<button class="cx-dif cx-dif--agree" data-cx="difAgree"' + idA + off + '><span class="cx-ck" aria-hidden="true">\u2713</span> Agree</button>';
+  else if (slot) difBtn = '<span class="cx-dif cx-dif--ph" aria-hidden="true"></span>';   // the place stays (also once agreed): the sub line wraps the same
+  if (st) {                                               // the reason it has is pressed (none = Agreed) — a tap saves another one at once
+    const on = st.pick || o.mark.reason || 'agreed';
+    sheet = '<div class="cx-dif-sh" role="group" aria-label="Reason for the difference"><div class="cx-chips">' + (o.dir === -1 ? CX_DIFF_OUT : CX_DIFF_IN).map(([v, t]) =>
+        '<button class="cx-chip' + (on === v ? ' on' : '') + '" data-cx="difPick"' + idA + ' data-r="' + v + '" aria-pressed="' + (on === v) + '"' + off + '>' + t + '</button>').join('') + '</div>' +
+      '<button class="cx-dif-x" data-cx="difUndo"' + idA + off + '>Undo agreed</button></div>';
+  }
   const subLine = slot
     ? '<div class="cx-r__sub cx-r__sub--dif"><span>' + (o.sub || '') + '</span>' + difBtn + '</div>'
     : (o.sub ? '<div class="cx-r__sub">' + o.sub + '</div>' : '');
+  // D1: the difference between Soll and Ist in words, no + or − — red: less money for you (a cost paid more, rent missing),
+  // green: more money for you (a cost paid less, rent extra). It stays after it was agreed. Read aloud: "difference 0,01 € more"
+  const dm = !d ? '<span class="cx-dm"></span>'
+    : '<span class="cx-dm cx-dm--' + (d * (o.dir === -1 ? -1 : 1) < 0 ? 'out' : 'in') + (Math.abs(d) < 100000 ? ' cx-dm--tn' : '') + '"><span class="cx-vh">difference </span><span class="cx-dm__a">' + cxEur(Math.abs(d)) + '</span> ' +
+      (o.dir === -1 ? (d > 0 ? 'more' : 'less') : (d < 0 ? 'missing' : 'extra')) + '</span>';
+  // D1: the pills keep one width in every state the status can take (an invisible, 0 px high copy of each): a long label
+  // (e.g. a tenant change) wraps the same before and after you type, agree or pick a reason — the row never moves
+  const alts = (o.soll ? ['open'] : [o.emptyText || 'empty']).concat(['To check', '\u2713 Paid'],
+    o.mark !== undefined && o.mark !== null ? (o.dir === -1 ? CX_DIFF_OUT : CX_DIFF_IN).map(x => '\u2713 ' + x[1]) : []);
+  const pills = '<span class="cx-r__st"><span class="cx-r__pv">' + (o.pills || '') + pill + '</span><span class="cx-r__gh" aria-hidden="true">' +
+    alts.map(t => '<span class="cx-r__pv">' + (o.pills || '') + cxPill('grey', t) + '</span>').join('') + '</span></span>';
   const took = o.ist !== null && o.ist !== undefined && o.soll && cxR(o.ist - o.soll) === 0;
+  const icon = took ? 'check' : o.ist === null || o.ist === undefined ? 'arrow-right' : '';   // D1: no icon while a difference shows
   const soll = o.soll
     ? '<button class="cx-soll' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Take Soll: ' + cxEsc(cxEur(o.soll)) + '">' +
-        '<span>' + cxEur(o.soll) + '</span><i class="ti ti-' + (took ? 'check' : 'arrow-right') + '" aria-hidden="true"></i></button>'
+        '<span>' + cxEur(o.soll) + '</span>' + (icon ? '<i class="ti ti-' + icon + '" aria-hidden="true"></i>' : '') + '</button>'
     : '<span class="cx-r__s">\u2014</span>';
   return '<div class="cx-r">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.label) + (o.badge ? ' ' + cxPill('beige', o.badge) : '') + '</span>' +
-      '<span class="cx-r__p">' + (o.pills || '') + pill + '</span></div>' +
-    '<div class="cx-r__mid">' + soll +
+      '<span class="cx-r__p">' + pills + '</span></div>' +
+    '<div class="cx-r__mid">' + soll + dm +
       '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Amount' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist amount ' + cxEsc(o.label) + '"><span>€</span></label>' +
     '</div>' +
     subLine + sheet +
@@ -779,6 +852,9 @@ function cxWire(host, h) {
   host.addEventListener('click', async ev => {
     const b = ev.target.closest('[data-cx]');
     if (!b || b.disabled) return;
+    const q = _cxQuiet;                                     // D1: the 2nd tap of a double tap, on the spot a reason panel just left
+    if (ev.detail && q && _cxNow() < q.until && Math.abs(ev.clientX - q.x) < 40 && Math.abs(ev.clientY - q.y) < 40) return;
+    if (ev.detail) _cxQuiet = null;                          // a tap anywhere else: you moved on, that spot works again
     const a = b.dataset.cx;
     if (a === 'prev') return cxStepMonth(-1);
     if (a === 'next') return cxStepMonth(1);
@@ -787,26 +863,33 @@ function cxWire(host, h) {
       // Oct 2026: the tapped header stays where it is (no jump after the list is redrawn)
       return cxKeepPlace(b, () => h.render(), () => [...host.querySelectorAll('[data-cx="fold"]')].find(x => x.dataset.k === k));
     }
-    // CP2 (#10): "On purpose" — open the mini sheet, pick a reason (optional), save; tap the grey pill → Undo
+    // CP2 (#10) · D1: "✓ Agree" saves the mark at once · a tap on the green status opens / closes its reason panel (one at a time) ·
+    // a reason or "Undo agreed" is saved at once and closes it. One save per tap: while a mark is on its way its row's Agree,
+    // reasons and Undo stay off, also across drawings (cxDifBusy). Not saved → the toast, the row as it was (the panel stays open)
     if (/^dif/.test(a)) {
-      const id = b.dataset.id, cur = CX.dif && CX.dif.id === id ? CX.dif : null;
-      if (cur && cur.busy) return;                           // its save is on the way: the panel stays as it is
+      const id = b.dataset.id, y = window._ctrl.year, m = CX.month, where = () => CX.tab + '|' + CX.area + '|' + window._ctrl.year + '|' + CX.month;
+      if (cxDifBusy(id)) return;                             // C6: its mark is on its way — nothing changes until it is saved
+      const cur = CX.dif && CX.dif.id === id ? CX.dif : null, at = where(), pb = CX.dif ? CX.dif.id : null;
       let to = null;                                         // the control that gets the focus back after the redraw
-      if (a === 'difOpen') CX.dif = cur && cur.sheet ? null : { id, sheet: true, pick: null };
-      else if (a === 'difPick') { if (cur) cur.pick = cur.pick === b.dataset.r ? null : b.dataset.r; }
-      else if (a === 'difCancel') { CX.dif = null; to = 'difOpen'; }
-      else if (a === 'difTap') CX.dif = cur && cur.undo ? null : { id, undo: true };
-      else if ((a === 'difSave' || a === 'difUndo') && h.mark) {
-        const st = cur || (CX.dif = { id });
-        st.busy = true; b.disabled = true;                   // one save per tap
+      if (a === 'difTap') CX.dif = cur ? null : { id };      // the reason panel: open · close (another row's closes)
+      else if (a === 'difPick' && b.getAttribute('aria-pressed') === 'true') { if (cur) CX.dif = null; to = 'difTap'; }   // the reason it has: nothing to save
+      else if (h.mark && /^dif(Agree|Pick|Undo)$/.test(a)) {
+        if (a === 'difAgree' && CX.dif && CX.dif.id !== id) CX.dif = null;   // agreeing a row closes another row's panel
+        const k = id + '|' + y + '|' + m, mark = a === 'difUndo' ? null : { ok: true, reason: a === 'difPick' ? b.dataset.r : 'agreed' };
+        _cxDifRun.add(k); b.disabled = true;                 // one save per tap
+        if (cur && a === 'difPick') cur.pick = b.dataset.r;  // the reason tapped shows pressed while it is saved
+        h.render();
         let ok = true;
-        try { await h.mark(id, a === 'difSave' ? { ok: true, reason: st.pick || null } : null); } catch (err) { ok = false; cxToastErr(err); }
-        st.busy = false;
-        if (ok && CX.dif === st) CX.dif = null;              // not saved → the panel stays open (reason kept): try again
-        to = ok ? (a === 'difSave' ? 'difTap' : 'difOpen') : a;
+        try { await h.mark(id, mark); } catch (err) { ok = false; cxToastErr(err); }
+        _cxDifRun.delete(k);
+        if (cur) cur.pick = null;
+        if (ok && cur && CX.dif === cur) CX.dif = null;       // saved → the panel closes · not saved → it stays as it was: try again
+        to = ok ? (a === 'difUndo' ? 'difAgree' : 'difTap') : a;
       }
       h.render();
-      return ev.detail === 0 ? cxDifFocus(host, id, to) : undefined;   // keyboard (Enter / Space): a tap leaves no focus ring
+      if (pb && (CX.dif ? CX.dif.id : null) !== pb && ev.detail) _cxQuiet = { until: _cxNow() + 1000, x: ev.clientX, y: ev.clientY };   // a panel closed: the rows below moved up
+      // keyboard (Enter / Space): the focus goes back to the row — a tap leaves no focus ring; another screen or month meanwhile: nothing
+      return ev.detail === 0 && at === where() ? cxDifFocus(host, id, to) : undefined;
     }
     if (h.click) {
       // C6: a tap whose button its handler turns off (a save) keeps it off until it is done, also across drawings (cxPaint)
@@ -825,15 +908,15 @@ function cxWire(host, h) {
   });
   host.addEventListener('change', ev => {
     const id = ev.target && ev.target.dataset && ev.target.dataset.cxIn;
-    if (id && CX.dif && CX.dif.id === id) CX.dif = null;     // a new amount: the old sheet / undo goes
+    if (id && CX.dif && CX.dif.id === id) CX.dif = null;     // a new amount: its reason panel closes (the mark goes with the amount)
     if (id && h.input) h.input(id, cxParse(ev.target.value), ev.target);
   });
   host.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && ev.target && ev.target.dataset && ev.target.dataset.cxIn) ev.target.blur();
-    if (ev.key === 'Escape' && CX.dif && !CX.dif.busy) { const d = CX.dif; CX.dif = null; h.render(); cxDifFocus(host, d.id, d.undo ? 'difTap' : 'difOpen'); }
+    if (ev.key === 'Escape' && CX.dif && !cxDifBusy(CX.dif.id)) { const d = CX.dif; CX.dif = null; h.render(); cxDifFocus(host, d.id, 'difTap'); }   // the panel closes, the focus goes back to its status
   });
 }
-/* CP2: after the redraw the tapped control may be gone (Save, Cancel, a chip) — the focus goes to this row's
+/* CP2: after the redraw the tapped control may be gone (Agree, a reason, Undo agreed) — the focus goes to this row's
    next control instead of the page start (keyboard and screen readers keep their place) */
 function cxDifFocus(host, id, kind) {
   if (!kind) return;

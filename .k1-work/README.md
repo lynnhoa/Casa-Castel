@@ -12,3 +12,9 @@ Findings and verdicts: k1-review-findings.json. Package 2 (paused until next wee
 Built on main 511dbef as branch crit-local (b7946ea + 8442d1d); patches in crit/ (apply with `git am` on 511dbef).
 First independent check: 1 still broken + 1 new problem, both fixed in 8442d1d. The second independent check was
 running when paused. To finish: re-run that check, then PR + merge.
+
+## 16.11.2026: Controlling differences (PR #66, df96d68) merged into main
+Main now holds the Controlling "more / less · Agreed" change. This branch merged main back in; the conflicts were:
+controlling-ui.js (package 1 keeps "no Kaution chip"; an old Kaution mark still reads "✓ Kaution"), CLAUDE.md
+(both sets of owner bullets kept) and the cache tags (controlling-ui.js 2026-11-16-K1D). Re-test package 1 on top of
+it when it resumes. The crit/ patches are still based on 511dbef.

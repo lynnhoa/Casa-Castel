@@ -30,6 +30,11 @@
   Warmwasser 30 % by days / 70 % by consumption), choose the one that charges the tenants. Never more than the real
   costs; empty days stay with the owner by law. Never report such a choice as a bug.
 - **Keep it simple (R4):** clear, user-friendly, no hidden functions, no extra levels.
+- **Controlling differences (16.11.2026):** a Soll/Ist difference always shows in words between Soll and Ist — costs "more" / "less",
+  income "missing" / "extra" — red when it costs the owner, green when it is good for him, also after it was agreed. "Agreed" (or a
+  reason such as Reduction or Paid later) is a separate green status; agreed rows count as done, so a card turns "✓ Done" although
+  Soll and Ist differ. "Paid later" / "Pays later" count as done (the red difference stays visible). No automatic tolerance for cent
+  differences: the owner taps Agree.
 
 ## Owner facts
 
