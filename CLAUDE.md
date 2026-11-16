@@ -11,6 +11,11 @@
   and never build, repair or suggest Casa Mieterhöhungen. (Rentals keeps its Mieterhöhung / Index / Korrektur.)
 - **Rentals data checks are done (09.11.2026):** RENTALS-CHECK.sql and PARKING-MINDESTLAUFZEIT.sql came back clean —
   no repair SQL, and PARKING-MINDESTLAUFZEIT-FIX.sql is not to be run.
+- **Controlling differences (16.11.2026):** a Soll/Ist difference always shows in words between Soll and Ist — costs "more" / "less",
+  income "missing" / "extra" — red when it costs the owner, green when it is good for him, also after it was agreed. "Agreed" (or a
+  reason such as Reduction or Paid later) is a separate green status; agreed rows count as done, so a card turns "✓ Done" although
+  Soll and Ist differ. "Paid later" / "Pays later" count as done (the red difference stays visible). No automatic tolerance for cent
+  differences: the owner taps Agree.
 
 ## Owner facts
 
