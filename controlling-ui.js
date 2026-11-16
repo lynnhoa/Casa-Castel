@@ -339,6 +339,7 @@ const _CX_CSS = `
     /* the difference between Soll and Ist: right-aligned, may wrap once — only at the space before its word (two 16 px lines
        stay inside the 34 px Ist field, so the row keeps its height) */
     .cx-dm { justify-self:end; text-align:right; font-size:12.5px; font-weight:700; line-height:16px; }
+    .cx-dm--tn { font-variant-numeric:tabular-nums; }   /* even digits as the Soll ("0,01 €", not "0,01€") — not for 100.000 € and more, which then still fit at 375 px */
     .cx-dm--out { color:var(--cx-out); } .cx-dm--in { color:var(--cx-in); }
     .cx-dm__a { white-space:nowrap; }
     .cx-vh { position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }   /* read aloud, not shown */
@@ -487,6 +488,11 @@ function cxDiffLine(c) {
 /* C6: marks on their way (row id | year | month) \u2014 its Agree, reasons and Undo stay off until it is saved, also across drawings */
 const _cxDifRun = new Set();
 const cxDifBusy = id => _cxDifRun.has(id + '|' + window._ctrl.year + '|' + CX.month);
+/* D1: a reason panel that closes moves the rows below it up. The second tap of a double tap would land on whatever
+   moved under the finger (a Soll taken over, the next row booked, a card folded), so for one second a tap on the same
+   spot does nothing. A tap anywhere else works at once; keyboard (Enter / Space) is not affected. */
+let _cxQuiet = null;                                     // { until, x, y } — where the tap that closed a panel landed
+const _cxNow = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 /* Is the month after the current one? (nothing is due yet) */
 function cxFuture(y, m) {
   const t = cxToday(), cy = Number(t.slice(0, 4)), cm = Number(t.slice(5, 7));
@@ -647,7 +653,11 @@ function cxRow(o) {
   // every row that can be marked keeps the button's place, with or without a difference: a long sub line
   // (e.g. Pauschal on the phone) wraps the same before and after you type — the rows below never move
   const slot = markable || (o.mark !== undefined && o.mark !== null && !!o.sub);
-  const agreed = markable && !!o.mark.ok, st = agreed && CX.dif && CX.dif.id === o.id ? CX.dif : null;
+  const agreed = markable && !!o.mark.ok;
+  // D1: a panel left open on a row that is no longer agreed (its mark went with a new amount, e.g. on the other line of a
+  // tenant change) is forgotten, so it never opens again by itself when the mark comes back
+  if (!agreed && CX.dif && CX.dif.id === o.id && !cxDifBusy(o.id)) CX.dif = null;
+  const st = agreed && CX.dif && CX.dif.id === o.id ? CX.dif : null;
   const off = markable && cxDifBusy(o.id) ? ' disabled' : '';   // C6: its mark is on its way
   const idA = ' data-id="' + cxEsc(o.id) + '"';
   const pill = agreed
@@ -668,7 +678,7 @@ function cxRow(o) {
   // D1: the difference between Soll and Ist in words, no + or − — red: less money for you (a cost paid more, rent missing),
   // green: more money for you (a cost paid less, rent extra). It stays after it was agreed. Read aloud: "difference 0,01 € more"
   const dm = !d ? '<span class="cx-dm"></span>'
-    : '<span class="cx-dm cx-dm--' + (d * (o.dir === -1 ? -1 : 1) < 0 ? 'out' : 'in') + '"><span class="cx-vh">difference </span><span class="cx-dm__a">' + cxEur(Math.abs(d)) + '</span> ' +
+    : '<span class="cx-dm cx-dm--' + (d * (o.dir === -1 ? -1 : 1) < 0 ? 'out' : 'in') + (Math.abs(d) < 100000 ? ' cx-dm--tn' : '') + '"><span class="cx-vh">difference </span><span class="cx-dm__a">' + cxEur(Math.abs(d)) + '</span> ' +
       (o.dir === -1 ? (d > 0 ? 'more' : 'less') : (d < 0 ? 'missing' : 'extra')) + '</span>';
   // D1: the pills keep one width in every state the status can take (an invisible, 0 px high copy of each): a long label
   // (e.g. a tenant change) wraps the same before and after you type, agree or pick a reason — the row never moves
@@ -840,6 +850,9 @@ function cxWire(host, h) {
   host.addEventListener('click', async ev => {
     const b = ev.target.closest('[data-cx]');
     if (!b || b.disabled) return;
+    const q = _cxQuiet;                                     // D1: the 2nd tap of a double tap, on the spot a reason panel just left
+    if (ev.detail && q && _cxNow() < q.until && Math.abs(ev.clientX - q.x) < 40 && Math.abs(ev.clientY - q.y) < 40) return;
+    if (ev.detail) _cxQuiet = null;                          // a tap anywhere else: you moved on, that spot works again
     const a = b.dataset.cx;
     if (a === 'prev') return cxStepMonth(-1);
     if (a === 'next') return cxStepMonth(1);
@@ -854,11 +867,12 @@ function cxWire(host, h) {
     if (/^dif/.test(a)) {
       const id = b.dataset.id, y = window._ctrl.year, m = CX.month, where = () => CX.tab + '|' + CX.area + '|' + window._ctrl.year + '|' + CX.month;
       if (cxDifBusy(id)) return;                             // C6: its mark is on its way — nothing changes until it is saved
-      const cur = CX.dif && CX.dif.id === id ? CX.dif : null, at = where();
+      const cur = CX.dif && CX.dif.id === id ? CX.dif : null, at = where(), pb = CX.dif ? CX.dif.id : null;
       let to = null;                                         // the control that gets the focus back after the redraw
       if (a === 'difTap') CX.dif = cur ? null : { id };      // the reason panel: open · close (another row's closes)
       else if (a === 'difPick' && b.getAttribute('aria-pressed') === 'true') { if (cur) CX.dif = null; to = 'difTap'; }   // the reason it has: nothing to save
       else if (h.mark && /^dif(Agree|Pick|Undo)$/.test(a)) {
+        if (a === 'difAgree' && CX.dif && CX.dif.id !== id) CX.dif = null;   // agreeing a row closes another row's panel
         const k = id + '|' + y + '|' + m, mark = a === 'difUndo' ? null : { ok: true, reason: a === 'difPick' ? b.dataset.r : 'agreed' };
         _cxDifRun.add(k); b.disabled = true;                 // one save per tap
         if (cur && a === 'difPick') cur.pick = b.dataset.r;  // the reason tapped shows pressed while it is saved
@@ -871,6 +885,7 @@ function cxWire(host, h) {
         to = ok ? (a === 'difUndo' ? 'difAgree' : 'difTap') : a;
       }
       h.render();
+      if (pb && (CX.dif ? CX.dif.id : null) !== pb && ev.detail) _cxQuiet = { until: _cxNow() + 1000, x: ev.clientX, y: ev.clientY };   // a panel closed: the rows below moved up
       // keyboard (Enter / Space): the focus goes back to the row — a tap leaves no focus ring; another screen or month meanwhile: nothing
       return ev.detail === 0 && at === where() ? cxDifFocus(host, id, to) : undefined;
     }
