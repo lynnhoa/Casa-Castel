@@ -323,6 +323,14 @@ const _CX_CSS = `
       /* the pills as they were before a mark and the widest while typing, invisible and 0 px high: the status keeps its width,
          so the title never re-wraps */
       .cx-ph__gh { display:flex; align-items:center; gap:6px; height:0; overflow:hidden; visibility:hidden; } }
+    /* the header's "done … of …" (Income, Expenses) is one piece, as wide as the widest sum it can show (an invisible copy,
+       0 px high): booking never re-wraps it. The whole line again, invisible, keeps its height on a phone so narrow that the
+       piece has to wrap inside — the card never moves */
+    .cx-src--d { display:grid; } .cx-src--d > * { grid-area:1/1; min-width:0; }
+    .cx-src__d { display:inline-block; max-width:100%; }
+    .cx-src__d::before { content:attr(data-w); display:block; height:0; overflow:hidden; visibility:hidden; }
+    .cx-src__g { visibility:hidden; font-style:normal; } .cx-src__g::before { content:attr(data-p); }
+    .cx-src__g > b { display:inline-block; max-width:100%; font-weight:inherit; } .cx-src__g > b::before { content:attr(data-w); }
     button.cx-pill { font-family:inherit; margin:0; cursor:pointer; -webkit-appearance:none; appearance:none; -webkit-tap-highlight-color:transparent; }
     /* the green status of an agreed row is a button: 24 px+ to tap, drawn as the pill (the extra reaches into the row's gaps) */
     .cx-pill-tap { position:relative; } .cx-pill-tap::after { content:''; position:absolute; left:-4px; right:-4px; top:-3px; bottom:-3px; }
@@ -585,14 +593,25 @@ function cxRowQ(key, fn) {
   return job.finally(() => { if (_cxRowQ[key] === job) delete _cxRowQ[key]; });
 }
 
+/* D1: the card header's "sub · done X € of Y €" (Income, Expenses). "done … of …" is one piece with an invisible copy of the
+   widest sum it can show (the sum, or the plan + 10 % for a payment above it; every digit a 4 — Inter's widest): it stays on
+   the first line or starts the second whatever is booked, so the header never moves. A whole invisible copy of the line
+   (.cx-src__g) keeps the height where a narrow phone has to wrap the piece inside. The copies are drawn from data-* (not read
+   aloud, no text of their own) */
+function _cxSrcDone(sub, sum, plan) {
+  const of = plan ? ' of ' + cxW(plan) : '', most = 'done ' + cxW(Math.max(Math.abs(sum), Math.abs(plan || 0) * 1.1)).replace(/\d/g, '4') + of;
+  return '<span>' + (sub ? cxEsc(sub) + ' · ' : '') + '<span class="cx-src__d" data-w="' + cxEsc(most) + '">' + cxEsc('done ' + cxW(sum) + of) + '</span></span>' +
+    '<i class="cx-src__g" aria-hidden="true" data-p="' + (sub ? cxEsc(sub + ' · ') : '') + '"><b data-w="' + cxEsc(most) + '"></b></i>';
+}
+
 /* ── Property card with fold-up ── */
 function cxCard(o) {
   const g = o.status;
   const gs = !g ? [] : Array.isArray(g[0]) ? g : [g];        // CP2: one pill, or several side by side ("1 open" "1 to check")
   // CP2: o.statusWas = the status without the marks (cxGroupStatus) — kept as an invisible width on the phone, so marking moves nothing.
-  // D1: + the widest "open" / "to check" its rows can reach (8 is the widest digit), so typing an amount moves nothing either
+  // D1: + the widest "open" / "to check" its rows can reach (4 is Inter's widest digit), so typing an amount moves nothing either
   const gw0 = !o.statusWas ? [] : Array.isArray(o.statusWas[0]) ? o.statusWas : [o.statusWas];
-  const most = o.statusWas && o.statusWas.most ? String(o.statusWas.most).replace(/\d/g, '8') : '';
+  const most = o.statusWas && o.statusWas.most ? String(o.statusWas.most).replace(/\d/g, '4') : '';
   const gw = most ? gw0.concat([['open', most + ' open'], ['open', most + ' to check']]) : gw0;
   const gh = gw.length && gw.map(x => x.join('|')).join('/') !== gs.map(x => x.join('|')).join('/') ? gw : null;
   const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key]
@@ -602,9 +621,10 @@ function cxCard(o) {
   if (isOpen && o.defaultOpen === undefined && CX.open[o.key] === undefined) CX.open[o.key] = true;   // = CX.open[key] ??= isOpen
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
-      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
-        (o.subHTML !== undefined ? o.subHTML :                  // CP1: a sub with a coloured amount (One-off "Income + 407 €")
-        cxEsc([o.sub || '', o.sum !== undefined ? 'done ' + cxW(o.sum) + (o.plan ? ' of ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · '))) + '</span></span>' +
+      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span>' +
+        (o.subHTML !== undefined ? '<span class="cx-src">' + o.subHTML :   // CP1: a sub with a coloured amount (One-off "Income + 407 €")
+        o.sum !== undefined ? '<span class="cx-src cx-src--d">' + _cxSrcDone(o.sub, o.sum, o.plan) :   // D1: Income, Expenses
+        '<span class="cx-src">' + cxEsc(o.sub || '')) + '</span></span>' +
       '<span class="cx-ph__r">' + (gh
         // D1: the pills that show, right-aligned on an invisible 0 px high copy (the extra pill + the widest statuses): the extra
         // pill stays next to the status, and the title keeps its width
