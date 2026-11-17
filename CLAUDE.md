@@ -21,7 +21,7 @@
   results ("miete", old confirmed "via Kaution" rows without a booking) stay as stored — never convert them.
 - **Rent owed / damage kept from the Kaution are entered once, on the Kaution card** (move-out form: Rent owed + Month,
   Damage + Reason, optional "From receipt"). The card books the rent month as received in Controlling (kau_part on
-  ctrl_income_months) and the damage as one "Erstattung Mieter · … · aus Kaution" income line. Nothing is written to
+  ctrl_income_months) and the damage as one "<Reason> · Erstattung aus Kaution · <Zimmer/flat>" income line. Nothing is written to
   Maintenance. "Kept · other reasons" books nothing. Needs KAUTION-K1B.sql; without it the card works as before.
 - **Kaution card limits are deliberate:** the new rows only show for tenants who have moved out; "Kept · for
   NK-Abrechnung" only for tenants with an NK-Abrechnung; the hold is used by the first NK letter dated on or after
