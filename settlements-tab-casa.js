@@ -814,7 +814,9 @@ function scRowHtml(t, M, inRoom) {
   const op = Object.keys(t.vzMap || {}).filter(ym => ym <= nowYm && t.vzMap[ym].src === 'open' && !(t.set && t.set.vzMonths && t.set.vzMonths[ym] !== undefined)).sort();
   const per = stPer(t.from, t.to) + (t.movedOut ? ' · moved out' : '') + ((t.teilB || []).length ? ' · incl. Teil B' : '') +   // D39
     (op.length ? ' · ' + op.map(ym => SC_MONTHS_L[Number(ym.slice(5, 7)) - 1]).join(', ') + ' not paid yet' : '');   // Nov 2026: real-only preview
-  const amt = say[1].replace(/(\d[\d.]*,\d{2}\s?€)/, '<b>$1</b>');
+  // the bold figure is the money that moves: after 'kept … of the Kaution · ' when an amount follows, else the first one
+  const kc = say[1].indexOf(' of the Kaution · '), cut = kc >= 0 && /\d,\d{2}\s?€/.test(say[1].slice(kc)) ? kc : 0;
+  const amt = say[1].slice(0, cut) + say[1].slice(cut).replace(/(\d[\d.]*,\d{2}\s?€)/, '<b>$1</b>');
   return '<button class="sc-row' + (inRoom ? ' sc-row--in' : '') + '" data-sc="ten" data-k="' + stEsc(t.key) + '">' +
     (inRoom ? '' : '<span class="sc-av" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(t.room)) + '</span>') +
     '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(t.name) + '</span>' +
