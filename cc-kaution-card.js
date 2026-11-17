@@ -418,6 +418,7 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   const $ = id => document.getElementById(id);
   ccKautionRest(app, pfx, tid);                          // fin NP3: Save writes what the fields show — an emptied "other" shows the rest first
   ui.sent = _cckFormNow(pfx);                            // what this Save reads (a Save tapped meanwhile runs only if the form changed)
+  ui.newer = 0;                                          // C2: typed while it waited for an earlier write of the card is in it — only typing from now on keeps the form open
 
   // B25 (5): an unfinished date (e.g. 15.01.202) is never saved as "no date" — say so and stop
   const badDate = [[`cck-rd-${pfx}`, 'Received on'], [`cck-fd-${pfx}`, 'Settled on']]
@@ -492,7 +493,7 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     if (KB) back();                                     // K1b: the bookings go back to the card as saved (same queue)
     return redraw();
   }
-  // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in while it saved (its dark Save)
+  // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in after this Save read it (its dark Save)
   if (ui.again || (ui.newer && _cckShown(pfx))) return amtOk;
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
