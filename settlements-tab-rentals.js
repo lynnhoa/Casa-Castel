@@ -154,12 +154,14 @@ function srSaveRow(rec, from, only) {
   const p = Promise.resolve(SR._wq[k]).catch(() => {}).then(async () => {
     if (!rec.id && from && from.id) rec.id = from.id;
     if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
-    const now = only && rec.id && SR.rows.find(x => x.id === rec.id);
+    const cur = rec.id && SR.rows.find(x => x.id === rec.id), now = only && cur;
+    const k1 = cur && cur !== rec ? Object.keys(cur.tenants || {}).filter(t => cur.tenants[t] && cur.tenants[t].k1) : [];   // letters sent with the K1 rules
     if (!only && rec.id) {                              // K1 (R5): a Jahresabrechnung draft made before the first letter keeps the split it went out with
-      const cur = SR.rows.find(x => x.id === rec.id);
       if (cur && cur !== rec && cur.keys && cur.keys.hz !== undefined && !(rec.keys && rec.keys.hz !== undefined)) rec.keys = Object.assign({}, rec.keys, { hz: cur.keys.hz });
     }
     if (now && now !== rec) { only.forEach(f => { if (/^keys\./.test(f)) now.keys = Object.assign({}, now.keys, { [f.slice(5)]: rec.keys[f.slice(5)] }); else now[f] = rec[f]; }); rec = now; }
+    // K1: a save from a copy made before a letter went out keeps that letter's mark (ts.k1, _srOldCalc) — was: lost
+    for (const t of k1) if (!(rec.tenants && rec.tenants[t] && rec.tenants[t].k1)) rec.tenants = Object.assign({}, rec.tenants, { [t]: Object.assign({}, rec.tenants && rec.tenants[t], { k1: true }) });
     const data = await _srSaveRowNow(rec);
     if (from && !from.id) from.id = data.id;
     return data;
@@ -339,14 +341,25 @@ function _srRecSummary(rec, apt) {                     // the Hausgeld side only
    keeps the rules it went out with — every amount positive, the Vorauszahlungen of the tenant's line — so its window and
    "Open letter (PDF)" show what the tenant got. A letter sent with the K1 rules is marked (ts.k1, _srSendNow). */
 const _srOldCalc = (c, it, ts) => !ts.k1 && !!it.r && (['verschickt', 'bezahlt', 'erledigt'].includes(it.r.status) || !!_srLine(c, it).state.res);
-/* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct } */
-function _srCalc(c, it, rec) {
+/* K1: the mark can be lost (the save of the letter settings inside "Mark sent" failed, a save from an older copy) — the result
+   stored by the same send decides: a sent line whose stored result only the K1 rules give went out with them
+   (was: it reopened under the old rules — 680 € sent and stored, its window and PDF 560 €) */
+function _srSentCalc(c, it, rec) {
+  const res = _srLine(c, it).state.res, x = _srCalc(c, it, rec, true);
+  if (!res || Math.abs(x.saldo - res.dir * res.amount) < 0.005) return x;
+  const y = _srCalc(c, it, rec, false);
+  return Math.abs(y.saldo - res.dir * res.amount) < 0.005 ? y : x;
+}
+/* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct }
+   rule: true = the rules before K1, false = the K1 rules · left out: as the line went out (_srOldCalc, _srSentCalc) */
+function _srCalc(c, it, rec, rule) {
   const r = it.r, per = _srPer(c, rec);
   const from = _srD(r.period_from) > per.from ? _srD(r.period_from) : per.from;
   const to = _srD(r.period_to) < per.to ? _srD(r.period_to) : per.to;
   const perDays = _srDays(per.from, per.to), tDays = Math.max(0, _srDays(from, to));
   const t = _srTenantOf(r), apt = _srAptOf(c, t);
-  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = _srOldCalc(c, it, ts);
+  const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {}, old = rule !== undefined ? !!rule : _srOldCalc(c, it, ts);
+  if (rule === undefined && old) return _srSentCalc(c, it, rec);
   const lines = [], hz = _srHz(c, rec); let sum = 0, missing = 0, direct = false;
   for (const pos of (rec && rec.positions) || []) {
     if (!_srInNk(pos, rec)) continue;
