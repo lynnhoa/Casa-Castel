@@ -765,6 +765,10 @@ function scSay(t) {
   if (t.k === 'sent') {
     const r = t.st.res, kb = r.via === 'kaution' && (!r.dir || !r.amount) ? scKau(t, 0) : null;
     if (kb) return ['neg', 'you pay back ' + scE(kb.E) + ' (Kaution)'];   // balanced: the held part still goes back
+    // K1-SET-VIA-KAUTION (R3): with a held part only the rest moves, by bank — what is kept · that transfer, as the done text
+    // and the Money step say it (was: 'pays you 450,00 € · via Kaution' while 150,00 € come by bank)
+    const kt = r.via === 'kaution' ? scKau(t, r.dir * r.amount) : null;
+    if (kt) return [r.dir > 0 ? 'pos' : 'neg', 'kept ' + scE(kt.E) + ' of the Kaution · ' + (kt.T > 0.004 ? 'pays you ' + scE(kt.T) : kt.T < -0.004 ? 'gets ' + scE(-kt.T) + ' back' : 'nothing to transfer')];
     const how = t.st.confirm || r.via === 'kaution' ? (r.via === 'miete' ? ' · with the rent' : ' · via Kaution') : '';
     return r.dir > 0 ? ['pos', 'pays you ' + scE(r.amount) + how] : r.dir < 0 ? ['neg', 'gets ' + scE(r.amount) + ' back' + how] : ['', 'balanced'];
   }
@@ -1100,7 +1104,7 @@ function scRenderModal() {
   if (M.loading) return;                                    // D39: the year is loading again → the pop-up stays as shown until it is back
   let inner = '';
   if (m.view === 'costs') inner = scCostsView(M);
-  else if (m.view === 'ten') inner = scTenView(M, m);
+  else if (m.view === 'ten') { inner = scTenView(M, m); scKauAgain(m); }
   else if (m.view === 'settle') inner = scSettleView(M, m);
   else if (m.view === 'extra') inner = scExtraView(M, m);
   else if (m.view === 'sumTen') inner = scSumTen(M);
@@ -2110,7 +2114,7 @@ function scTenView(M, m) {
   const s1 = { n: 1, state: sent ? 'done' : canSend ? 'open' : 'wait', title: 'Letter',
     sub: sent ? 'sent ' + stDate(res.date) : !M.sendable ? 'Frist passed' : !M.locked ? 'lock the house costs first' : 'not sent yet · Frist ' + stDate(M.frist),
     undo: sent && !done ? '<button type="button" class="tp-undo" data-sc="reopen" ' + kAttr + '>undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, scSending(t.key) ? 'loader' : 'check', scSending(t.key) ? 'Saving' : 'Mark as sent', true, !canSend || scSending(t.key)) + '</div>' };   // C6: as it is while its letter saves
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : scKauWait(t) ? '' : '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, scSending(t.key) ? 'loader' : 'check', scSending(t.key) ? 'Saving' : 'Mark as sent', true, !canSend || scSending(t.key)) + '</div>' };   // C6: as it is while its letter saves
   let s2 = null;
   // K1 (C11): with a Kaution part held for this NK the step names the real bank transfer T = result − held part
   // (> 0 the tenant transfers the rest · < 0 you pay back) — the amount typed there is that transfer
@@ -2212,6 +2216,21 @@ function scKau(t, saldo) {
    one without a held part, so its Money step offers no amount and no button until a load has read them (was: the amount typed
    was booked as the whole result: +150 instead of +450) */
 const scKauLost = (t, res) => !!SC.kauLost && !!res && res.via === 'kaution' && !!t && !t.extra;
+/* S3: … and a letter not sent yet: a tenant who moved out may have a part held back, so his letter is not offered (no PDF,
+   no Mark as sent — it would ask the whole result by bank) until the rows are read. His sheet reads them again when it
+   opens, once, silently: read → the page and the sheet are drawn again with the held part */
+const scKauWait = t => !!SC.kauLost && !!t && t.k === 'open' && !!t.movedOut && !t.extra;
+async function scKauAgain(m) {
+  if (!SC.kauLost || !m || m._kau) return;
+  m._kau = true;
+  try {
+    const k = await _ctlSupa.from('kaution').select('*');
+    if (k.error || !SC.kauLost) return;
+    SC.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id != null) SC.kaution[String(x.tenant_id)] = x; });
+    SC.kauLost = false;
+  } catch (e) { return; }
+  if (ST.tab === 'casa') stRenderCasa();
+}
 const scKauB = (kt, x) => cxR(kt.E + (kt.T < 0 ? -1 : 1) * (Number(x) || 0));                 // transfer x → the booking (signed)
 /* The 'Kaution held back' row of the Calculation: the transfer the letter names (none: 'nothing to transfer'), once settled
    what really moved — back from the booking as the Money step (scSay) says it (balanced, no booking: the held part went back) */
@@ -2841,6 +2860,7 @@ async function scUnlock() {
 
 async function scPdf(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
+  if (scKauWait(t)) return;                                       // S3: the held part is not known yet (no PDF offered)
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   const reset = btn ? btn.innerHTML : '';
   if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
@@ -2886,6 +2906,7 @@ async function scSend(key, btn) {
 }
 async function _scSendNow(key, btn, M, m0) {
   const t = M && M.ten.find(x => x.key === key); if (!t) return;
+  if (scKauWait(t)) return;                                       // S3: the held part is not known yet (no Mark as sent offered)
   if (!M.locked) { stSay('Lock the house costs first'); return; }
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   if (t.extra) return scSendExtra(M, t, btn, m0);
