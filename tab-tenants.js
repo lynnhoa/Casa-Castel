@@ -1426,13 +1426,15 @@ function _tnFormerOpenPills(r) {   // Kaution only — NK status lives in More �
   }
   return out.join('');
 }
-/* Whole house: NK open (current + former) · Kaution to settle (former) */
+/* Whole house: NK open (current + former) · Kaution to settle (former) · Kaution held for NK (former, settled) */
 function _tnOpenCounts() {
   const act = _tnRecords.filter(r => r.status === 'active' || r.status === 'former');
   return {
     nk: act.filter(r => _tnNkHasOpen(r.id)).length,
     // #11: also one archived before the rule (Kaution still held) — the refund never drops off Open items
-    kaution: _tnRecords.filter(r => (r.status === 'former' || r.status === 'archived') && _tnKautionOpen(r.id)).length,
+    kaution: _tnRecords.filter(r => (r.status === 'former' || r.status === 'archived') && _tnKautionOpen(r.id) && !(_tnKaution[r.id] || {}).settled).length,
+    // C4: settled — only the part kept for the NK-Abrechnung is still held (until that NK is settled): not "to settle"
+    nkHeld: _tnRecords.filter(r => (r.status === 'former' || r.status === 'archived') && _tnKautionOpen(r.id) && !!(_tnKaution[r.id] || {}).settled).length,
   };
 }
 /* IST today: the rent of every tenant living in the house now (rent history first).
@@ -1471,7 +1473,8 @@ function _tnSummaryUpdate() {
   const held = ccTnHeldTotal(_tnRecords, _tnKaution, _tnKautionNkHeld);   // K1: + the part held for the NK
   const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
   const pills = (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
-    + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
+    + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '')
+    + (c.nkHeld ? `<span class="tnp tnp-blue">Kaution held for NK \u00b7 ${c.nkHeld}</span>` : '');   // C4: blue, as the tenant's own pill
   const ist = document.getElementById('tn-ist');
   if (ist) {
     const t = _tnIstTotals();

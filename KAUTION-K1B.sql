@@ -1,7 +1,7 @@
 -- ═══ Kaution K1b: rent owed and damage kept from the Kaution count in Controlling (Nov 2026 · safe to run twice · no data changed) ═══
 -- You enter them ONCE, on the Kaution card of the tenant who moved out (Casa Castel and Rentals):
 --   "Rent owed" + Month → that month counts as received in Controlling › Income
---   "Damage" + Reason   → one line "<Zimmer/flat> · Erstattung Mieter · <Reason> · aus Kaution" in Controlling › One-off
+--   "Damage" + Reason   → one line "<Reason> · Erstattung aus Kaution · <Zimmer/flat>" in Controlling › One-off
 -- Without this file the Kaution card works exactly as before and shows no new rows. Nothing is deleted or changed.
 -- 1 · What the Kaution card kept at move-out (shown again when you open the card, needed to change or clear it later)
 --     {"rent":[{"m":"2026-09","a":1000}], "dmg":{"a":400,"r":"Maler Wand · 05.10.2026","cost":"<maint_costs.id or null>"}}
