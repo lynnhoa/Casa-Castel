@@ -647,8 +647,10 @@ function cxCard(o) {
    line 1: label · pills + status      line 2: Soll (tap = take over) │ difference │ Ist field
    then sub line, change notes, info (grey) and data checks                                  */
 function cxRow(o) {
-  const s = cxStatus(o.soll, o.ist, o.emptyText, o.dir, o.mark);
-  const can = !!o.soll || (o.ist !== null && o.ist !== undefined);
+  // K1 fin2: o.due — a row with no Soll that still needs a tap (a Kaution NK result with nothing to transfer) is amber 'open'
+  // while its Ist is empty, as the card header counts it (was: grey) · o.lock — no Soll tap and no Ist field (its amount is not known)
+  const s = o.due && (o.ist === null || o.ist === undefined) ? ['open', o.emptyText || 'open'] : cxStatus(o.soll, o.ist, o.emptyText, o.dir, o.mark);
+  const can = !o.lock && (!!o.soll || (o.ist !== null && o.ist !== undefined));
   // CP2 (#10) · D1: a difference on a row that can be marked (o.mark given, C1 SQL run) → "✓ Agree" on the sub line (one tap);
   // agreed → the green status is a button: the reason panel (reasons · Undo agreed). The line keeps its height either way (no jump).
   const d = cxDiff(o.soll, o.ist), markable = !!d && o.mark !== undefined && o.mark !== null;
@@ -690,15 +692,15 @@ function cxRow(o) {
     alts.map(t => '<span class="cx-r__pv">' + (o.pills || '') + cxPill('grey', t) + '</span>').join('') + '</span></span>';
   const took = o.ist !== null && o.ist !== undefined && o.soll && cxR(o.ist - o.soll) === 0;
   const icon = took ? 'check' : o.ist === null || o.ist === undefined ? 'arrow-right' : '';   // D1: no icon while a difference shows
-  const soll = o.soll
+  const soll = o.soll && !o.lock
     ? '<button class="cx-soll' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Take Soll: ' + cxEsc(cxEur(o.soll)) + '">' +
         '<span>' + cxEur(o.soll) + '</span>' + (icon ? '<i class="ti ti-' + icon + '" aria-hidden="true"></i>' : '') + '</button>'
-    : '<span class="cx-r__s">\u2014</span>';
+    : '<span class="cx-r__s">' + (o.soll ? cxEur(o.soll) : '\u2014') + '</span>';
   return '<div class="cx-r">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.label) + (o.badge ? ' ' + cxPill('beige', o.badge) : '') + '</span>' +
       '<span class="cx-r__p">' + pills + '</span></div>' +
     '<div class="cx-r__mid">' + soll + dm +
-      '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Amount' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist amount ' + cxEsc(o.label) + '"><span>€</span></label>' +
+      '<label class="cx-f' + (can || (o.allowEmpty && !o.lock) ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + ((o.soll || o.allowEmpty) && !o.lock ? 'Amount' : '\u2014') + '"' + (!o.lock && (o.soll || o.allowEmpty || can) ? '' : ' disabled') + ' aria-label="Ist amount ' + cxEsc(o.label) + '"><span>€</span></label>' +
     '</div>' +
     subLine + sheet +
     (o.notes || []).map(n => '<div class="cx-r__note"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') +

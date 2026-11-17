@@ -136,8 +136,12 @@ async function _srLoadRowsNow() {
     } catch (e) { SR.nkOt = []; }
     try {                                               // Kaution-Einbehalt (Rentals › Tenants) — read only here
       const k = await _ctlSupa.from('rnt_kaution').select('*');
+      if (k.error) throw k.error;
       SR.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id) SR.kaution[String(x.tenant_id)] = x; });
-    } catch (e) { SR.kaution = {}; }
+      SR.kauLost = false;
+    } catch (e) {                                       // fin2: not read — the rows read before stay; none yet: the held parts are
+      if (SR.kauLost !== false) { SR.kaution = {}; SR.kauLost = true; }   // not known (_srKauLost) until a load reads them
+    }
   } catch (e) {
     SR.rows = [];
     SR.missing = /does not exist|42P01|relation|schema cache/i.test(String((e && (e.message || e.code)) || e));
@@ -2082,9 +2086,10 @@ function _srTenView(c) {
   // With the Kaution the Money step is the real transfer T = NK result − held part (a balanced result: the held part goes back)
   const resVia0 = sent ? (ti.st.res.via || 'zahlung') : via, kau = resVia0 === 'kaution' && x.einbehalt > 0;
   const T = kau ? cxR(v - x.einbehalt) : null;
+  const kLost = sent && !settledT && _srKauLost(ti.st.res);   // fin2: the held part is not known (Kaution not read) — nothing to tap
   // a balanced result sent with a held part that the Kaution card no longer holds (given back there): nothing moves — the
   // step stays so the line can be settled ('Done', confirmed without a booking) (was: no step, the line stayed 'sent')
-  const kauGone = sent && !settledT && !kau && resVia0 === 'kaution' && Math.abs(v) < 0.005;
+  const kauGone = sent && !settledT && !kau && !kLost && resVia0 === 'kaution' && Math.abs(v) < 0.005;
   const hasMoney = Math.abs(v) >= 0.005 || kau || kauGone;
   const pdf = stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
@@ -2096,12 +2101,13 @@ function _srTenView(c) {
   if (hasMoney) {
     const resVia = resVia0, b = ti.st.booking;
     // K1: with a held part (a balanced result too) the date and the amount of the one real transfer, prefilled
-    const payBox = sent && !settledT ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || kau || (resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';
+    // fin2: nothing moves (the result = the held part, T = 0) → no amount, as in Casa Castel (the tap books the held part)
+    const payBox = sent && !settledT && !kLost ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), kau ? Math.abs(T) : b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung' || (kau ? Math.abs(T) >= 0.005 : resVia === 'kaution' && Math.abs(v) >= 0.005)) : '';
     const kauSay = kauGone ? 'Nothing held back any more · nothing to transfer' : !kau ? '' : T < -0.004 ? 'You pay back ' + stEur(-T) : T > 0.004 ? first + ' transfers ' + stEur(T) : 'You keep ' + stEur(x.einbehalt) + ' of the Kaution';
     s2 = { n: 2, state: settledT ? 'done' : sent ? 'open' : 'wait', title: 'Money',
       sub: settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : sent ? stEsc(kauSay || (v > 0 ? first + ' pays you ' : first + ' gets back ') + stEur(Math.abs(v)) + ' · ' + how[resVia]) : 'after the letter',
       undo: settledT ? '<button type="button" class="tp-undo" data-sr="setUndo" ' + idAttr + '>undo</button>' : '',
-      body: sent && !settledT ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', kauGone ? 'Done' : (kau ? T >= -0.004 : v > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
+      body: sent && !settledT && !kLost ? payBox + '<div class="tp-acts">' + stTpBtn('data-sr="payOn" ' + idAttr, 'check', kauGone || (kau && Math.abs(T) < 0.005) ? 'Done' : (kau ? T >= -0.004 : v > 0) ? 'Received' : 'Paid back', true) + '</div>' : '' };
   }
   // ── calculation · one right-hand column for every amount
   const since = _srBought(c.p);
@@ -2132,7 +2138,8 @@ function _srTenView(c) {
     (vzAlt.length ? '<div class="sr-vzalt"><span>use instead:</span>' + vzAlt.map(([k, t]) => '<button class="sr-vzalt__b" data-sr="vzUse" data-v="' + k + '">' + stEsc(t) + '</button>').join('') + '</div>' : '') +
     (x.pre ? '<p class="sr-hint2">Before the purchase (' + stDM(x.pre.from) + '–' + stDate(x.pre.to) + '): ' + stEur(x.pre.soll) + ' per contract – check with the seller.</p>' : '') +
     stTpRow({ title: '= ' + (x.saldo > 0 ? first + ' pays you' : x.saldo < 0 ? first + ' gets back' : 'all even'), value: stEur(Math.abs(x.saldo)), vAttr: 'data-sr-res', tone: x.saldo > 0 ? 'pos' : x.saldo < 0 ? 'neg' : '', tot: true }) +
-    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc((cxR(x.einbehalt - x.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - x.saldo)))), value: stEur(x.einbehalt) }) : '');
+    // fin2: the result = the held part (T = 0) → 'nothing to transfer', as in Casa Castel (was: 'pay back to the tenant 0,00 €')
+    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc(Math.abs(cxR(x.einbehalt - x.saldo)) < 0.005 ? 'nothing to transfer' : (cxR(x.einbehalt - x.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - x.saldo)))), value: stEur(x.einbehalt) }) : '');
   // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (!sent) {
@@ -2211,6 +2218,10 @@ function _srKauOf(x) {
   const E = _srEinbehalt(x.it.r);
   return E > 0 ? { E, T: cxR((res.dir || 0) * (res.amount || 0) - E) } : null;
 }
+/* fin2: the Kaution rows could not be read on this page (none read yet) — a result settled with the Kaution cannot be told from
+   one without a held part, so its Money step offers no amount and no button until a load has read them (was: the amount typed
+   was booked as the whole result: +150 instead of +450, −350 instead of −50) */
+const _srKauLost = res => !!SR.kauLost && !!res && res.via === 'kaution';
 /* … and the ONE booking it makes, the NK result as it really happened (+ income · − expense, never clamped or turned):
    the part held back + what the tenant transferred − what you paid back (t: the transfer typed on the Money step).
    300 held · Nachzahlung 200, 100 paid back → +200 · Nachzahlung 450, 150 received → +450 (100 → +400, 0 → +300) ·
@@ -2229,6 +2240,7 @@ async function _srWegViaPaid(x) {
 async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const x = _srSetCtx(ck, tid, weg); if (!x) return;
   const res = x.st.res, kt = weg ? null : _srKauOf(x);       // K1: with the part of the Kaution held back (a balanced result too)
+  if (!weg && _srKauLost(res)) return;                       // fin2: never booked as the whole result while the held part is not known
   if (!res || (!res.amount && !kt)) { stSay('Nothing to settle'); return; }
   const s = String(raw === null || raw === undefined ? '' : raw).trim();
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
@@ -2449,6 +2461,7 @@ function srIsRentalsLine() { return false; }
       const weg = a === 'payOnW', x = _srSetCtx(b.dataset.k, weg ? null : b.dataset.id, weg);
       if (!x || !x.st || !x.st.res) { stSay(weg ? 'Add the result of the Jahresabrechnung first' : 'Send the letter first'); return; }
       const res = x.st.res, date = _srD(_srPayVal('date')) || cxToday();   // the day the money moved (default today)
+      if (!weg && _srKauLost(res)) return;                         // fin2: the held part is not known yet (the step has no button)
       const kt = weg ? null : _srKauOf(x);                         // K1: part of the Kaution held back → the typed transfer is booked as held part ± it
       // settled with the rent: confirm, no booking (an older result 'via Kaution' with nothing held back too)
       if (!weg && res.via && res.via !== 'zahlung' && !kt && (res.via !== 'kaution' || !res.amount || !res.dir)) {

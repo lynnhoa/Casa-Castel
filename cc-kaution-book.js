@@ -210,7 +210,8 @@ function ccKauBeforeOpen(app, tid, open, state) {
 function ccKauEdit(app, tid, ui, redraw) {
   const A = _CCK[app], k = A.map()[tid];
   const paid = !!(k && k.settled);
-  ui.mode = 'edit'; ui.draft = null; ui.typed = paid ? 'ref' : null; ui.tk = paid ? { ref: 1, paid: _ckbR2(k.returned) } : null; delete ui.kbN;
+  const out = paid ? _ckbR2(k.returned) : 0;                       // paid0: the floor again once the refund is emptied (fin2 c)
+  ui.mode = 'edit'; ui.draft = null; ui.typed = paid ? 'ref' : null; ui.tk = paid ? { ref: 1, paid: out, paid0: out } : null; delete ui.kbN;
   const r = redraw(), st = _CCKB.rc[app + '|' + tid];
   if (!(st && st.list)) ccKauReceiptsLoad(app, tid).then(() => _ckbFill(app, tid));
   return r;
@@ -606,7 +607,9 @@ async function ccKauApply(KB, kid) {
    Save of this card runs (one at a time, fix 4) — that Save sets every booking itself.
    NP1 (fin): after a failed Save (back = { amt: Received / Refund before it, old: kept · settled · Settled on · NK before it })
    the old Received / Refund are written back only while the row still holds the old state — a write that landed although
-   both answers were lost is kept, and the card in memory takes the row (was: the old refund over the new row). */
+   both answers were lost is kept, and the card in memory takes the row (was: the old refund over the new row).
+   Fin2: also after a Save that kept Received / Refund (amt null: nothing to write back — the card still takes a row the write
+   reached; it kept the old rent owed while Controlling had the new one) and after the Save's first write (Received / Refund). */
 function ccKauCheck(app, tid) {
   const key = app + '|' + tid;
   if (_CCKB.ok[key]) return;
@@ -634,10 +637,12 @@ function ccKauHeal(app, tid, check, back) {
       const k = (res[0].data || [])[0];
       if (k && back) {                                     // NP1: the row decides whether the amounts go back
         if (_ckbState(k) === _ckbState(back.old)) {
-          const w = await sbL.from(A.table).update(back.amt).eq('id', k.id);
-          if (w.error) return { error: w.error };
-          Object.assign(k, back.amt);
-        } else Object.assign(A.map()[tid] || {}, k);
+          if (back.amt) {                                  // fin2 (b): none to put back when the Save kept Received / Refund
+            const w = await sbL.from(A.table).update(back.amt).eq('id', k.id);
+            if (w.error) return { error: w.error };
+            Object.assign(k, back.amt);
+          }
+        } else Object.assign(A.map()[tid] || {}, k);       // the write reached the row: the card takes it (as Controlling does)
       }
       if (!k || !_ckbHas(k, 'kept')) return {};
       if (check && !_ckbOff(A, String(tid), k, res[1].data || [], res[2].data || [])) return {};

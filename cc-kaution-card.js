@@ -267,6 +267,9 @@ function _cckForm(pfx, k, src, typed, tk, get) {
     const fol = nkMode ? nIn : dIn, fm = fol && tk && tk.f && tk.f[fol.id], sk = src === fIn ? 'ref' : 'd';
     if (fm && own.call(fm, sk)) { fol.value = fm[sk]; delete fm[sk]; }
     src = null;
+  } else if (src && src.value === '' && src === dIn && nIn) {        // fin2 (c): "other" emptied after the refund was emptied — the NK
+    const fm = tk && tk.f && tk.f[nIn.id];                           // amount it filled while the refund stood goes back too (the refund
+    if (fm && own.call(fm, 'd')) { nIn.value = fm.d; delete fm.d; }   // follows "other" again: worked out from it, as before)
   }
   const put = (el, v) => {                                           // the app fills el from src: keep what it showed before (once)
     const sk = src === fIn ? 'ref' : src === dIn ? 'd' : null;
@@ -324,7 +327,11 @@ function ccKautionInput(app, pfx, tid, src) {
   const tk = ui.tk = ui.tk || {};                                     // K1: the fields you typed (refund · other · NK)
   if (src && tk.f) delete tk.f[src.id];                               // fin NP2: a field you type in is yours, not filled by the app
   const nkFollows = !!$(`cck-nk-${pfx}`) && tk.ref && !tk.nk;          // "other" typed now: the NK amount follows
-  if (src && src.id === `cck-ref-${pfx}`) { tk.ref = 1; delete tk.paid; ui.typed = 'ref'; }   // K1: which of refund / "other" stays
+  if (src && src.id === `cck-ref-${pfx}`) {                          // K1: which of refund / "other" stays
+    tk.ref = 1; ui.typed = 'ref';
+    // fin2 (c): only a refund amount you type ends the floor of a settled card (the refund paid out) — emptied, it is back
+    if (src.value !== '') delete tk.paid; else if (tk.paid0 != null) tk.paid = tk.paid0;
+  }
   else if (src && src.id === `cck-d-${pfx}`) { tk.d = 1; if (!nkFollows) ui.typed = 'd'; }
   else if (src && src.id === `cck-nk-${pfx}`) tk.nk = 1;
   else if (src && tk.paid != null && [`cck-r-${pfx}`, `cckb-k0-${pfx}`, `cckb-k1-${pfx}`, `cckb-k2-${pfx}`, `cckb-ka-${pfx}`].includes(src.id))
@@ -421,15 +428,17 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   await A.saveAmounts(tid, F.recv, returned);          // memory + database (existing path)
   const k = A.map()[tid];
   if (!k || !k.id) return;
-  if (KB && (_cckR2(k.received) !== _cckR2(F.recv) || _cckR2(k.returned) !== returned)) return redraw();   // K1b: amounts not saved (message shown)
   // K1b fix 4: not saved after the amounts → Received / Refund go back as well — "Your previous values are back" holds for the
   // card too. Fin (NP1): in the queued put-back, which reads the row first: only while the row still holds the old kept ·
   // settled · Settled on · NK; a row the write reached although both answers were lost is kept and the card takes it
   const old = { kept: k.kept, settled: k.settled, settled_at: k.settled_at, nk_einbehalt: k.nk_einbehalt };
-  const back = () => {
-    const same = _cckR2(amt0.received) === _cckR2(F.recv) && _cckR2(amt0.returned) === returned;
+  // K1b: amounts not saved (message shown) — fin2 (W1): that write may have landed although both answers were lost; nothing else
+  // of this Save was written, so the put-back finds the old kept · settled · NK and writes the old Received / Refund back
+  if (KB && (_cckR2(k.received) !== _cckR2(F.recv) || _cckR2(k.returned) !== returned)) { ccKauHealAfterFail(app, tid, { amt: amt0, old }); return redraw(); }
+  const back = () => {                                  // fin2 (b): also when this Save kept Received / Refund (amt null): the
+    const same = _cckR2(amt0.received) === _cckR2(F.recv) && _cckR2(amt0.returned) === returned;   // card takes a row the write reached
     if (!same) { k.received = amt0.received; k.returned = amt0.returned; }
-    ccKauHealAfterFail(app, tid, same ? null : { amt: amt0, old });
+    ccKauHealAfterFail(app, tid, { amt: same ? null : amt0, old });
   };
   const upd = {};
   if (_cckHasExtra(A)) {                                // (a first save may have just created the row)
