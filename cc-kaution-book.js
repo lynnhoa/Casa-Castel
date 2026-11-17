@@ -9,7 +9,8 @@
    The card writes three states, each one safe to write again (a re-save or a double tap writes nothing):
      1 Rent owed  → this tenant's part of the rent month in ctrl_income_months (split[tid] + kau_part[tid])
      2 Damage     → ONE income line in ctrl_expense_one_time, found by source_ref 'kau:<tn|rnt>:<kaution id>'
-                    '<Zimmer/flat> · Erstattung Mieter · <Reason> · aus Kaution', dated "Settled on"
+                    '<Reason> · Erstattung aus Kaution · <Zimmer/flat>' (no Reason: 'Erstattung aus Kaution · <Zimmer/flat>'),
+                    dated "Settled on" — the Reason first: Controlling › One-off on a phone shows only the start of the name
      3 the Kaution row with `kept` (written last, by the card)
    Bookings exist only while the card is settled ("Settled on" filled, or everything kept after the move-out).
    Every Save also takes back this tenant's part in every month that is no longer on the card (reconcile), so a
@@ -338,9 +339,9 @@ function ccKauDraftRead(pfx) {
   [['kr', 'cckb-kr'], ['ka', 'cckb-ka'], ['kg', 'cckb-kg']].forEach(([key, id]) => { const el = $(`${id}-${pfx}`); if (el) out[key] = key === 'kr' ? _ckbPick(el) : el.value; });
   return out;
 }
-/* "2.400,00 € received − 1.000,00 € rent − 400,00 € damage − 300,00 € for NK" (only parts above 0) */
+/* "2.400,00 € received − 1.000,00 € rent − 400,00 € damage − 300,00 € for NK" (only parts above 0) — C3: it breaks only between parts */
 function ccKauNote(fmt, recv, parts) {
-  return fmt(recv) + ' received' + parts.filter(([v]) => Number(v) > 0.004).map(([v, l]) => ' − ' + fmt(v) + ' ' + l).join('');
+  return _cckParts(fmt(recv) + ' received', ...parts.filter(([v]) => Number(v) > 0.004).map(([v, l]) => '− ' + fmt(v) + ' ' + l));
 }
 function ccKauLiveNote(A, F) { return ccKauNote(A.fmt, F.recv, [[F.kb.rent, 'rent'], [F.kb.dmg, 'damage'], [F.sd, 'other'], [F.nIn ? F.sn : 0, 'for NK']]); }   // as the fields show them
 /* what Save keeps: rows with the same month added together, empty rows left out */
@@ -519,7 +520,7 @@ function ccKauNotLinked(KB) {
   if (typeof ccToast === 'function') ccToast('Not saved — ' + ((KB.ref && KB.ref.label) || 'this unit') + ' is not linked in Controlling › Setup', true);
 }
 
-const _ckbLineItem = (ref, r) => [(ref && ref.label) || '', 'Erstattung Mieter', r, 'aus Kaution'].filter(Boolean).join(' · ');
+const _ckbLineItem = (ref, r) => [r, 'Erstattung aus Kaution', (ref && ref.label) || ''].filter(Boolean).join(' · ');   // C5: the Reason first (a phone cuts the end)
 /* ── Save, step 2 (in the tenant's write queue, before the Kaution row): set every booking ──
    reads first, works everything out, writes only what differs → { } · { error } */
 async function ccKauApply(KB, kid) {
@@ -609,7 +610,8 @@ async function ccKauApply(KB, kid) {
    the old Received / Refund are written back only while the row still holds the old state — a write that landed although
    both answers were lost is kept, and the card in memory takes the row (was: the old refund over the new row).
    Fin2: also after a Save that kept Received / Refund (amt null: nothing to write back — the card still takes a row the write
-   reached; it kept the old rent owed while Controlling had the new one) and after the Save's first write (Received / Refund). */
+   reached; it kept the old rent owed while Controlling had the new one) and after the Save's first write (Received / Refund).
+   C1 (Nov 2026): the row it takes shows at once in the card on screen (not an open form — that keeps what was typed): _ckbShow. */
 function ccKauCheck(app, tid) {
   const key = app + '|' + tid;
   if (_CCKB.ok[key]) return;
@@ -642,7 +644,11 @@ function ccKauHeal(app, tid, check, back) {
             if (w.error) return { error: w.error };
             Object.assign(k, back.amt);
           }
-        } else Object.assign(A.map()[tid] || {}, k);       // the write reached the row: the card takes it (as Controlling does)
+        } else {                                           // the write reached the row: the card takes it (as Controlling does)
+          const was = JSON.stringify(A.map()[tid] || null);
+          Object.assign(A.map()[tid] || {}, k);
+          if (JSON.stringify(A.map()[tid] || null) !== was) _ckbShow(app, tid);   // C1: and a card on screen shows it at once
+        }
       }
       if (!k || !_ckbHas(k, 'kept')) return {};
       if (check && !_ckbOff(A, String(tid), k, res[1].data || [], res[2].data || [])) return {};
@@ -652,6 +658,18 @@ function ccKauHeal(app, tid, check, back) {
       return r && r.error ? { error: r.error } : {};
     } catch (e) { return { error: e }; }
   });
+}
+/* C1: the row a put-back took into memory is shown at once — every Kaution card of this tenant on screen that is not an open form
+   is drawn again, as after a Save (an open form keeps what was typed); was: it kept the old values until the pop-up was opened again */
+function _ckbShow(app, tid) {
+  const A = _CCK[app];
+  if (!A || typeof document === 'undefined') return;
+  document.querySelectorAll('.cck[data-tid]').forEach(el => {
+    if (el.dataset.app !== app || el.dataset.tid !== String(tid) || !/^cck-/.test(el.id)) return;
+    const pfx = el.id.slice(4);
+    if (!document.getElementById('cck-save-' + pfx)) _cckRedraw(app, pfx);
+  });
+  if (typeof A.afterChange === 'function') A.afterChange(tid);
 }
 /* the bookings differ from the saved Kaution row k? rows: the month rows with a Kaution part · lines: this card's damage line(s) */
 function _ckbOff(A, tid, k, rows, lines) {

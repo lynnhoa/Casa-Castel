@@ -186,7 +186,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       cell('Settled on', _cckDate(`cck-fd-${pfx}`, dv('fd', refDate), onIn, dis), 'cck-fd')
     : cell('Refund to tenant', val(P.ret, decided)) + cell('Settled on', P.settled && k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
   let note = KBV && decided ? KBV.note(oth, nkv) : !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
-    : hasNk ? `${f(P.recv)} received − ${f(oth)} other − ${f(nkv)} for NK` : `${f(P.recv)} received − ${f(ded)} kept`;
+    : hasNk ? _cckParts(`${f(P.recv)} received`, `− ${f(oth)} other`, `− ${f(nkv)} for NK`) : _cckParts(`${f(P.recv)} received`, `− ${f(ded)} kept`);
   let noteBad = false;
   if (D) {   // K1: typed values from the draft (pop-up opened again, a "Not saved") — the note follows the fields
     const shown = { [`cck-r-${pfx}`]: dv('r', P.recv || ''), [`cck-d-${pfx}`]: dv('d', decided ? oth : ''),
@@ -198,10 +198,11 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
   }
 
   // Buttons (same place in every state): form → Cancel · Save · otherwise Edit
+  // C2: drawn again while its Save runs (e.g. the Casa list redraws the card) → still "Saving…" (ui.busy, ccKautionAct)
   const B = (label, act, kind) =>
-    `<button type="button" class="${kind === 'save' ? 'tn-btn cc-save' : 'cck-b cck-bs'}" id="cck-${act}-${pfx}" ${dis}${kind === 'save' && D ? ' data-cc-save="dirty" aria-disabled="false"' : ''}
+    `<button type="button" class="${kind === 'save' ? 'tn-btn cc-save' : 'cck-b cck-bs'}" id="cck-${act}-${pfx}" ${dis}${kind === 'save' && ui.busy ? ' data-cc-save="saving" aria-disabled="false"' : kind === 'save' && D ? ' data-cc-save="dirty" aria-disabled="false"' : ''}
       onclick="ccKautionAct(${q},'${act}')">${label}</button>`;
-  const slot = editing ? (tid && ui.mode === 'edit' ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save')
+  const slot = editing ? (tid && ui.mode === 'edit' ? B('Cancel', 'cancel', 's') : '') + B(ui.busy ? 'Saving…' : 'Save', 'save', 'save')
                        : B('<i class="ti ti-pencil"></i> Edit', 'edit', 's');
   // Short card while the Kaution is simply held: one line says it all — Edit opens the full form
   const compact = !!tid && !editing && P.phase <= 3;
@@ -302,8 +303,11 @@ function _cckNoteText(A, F) {
   if (F.kb && F.kb.on && F.any && !F.bad && typeof ccKauLiveNote === 'function') return ccKauLiveNote(A, F);   // K1b: "… − 1.000,00 € rent − 400,00 € damage …"
   return F.bad ? `Kept + refund can be at most ${A.fmt(F.recv)}`
     : !F.any ? 'Type what you keep, or the refund · empty = all still held'
-    : F.nIn ? `${A.fmt(F.recv)} received − ${A.fmt(F.sd)} other − ${A.fmt(F.sn)} for NK` : `${A.fmt(F.recv)} received − ${A.fmt(F.sd)} kept`;
+    : F.nIn ? _cckParts(`${A.fmt(F.recv)} received`, `− ${A.fmt(F.sd)} other`, `− ${A.fmt(F.sn)} for NK`) : _cckParts(`${A.fmt(F.recv)} received`, `− ${A.fmt(F.sd)} kept`);
 }
+/* C3: the note's parts ("2.400,00 € received", "− 300,00 € for NK" …) each held together by non-breaking spaces — on a narrow
+   phone it breaks only between parts (was: "… − 300,00 €" / "for NK") */
+function _cckParts(...parts) { return parts.map(p => String(p).replace(/ /g, '\u00a0')).join(' '); }
 /* Fin (NP3): "Kept · other reasons" emptied while the refund you typed stays — once you leave the field (and at Save) it shows
    the rest again: the amount Save keeps. Never while you type in it. */
 function ccKautionRest(app, pfx, tid) {
@@ -354,8 +358,9 @@ function ccKautionInput(app, pfx, tid, src) {
     rn.classList.toggle('cck-err', F.bad);
     rn.textContent = _cckNoteText(A, F);
   }
+  if (src) { if (ui.saving) ui.newer = 1; ui.busy = 0; }   // C2: typed while it saves → the dark Save again (what Save fills in itself keeps "Saving…")
   const save = $(`cck-save-${pfx}`);
-  if (save && typeof ccSaveSet === 'function') ccSaveSet(save, 'dirty');
+  if (save && typeof ccSaveSet === 'function' && !ui.busy) ccSaveSet(save, 'dirty');
   if (tid) { A.ui[tid] = A.ui[tid] || {}; A.ui[tid].draft = _cckDraftRead(pfx); }   // B25 (6): survives a redraw
   if (tid && F.kb.on) Object.assign(A.ui[tid].draft, ccKauDraftRead(pfx));             // K1b: the new rows too
 }
@@ -364,7 +369,7 @@ function ccKautionInput(app, pfx, tid, src) {
 async function ccKautionAct(app, pfx, tid, act) {
   const A = _CCK[app]; if (!A || !tid) return;
   const ui = A.ui[tid] = A.ui[tid] || {};
-  const redraw = () => { _cckRedraw(app, pfx); A.afterChange(tid); };
+  const redraw = () => { ui.busy = 0; _cckRedraw(app, pfx); A.afterChange(tid); };   // C2: drawn again — "Saving…" is over
 
   if (act === 'edit' && typeof ccKauOn === 'function' && ccKauOn(A, tid)) return ccKauEdit(app, tid, ui, redraw);   // K1b
   if (act === 'edit')   { ui.mode = 'edit'; ui.draft = null; ui.typed = null; ui.tk = null; return redraw(); }
@@ -373,18 +378,38 @@ async function ccKautionAct(app, pfx, tid, act) {
   // K1b fix 4: one Save of this card at a time — a failed Save never sets Controlling or the card back over a newer one; the
   // check on opening waits only while it runs (ui.saving). Fin (NP0): a Save tapped meanwhile is never dropped — when the
   // running one ends, Save runs once more with the form as it is then, if it is still open and differs from what was saved
-  if (typeof ccKauOn !== 'function' || !ccKauOn(A, tid)) return _cckSave(A, app, pfx, tid, ui, redraw);
+  // C2 (Nov 2026): every Kaution Save (a living tenant's card too) — the button reads "Saving…" at once, "Saved" shows once when
+  // it ends, a plain double tap writes once; typing turns it back into the dark Save, a tap then runs Save again (ui.again)
+  _cckBusy(ui, pfx);
   if (ui.saving) { ui.again = 1; return; }
-  ui.saving = 1; ui.again = 0;
+  ui.saving = 1; ui.again = 0; ui.newer = 0;
   let ok = false;
   try {
-    await ccQueueWrite(A.writeKey + tid, async () => ({}));   // fin NP1: what a failed Save put back is in the card first
+    if (typeof ccKauOn === 'function' && ccKauOn(A, tid)) await ccQueueWrite(A.writeKey + tid, async () => ({}));   // fin NP1: what a failed Save put back is in the card first
     ok = await _cckSave(A, app, pfx, tid, ui, redraw);
   } finally { ui.saving = 0; }
-  if (!ui.again) return;
+  if (!ui.again) return _cckDone(app, tid, ui, ok);
   ui.again = 0;
-  if (_cckFormNow(pfx) !== ui.sent) { if (_cckShown(pfx)) return ccKautionAct(app, pfx, tid, 'save'); return; }   // closed: kept as typed
+  if (_cckFormNow(pfx) !== ui.sent) { if (_cckShown(pfx)) return ccKautionAct(app, pfx, tid, 'save'); return _cckDone(app, tid, ui, false); }   // closed: kept as typed
   if (ok) { ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null; redraw(); }   // nothing new: closes as a Save does
+  _cckDone(app, tid, ui, ok);
+}
+/* C2: the Save on its way — its button reads "Saving…" (dark, as a Save that creates something); typing turns it back (ccSaveSet).
+   It stays a button: a tap meanwhile is the again of ccKautionAct (runs once more only when the form changed) */
+function _cckBusy(ui, pfx) {
+  ui.busy = 1;
+  const b = document.getElementById('cck-save-' + pfx);
+  if (b) { b.dataset.ccSave = 'saving'; b.textContent = 'Saving…'; }
+}
+/* C2: the Save is over — saved: "Saved" (once, also on a slow connection) · not saved / nothing new: "Saving…" back to the dark Save
+   (every Kaution card of this tenant still reading "Saving…": a card drawn again meanwhile shows it too) */
+function _cckDone(app, tid, ui, ok) {
+  if (ok && typeof ccSavedToast === 'function') ccSavedToast();
+  ui.busy = 0;
+  document.querySelectorAll('.cck[data-tid] button.cc-save[data-cc-save="saving"]').forEach(b => {
+    const c = b.closest('.cck');
+    if (c && c.dataset.app === app && c.dataset.tid === String(tid) && typeof ccSaveSet === 'function') ccSaveSet(b, 'dirty');
+  });
 }
 /* the form as it is (every field as typed) · is it on screen */
 function _cckFormNow(pfx) { return JSON.stringify([_cckDraftRead(pfx), typeof ccKauDraftRead === 'function' ? ccKauDraftRead(pfx) : {}]); }
@@ -428,6 +453,7 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   await A.saveAmounts(tid, F.recv, returned);          // memory + database (existing path)
   const k = A.map()[tid];
   if (!k || !k.id) return;
+  const amtOk = _cckR2(k.received) === _cckR2(F.recv) && _cckR2(k.returned) === returned;   // C2: "Saved" only when these were saved too
   // K1b fix 4: not saved after the amounts → Received / Refund go back as well — "Your previous values are back" holds for the
   // card too. Fin (NP1): in the queued put-back, which reads the row first: only while the row still holds the old kept ·
   // settled · Settled on · NK; a row the write reached although both answers were lost is kept and the card takes it
@@ -466,10 +492,11 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     if (KB) back();                                     // K1b: the bookings go back to the card as saved (same queue)
     return redraw();
   }
-  if (ui.again) return true;                            // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct)
+  // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in while it saved (its dark Save)
+  if (ui.again || (ui.newer && _cckShown(pfx))) return amtOk;
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
-  return true;
+  return amtOk;
 }
 function _cckToday() {
   if (typeof ccTodayISO === 'function') return ccTodayISO();
