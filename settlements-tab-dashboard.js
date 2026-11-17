@@ -46,7 +46,7 @@ async function _sdLoadNow() {
     if (typeof SC !== 'undefined' && !SC.loaded && typeof scLoadRows === 'function') tasks.push(scLoadRows());
     tasks.push((async () => {
       const r = await _ctlSupa.from(SD_TABLE).select('*').order('updated_at', { ascending: false });
-      if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = r.data || []; }
+      if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = (r.data || []).map(sdSplitOld); }
     })());
     await Promise.all(tasks);
     const y = SD.year || sdYearBounds().def, rec = typeof scRec === 'function' ? scRec(y) : null;
@@ -524,6 +524,15 @@ function sdPickTenant(d, t) {
   sdTenantPeriod(d, t);
   sdSplitFollow(d, was);
 }
+/* K1 (tracking-dash-1): a draft saved before this rule kept 'Whole' positions typed before its tenant was picked, though he
+   lived only part of the period (Eva: Nachzahlung 1.120 € instead of Guthaben 152,33 €; the letter said "nach Tagen
+   anteilig" all the same). Read again, a draft not sent yet follows the rule as if the tenant were picked now: its 'Whole'
+   positions count by days. A 'Whole' chosen by hand since this rule is marked (l.hand, data-sd="split") and stays ·
+   a sent one stays as it went out */
+function sdSplitOld(d) {
+  if (d && d.status !== 'sent' && (d.use_from || d.use_to)) (d.lines || []).forEach(l => { if (l && l.split === 'full' && !l.hand) l.split = 'days'; });
+  return d;
+}
 
 /* ── Inputs ── */
 function sdInput(e) {
@@ -799,7 +808,7 @@ async function sdClick(e) {
   }
   if (a === 'delLine') { d.lines.splice(Number(b.dataset.i), 1); SD.open = null; SD.dirty = true; return sdRenderModal(); }
   if (a === 'openLine') { const i = Number(b.dataset.i); SD.open = SD.open === i ? null : i; return sdRenderModal(); }
-  if (a === 'split') { const l = d.lines[Number(b.dataset.i)]; if (l) { l.split = b.dataset.v; if (l.split === 'full' || l.split === 'days') l.value = null; } SD.dirty = true; return sdRenderModal(); }
+  if (a === 'split') { const l = d.lines[Number(b.dataset.i)]; if (l) { l.split = b.dataset.v; if (l.split === 'full' || l.split === 'days') l.value = null; if (l.split === 'full') l.hand = true; else delete l.hand; } SD.dirty = true; return sdRenderModal(); }
   if (a === 'pickTen') { const t = sdTenants(d).find(z => String(z.id) === String(b.dataset.id)); if (t) { sdPickTenant(d, t); SD.dirty = true; } return sdRenderModal(); }
   if (a === 'pyear') { const same = sdSameVz(d); d.period_from = b.dataset.v + '-01-01'; d.period_to = b.dataset.v + '-12-31'; SD.customPeriod = false; sdAfterPeriod(d, same); SD.dirty = true; return sdRenderModal(); }
   if (a === 'customPeriod') { SD.customPeriod = true; return sdRenderModal(); }
