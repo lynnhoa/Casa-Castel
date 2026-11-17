@@ -28,10 +28,28 @@ function ccTnDaysUntil(iso) {
 }
 
 /* ── KAUTION ─────────────────────────────────────────────────── */
-/* Held = received − returned. Status: Pending → Held → Partly returned → Returned – settle? → Settled */
-function ccTnKaution(k) {
+/* Held = what has not been paid out (K1, Nov 2026): until the Kaution is settled, everything received — a refund
+   typed but not paid yet does not reduce it; once settled, only the part kept for the NK-Abrechnung while that NK
+   is still open (nkHeld, from the app — ccTnNkHeld). Status: Pending → Held → Partly returned → Returned – settle? → Settled */
+function ccTnKaution(k, nkHeld) {
   const recv = Number(k?.received) || 0, ret = Number(k?.returned) || 0, settled = !!k?.settled;
-  return { recv, ret, settled, held: Math.max(0, recv - ret) };
+  return { recv, ret, settled, held: settled ? Math.max(0, Number(nkHeld) || 0) : recv };
+}
+/* K1: the part of a settled Kaution kept for the NK-Abrechnung (nk_einbehalt) is the tenant's money until that NK is
+   settled — read as Settlements does: the tenant's first NK result sent via the Kaution on or after the day the Kaution
+   was settled uses it; no such result yet, or its Money step not done yet = still held.
+   res = abr_results, rows = ctrl_settlements (both loaded by cc-nk-settle.js) */
+function ccTnNkHeld(k, tid, app, res, rows) {
+  const nk = Math.round((Number(k && k.nk_einbehalt) || 0) * 100) / 100;
+  if (!k || !k.settled || !(nk > 0)) return 0;
+  const d10 = v => String(v || '').slice(0, 10), since = d10(k.settled_at);
+  const use = (res || []).filter(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === app) && a.status !== 'storniert' &&
+      String(a.tenant_id) === String(tid) && a.settle_via === 'kaution' && (!since || d10(a.result_date) >= since))
+    .sort((a, b) => d10(a.result_date).localeCompare(d10(b.result_date)))[0];
+  if (!use) return nk;
+  const line = (rows || []).find(r => r && r.result_id != null && String(r.result_id) === String(use.id))
+    || (rows || []).find(r => r && String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant') && d10(r.period_from) === d10(use.period_from));
+  return line && ['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(line.status) ? 0 : nk;
 }
 function ccTnKautionStatus(recv, ret, settled) {
   recv = Number(recv) || 0; ret = Number(ret) || 0;
@@ -53,19 +71,20 @@ function ccTnKautionPill(k, sollAmount, fmtEUR) {
   if (Number(sollAmount) > 0)   return _ccTnPill('tnp-amber', 'Kaution open');
   return '';
 }
-/* Former tenant row */
-function ccTnFormerKautionPill(k, fmtEUR, fmtDate) {
-  const x = ccTnKaution(k);
+/* Former tenant row (nkHeld: the part still held for the NK-Abrechnung, K1) */
+function ccTnFormerKautionPill(k, fmtEUR, fmtDate, nkHeld) {
+  const x = ccTnKaution(k, nkHeld);
   if (!x.recv) return '';
+  if (x.settled && x.held > 0) return _ccTnPill('tnp-blue', 'Kaution ' + fmtEUR(x.held) + ' held for NK');   // K1: not returned yet
   if (x.settled) return _ccTnPill('tnp-gray', 'Kaution ' + fmtEUR(x.ret) + ' returned');   // done → quiet; date is in the pop-up
-  if (x.held > 0) return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(x.held) + ' open');
+  if (x.ret < x.recv) return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(x.held) + ' open');   // K1: a refund not paid yet is still held
   return _ccTnPill('tnp-amber', 'Kaution settle?');
 }
-/* Tab summary: money currently held (unsettled, received − returned) */
-function ccTnHeldTotal(records, kautionById) {
+/* Tab summary: money currently held — unsettled: all received · settled: the part still held for the NK (nkHeldOf(id), K1) */
+function ccTnHeldTotal(records, kautionById, nkHeldOf) {
   return (records || []).reduce((sum, r) => {
-    const x = ccTnKaution(kautionById[r.id]);
-    return sum + (x.settled ? 0 : x.held);
+    const k = kautionById[r.id];
+    return sum + ccTnKaution(k, k && k.settled && nkHeldOf ? nkHeldOf(r.id) : 0).held;
   }, 0);
 }
 

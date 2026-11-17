@@ -15,7 +15,19 @@
      · open → in its month (due date, else result date); if that month is over,
        it moves along into the current month ("fällig seit …") until confirmed
      · confirmed → in the month paid (the booking's date)
-     · settled via Kaution / Miete / Hausgeld or 0 € → once, as information
+     · settled with the rent / Hausgeld or 0 € → once, as information
+     · K1 (Nov 2026): settled with the part of the Kaution held back for the NK → like a transfer: open until
+       Settlements books it, then ONE booking = the NK result as it happened (the kept part + what the tenant
+       transferred − what you paid back, in the month the rest moved; its sign kept: less paid back than the
+       Guthaben → a minus Ist on the Expenses row; a balanced result shows only when such a booking exists, where
+       the money went). The Kaution itself never shows. Clearing its Ist sets the Settlements line back to sent
+       (it waits again, never turns into information). An older one confirmed 'via Kaution' without a booking
+       stays information, as it was.
+       F1 (Nov 2026): its row says what the BANK shows, as Settlements' Money step: the Soll is the real transfer
+       (result − the held part), the sub line names the amount counted and the held part ('+ 450,00 € · 300,00 € kept
+       from the Kaution · Dan transfers 150,00 €', once paid without the transfer), and the amount typed is that
+       transfer — booked as the held part ± it (150 received → +450 · 350 paid
+       back → −50 · 200 of 350 → +100 · balanced, 300 paid back → nothing). The totals count the booking.
    Bookings stay in ctrl_expense_one_time (kind NK-Abrechnung / Hausgeldabrechnung,
    source_ref 'abr:<id>' or the tenant-tab ref) → Dashboard unchanged.
    Nov 2026: such a bill shows its Abrechnungszeitraum (nk_from / nk_to, typed in Settlements).
@@ -190,7 +202,10 @@ const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
 /* ── YOUR OWN ENTRY IS THE PAYMENT — Settlements #6 and Controlling's Soll (C3, Nov 2026) ─────────────────────────
    Moved here from settlements-tab-tracking.js: Controlling uses them too. Clearing the Ist of a result paid by your
    own entry only unlinks it (x1) — a Soll tap or a typed amount afterwards links that entry again instead of booking
-   the money a second time (_cxAbrBook). maint-link.js keeps Maintenance lines out of both finders (page end). */
+   the money a second time (_cxAbrBook). maint-link.js keeps Maintenance lines out of both finders (page end).
+   CARD-2 (Nov 2026): a damage line kept from the Kaution (Tenants › Kaution, source_ref 'kau:…') is never your entry of
+   a payment either — same amount ≠ same payment (it was linked as another tenant's NK payment and booked again). */
+const _stIsKauLine = o => /^kau:/.test(String((o && o.source_ref) || ''));
 /* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
    (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
    is LINKED to the result instead of booking the money a second time. */
@@ -198,7 +213,7 @@ function _stFindManualNk(pid, res, amt) {
   const from = String(res.date || '').slice(0, 10);
   const linked = new Set((window._src.abrPay || []).map(o => o.id));
   return (window._ctrl.one_time || []).find(o =>
-    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) && !_stIsKauLine(o) &&
     !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
     (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
     Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
@@ -209,7 +224,7 @@ function _stFindOwnWeg(pid, res, amt) {
   const from = String(res.date || '').slice(0, 10);
   const linked = new Set((window._src.abrPay || []).map(o => o.id));
   return (window._ctrl.one_time || []).find(o =>
-    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) && !_stIsKauLine(o) &&
     o.kind !== 'Kaufnebenkosten' && !o.nk_umlage &&
     (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
     Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
@@ -337,24 +352,30 @@ function ctlAbrRows(pid, y, m, dir) {
 }
 function _ctlAbrRows(pid, y, m, dir) {
   const rows = [], ym = y * 12 + m, t = cxToday(), cur = _cxYm(t);
-  const allRes = ctlAbrResults(), results = allRes.filter(r => r.pid === pid && r.dir === dir);
+  // K1: a balanced Kaution result shows only with a booking (less or more of the held part went back), where its money went
+  const allRes = ctlAbrResults(), results = allRes.filter(r => r.pid === pid && (r.dir === dir || (!r.dir && _cxAbrKauIn(r, dir))));
   const usedRefs = new Set();
   for (const r of results) {
     // Nov 2026 fix: a booking in the OTHER direction is no payment of this result — the result was changed in
     // Settlements after it was paid (Nachzahlung → Guthaben). It counted as paid here and showed a second time,
     // as "without Abrechnung", on the other side. Now: the result is open, the booking stays where its money went (flagged).
-    const b0 = ctlAbrBooking(r), b = b0 && (Number(b0.direction) === 1 ? 1 : -1) === r.dir ? b0 : null;
+    // K1: a Kaution result's booking is its payment in either direction (the kept part ± the transfer, its sign kept)
+    const kau = r.via === 'kaution', rd = r.dir || dir, kh = kau ? _cxAbrKau(r) : null;   // F1: the held part and the bank transfer
+    const kl = kau && !kh && _cxAbrKauLost(r);                             // fin2: the held part is not known (Kaution not read)
+    const b0 = ctlAbrBooking(r), b = b0 && (kau || (Number(b0.direction) === 1 ? 1 : -1) === r.dir) ? b0 : null;
     if (b0) usedRefs.add(b0.source_ref);
     const rym = _cxYm(r.date) || cur;
-    if (r.via !== 'zahlung' || !r.amount) {                                // information only
+    // K1: a Kaution result counts like a transfer — an older one already confirmed without a booking stays information
+    const kauOld = kau && !b0 && _cxAbrKauDone(r);
+    if ((r.via !== 'zahlung' && !kau) || kauOld || (!r.amount && !(kau && b))) {   // information only
       if (rym === ym) rows.push({ id: 'abrI:' + r.key, res: r, info: true });
       continue;
     }
     // #1: booked twice (a double tap before Nov 2026) → the row says so and offers "delete one"
     const twice = b0 ? ctlAbrBookings(r).filter(o => o !== b0) : [];
-    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount), twice }); continue; }
+    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(_cxAbrDir(b) === rd ? b.amount : -b.amount), twice, kau: kh, kauLost: kl }); continue; }
     const showIn = rym >= cur ? rym : cur;                                 // overdue → moves along to the current month
-    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null, twice });
+    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null, twice, kau: kh, kauLost: kl });
   }
   // bookings without a result (older manual NK / Hausgeld entries) — shown in the month paid
   for (const o of (window._src.abrPay || [])) {
@@ -362,6 +383,7 @@ function _ctlAbrRows(pid, y, m, dir) {
     if ((Number(o.direction) === 1 ? 1 : -1) !== dir) continue;
     if (results.some(r => r.refs.includes(o.source_ref))) continue;
     const moved = allRes.find(r => r.pid === pid && r.dir !== dir && r.refs.includes(o.source_ref)) || null;   // its result changed direction
+    if (moved && moved.via === 'kaution') continue;                       // K1: a Kaution result's booking shows with its result
     rows.push({ id: 'abrL:' + o.id, legacy: o, soll: cxR(o.amount), ist: cxR(o.amount), moved });
   }
   // Fix 3: Casa Castel's Versorger Jahresabrechnungen — typed and paid in Settlements, shown read-only in the month paid
@@ -373,6 +395,74 @@ function _ctlAbrRows(pid, y, m, dir) {
     }
   }
   return rows;
+}
+/* K1: confirmed in Settlements before (status erledigt / bezahlt / paid on) — or an older own NK with no tenant, which no
+   Settlements line shows and nobody can confirm (a tenant's result without a stored line waits there, as in Settlements) */
+function _cxAbrKauDone(r) {
+  const lines = ctlAbrSettleLines(r);
+  return lines.length ? lines.some(l => l.status === 'erledigt' || l.status === 'bezahlt' || !!l.paid_date) : !(r.db && r.db.tenant_id);
+}
+/* K1: a balanced Kaution result with a booking in this direction (less or more of the held part went back than held) */
+function _cxAbrKauIn(r, dir) {
+  if (r.via !== 'kaution') return false;
+  const b = ctlAbrBooking(r);
+  return !!b && _cxAbrDir(b) === dir;
+}
+/* F1 (K1): the part of the Kaution held back for this NK result, by Settlements' own rule (Casa Castel scEinbehalt ·
+   Rentals _srEinbehalt): Tenants › Kaution › 'Kept · for NK-Abrechnung' of a settled Kaution, used by the tenant's first NK
+   settled with it on/after the day the Kaution was settled · 0: nothing held (also when the Kaution data is not read) */
+function ctlAbrHeld(r) {
+  const d = r && r.db, S = window._src;
+  if (!d || r.via !== 'kaution' || r.kind !== 'nk_tenant' || d.tenant_id === null || d.tenant_id === undefined) return 0;
+  const casa = d.app ? d.app === 'casa' : Number(r.pid) === CASA_PROP_ID, tid = String(d.tenant_id);
+  const d10 = v => String(v || '').slice(0, 10), day = casa && typeof ccDayOf === 'function' ? ccDayOf : d10;   // Casa: a stored moment → its day
+  let k = null;
+  for (const x of ((casa ? S.kauCasa : S.kauRnt) || [])) if (x && (casa ? x.tenant_id !== null && x.tenant_id !== undefined : !!x.tenant_id) && String(x.tenant_id) === tid) k = x;
+  const E = k && k.settled ? cxR(Number(k.nk_einbehalt) || 0) : 0;
+  if (!(E > 0)) return 0;
+  const since = k.settled_at ? day(k.settled_at) : '', from = d10(d.period_from);
+  const all = (S.abr || []).filter(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === (casa ? 'casa' : 'rentals')) && a.status !== 'storniert' && String(a.tenant_id) === tid);
+  const uses = a => a.settle_via === 'kaution' && (!since || day(a.result_date) >= since);
+  if (casa) return !all.some(a => d10(a.period_from) !== from && uses(a)) && (!since || day(d10(d.result_date)) >= since) ? E : 0;
+  const mine = all.find(a => d10(a.period_from) === from) || null;
+  if (mine && !uses(mine)) return 0;
+  const before = a => !mine || d10(a.result_date) < d10(mine.result_date) || (d10(a.result_date) === d10(mine.result_date) && String(a.id) < String(mine.id));
+  return all.some(a => a !== mine && d10(a.period_from) !== from && uses(a) && before(a)) ? 0 : E;
+}
+/* fin2: Controlling could not read this app's Kaution rows (none read yet: _cxLost, controlling-soll.js) — the held part of a
+   tenant's Kaution NK result is not known, so its row takes no amount (no Soll tap, no Ist field) until a read works; it waits
+   for Settlements (was: an amount typed was booked as the whole result — +150 instead of +450, a Guthaben −350 instead of −50) */
+function _cxAbrKauLost(r) {
+  const d = r && r.db;
+  if (!d || r.via !== 'kaution' || r.kind !== 'nk_tenant' || d.tenant_id === null || d.tenant_id === undefined || typeof _cxLost === 'undefined') return false;
+  return _cxLost.has((d.app ? d.app === 'casa' : Number(r.pid) === CASA_PROP_ID) ? 'kauCasa' : 'kauRnt');
+}
+/* … → { E: the held part, T: the bank transfer (result − E: > 0 the tenant transfers the rest · < 0 you pay back) } or null */
+function _cxAbrKau(r) {
+  const E = ctlAbrHeld(r);
+  return E > 0 ? { E, T: cxR((r.dir || 0) * (r.amount || 0) - E) } : null;
+}
+/* … a transfer x (what the bank shows, ≥ 0) → the ONE booking, signed (+ income · − expense) = scKauB / _srKauB */
+const _cxAbrKauB = (k, x) => cxR(k.E + (k.T < 0 ? -1 : 1) * Math.abs(Number(x) || 0));
+/* F1: Controlling reads the Kaution tables with the other apps' data (controlling-soll.js) — on its own page only:
+   Settlements reads them itself (SC.kaution · SR.kaution) */
+if (typeof _CX_SRC !== 'undefined' && document.getElementById('ctlSubNav')) {
+  for (const [k, t] of [['kauCasa', 'kaution'], ['kauRnt', 'rnt_kaution']]) {
+    if (!_CX_SRC.some(x => x[0] === k)) _CX_SRC.push([k, t]);
+    if (typeof _CX_LIVE !== 'undefined') _CX_LIVE.add(k);              // the Kaution card changes them while Controlling is away
+  }
+}
+/* K1: the booking of a Kaution result is taken back (its Ist cleared): its Settlements line is sent again — it waits for the
+   Money step, as after Settlements' own undo (was: the line stayed 'settled' and the result turned into a 0 € information row).
+   Written BEFORE the booking goes: a failed write leaves both as they were. */
+async function _cxAbrKauOpen(r) {
+  for (const l of ctlAbrSettleLines(r)) {
+    if (l._virtual || String(l.id).startsWith('v:') || !(l.status === 'erledigt' || l.status === 'bezahlt' || l.paid_date)) continue;
+    const { data, error } = await _ctlSupa.from('ctrl_settlements').update({ status: 'verschickt', paid_date: null }).eq('id', l.id).select().single();
+    if (error) throw error;
+    const i = (window._src.settle || []).findIndex(x => x.id === l.id);
+    if (i >= 0 && data) window._src.settle[i] = data;
+  }
 }
 /* open results of a property in a month (for card status, summaries, Dashboard) */
 function ctlAbrOpenCount(pid, y, m, dir) {
@@ -409,9 +499,22 @@ function cxAbrSection(p, y, m, dir) {
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
         (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');
     const dup = r.twice && r.twice.length ? ' · <b style="color:#B0661E;font-weight:600;white-space:nowrap">' + (r.twice.length === 1 ? 'booked twice' : 'booked ' + (r.twice.length + 1) + ' times') + '</b> · <button class="cx-link cx-link--a cx-link--in" data-cx="abrDup" data-id="' + cxEsc(r.id) + '">delete one</button>' : '';   // #1
-    h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
+    // F1: part of the Kaution held back → the row shows what the bank shows (the transfer T, its way: + to you · − from you),
+    // as Settlements' Money step; the booking stays the NK result as it happened (the totals count it)
+    const k = !r.legacy && r.kau, kw = k && k.T < 0 ? -1 : 1;
+    const bank = k ? { soll: cxR(Math.abs(k.T)), ist: r.ist === null ? null : cxR(kw * ((r.res.dir || dir) * r.ist - k.E)) } : null;
+    const who = k ? String((r.res.db && r.res.db.tenant_name) || '').trim().split(/\s+/)[0] || 'The tenant' : '';
+    // K1-CTL-450: the sub line starts with the amount counted, as every other row (+ 450,00 € — the month's summary counts it),
+    // then the held part, then the transfer while it is still to come (once paid: only the date — the Ist shows what moved).
+    // Each part stays on one line: the line wraps between the parts only
+    const kSub = k ? [cxIO(dir * r.soll, cxEur), cxEsc(cxEur(k.E) + ' kept from the Kaution')].concat(r.booking ? [] : [cxEsc(k.T < -0.004 ? 'You pay back ' + cxEur(-k.T) : k.T > 0.004 ? who + ' transfers ' + cxEur(k.T) : 'nothing to transfer')], [cxEsc(sub)])
+      .map((s, i, a) => '<span style="white-space:nowrap">' + s + (i < a.length - 1 ? ' ·' : '') + '</span>').join(' ') : '';
+    h += cxRow({ id: r.id, label, soll: bank ? bank.soll : r.soll, ist: bank ? bank.ist : r.ist, allowEmpty: true, dir: bank ? kw : dir,   // CP2: differences from your view (no "On purpose" here)
+                 emptyText: bank && !bank.soll ? 'open' : undefined,     // F1: nothing to transfer — still to confirm (type 0)
+                 due: !!bank && !bank.soll,                              // fin2: … so amber 'open', as the card header counts it
+                 lock: !!r.kauLost,                                      // fin2: the held part is not known — nothing typed here
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
-                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
+                 sub: (k ? kSub : cxIO(dir * r.soll, cxEur) + (r.kauLost ? ' · via Kaution' : '') + ' · ' + cxEsc(sub)) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
   return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
@@ -440,17 +543,31 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
     }
     return;
   }
-  const b = ctlAbrBooking(r), same = !!b && (Number(b.direction) === 1 ? 1 : -1) === r.dir;
+  // K1: a Kaution result's booking is its payment in either direction; the Ist is typed with the sign of the row (a balanced
+  // result's row: the direction its booking went)
+  const kau = r.via === 'kaution', rd = r.dir || e.dir;
+  const b = ctlAbrBooking(r), same = !!b && (kau || (Number(b.direction) === 1 ? 1 : -1) === r.dir);
+  if (kau && e.kau && amount !== null) {                                   // F1: the amount typed is what the bank shows →
+    const B = _cxAbrKauB(e.kau, amount);                                   // the held part ± it, as Settlements' Money step books it
+    if (!r.dir && Math.abs(B) < 0.005) { if (b) await _stUndoBooking(b); return; }   // balanced, all of the held part went back: nothing booked
+    amount = cxR(rd * B);                                                  // in the row's direction (a minus amount: the other way)
+  }
   if (amount === null) {
     if (!same) return;                                                     // a booking of the other direction is not this payment
+    if (kau) { await _cxAbrKauOpen(r); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }   // K1: the line waits again
     await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
+    return;
+  }
+  if (kau && b && _cxAbrDir(b) !== rd) {                                   // K1: booked the other way round → in the row's direction
+    const d = await ctlUpdateOneTime(b.id, { amount: cxR(amount), direction: rd });
+    const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     return;
   }
   // C3: your own entry of this amount (e.g. unlinked by clearing the Ist) is the payment → linked, not booked a second
   // time (NK: Settlements' #6 rule · WEG Hausgeld: the WEG match). Another amount → a new booking, as before.
   // C3c: also when your entry lies in another year · deleted meanwhile on another device → booked as usual
   const amt = cxR(amount), weg = r.kind === 'weg_hausgeld';
-  const at = r.db && amt > 0 ? { id: r.db.id, dir: r.dir, date: String(r.db.result_date || '').slice(0, 10) } : null;
+  const at = r.db && amt > 0 && r.dir ? { id: r.db.id, dir: r.dir, date: String(r.db.result_date || '').slice(0, 10) } : null;   // K1: never for a balanced result
   let mine = null;
   if (b) {
     // C3c: the apps' booking now gets the amount of your own unlinked entry (a typo corrected) → that booking goes and
@@ -469,7 +586,7 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
   }
   if (at && await _stTakeOwnEntry(r.pid, at, amt, weg, mine)) return;     // booked meanwhile (23505) → that booking
   await ctlAbrAdd({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),   // #1: booked meanwhile → that booking
-    kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir, source_ref: r.key });
+    kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir || rd, source_ref: r.key });   // F1: a balanced one: the row's way
 }
 
 /* #1 · one save per result at a time: a 2nd tap (or Enter, then a tap) waits for the first save and then finds its
@@ -492,7 +609,7 @@ async function cxAbrClick(a, b, rerender) {
     // C6: a save of this result still on its way (the Ist just cleared): the row drawn is not its state yet — the tap waits
     // in the queue and _cxAbrRun decides once that save has landed (the tap was dropped)
     const busy = !!e && !e.legacy && !!e.res && !!_cxAbrQ[e.res.key];
-    if (e && !e.info && (e.ist === null || busy)) { b.disabled = true; try { await _cxAbrRun(e, e.soll, true); } catch (err) { cxToastErr(err); } }
+    if (e && !e.info && !e.kauLost && (e.ist === null || busy)) { b.disabled = true; try { await _cxAbrRun(e, e.kau ? Math.abs(e.kau.T) : e.soll, true); } catch (err) { cxToastErr(err); } }   // F1: the transfer
     rerender(); return true;
   }
   if (a === 'abrDup') {                                  // #1: booked twice → one goes; an entry you typed yourself is never deleted (only unlinked)
@@ -530,7 +647,7 @@ async function cxAbrClick(a, b, rerender) {
 async function cxAbrInput(id, val, rerender) {
   if (!/^abr/.test(id)) return false;
   const e = _cxAbrIndex[id];
-  if (e && !e.info) { try { await _cxAbrRun(e, val === null ? null : val, false); } catch (err) { cxToastErr(err); } }   // #1: after a save on its way
+  if (e && !e.info && !e.kauLost) { try { await _cxAbrRun(e, val === null ? null : val, false); } catch (err) { cxToastErr(err); } }   // #1: after a save on its way · fin2: not while the held part is not known
   rerender();
   return true;
 }
