@@ -808,6 +808,7 @@ function _srQueueTenantSave(rec) {
 async function _srPdf(btn) {
   const got = _srCollectTenant(); if (!got) return;
   const { c, it, rec, ts } = got;
+  if (_srKauWait(_srLine(c, it).state, _srTenantOf(it.r))) return;   // S3: the held part is not known yet (no PDF offered)
   if (_srGewDrawnOff(c, rec)) return;
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
@@ -945,6 +946,7 @@ function _srShowsTen(ck, ...ids) {
 /* 5 · Verschickt → Tracking + Controlling (same path as Tracking) */
 async function _srSend(btn) {
   const got = _srCollectTenant(); if (!got) return;
+  if (_srKauWait(_srLine(got.c, got.it).state, _srTenantOf(got.it.r))) return;   // S3: the held part is not known yet (no Mark as sent offered)
   const key = _srLineKey(got.c, got.it);
   if (_srBusy.has(key)) return;
   _srBusy.set(key, 'send');
@@ -1523,8 +1525,12 @@ function _srTenLine(c, r, noAmt) {
   if (r.kind !== 'ten') return '<div class="sc-row sr5-ln sr5-tl is-dim"><span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span>' +
     '<span class="sc-row__s">' + stEsc((r.kind === 'pausch' ? 'Pauschal – no NK' : 'no NK') + ' · ' + per) + '</span></span></div>';
   const res = r.st.res, v = res ? res.dir * res.amount : r.x && !r.x.missing ? r.x.saldo : null;
-  const say = v === null ? 'waiting for the Jahresabrechnung' : Math.abs(v) < 0.005 ? 'balanced' : v > 0 ? 'pays you ' + stEur(v) : 'gets ' + stEur(-v) + ' back';
-  const tone = v === null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'pos' : 'neg';
+  // K1-SET-VIA-KAUTION (R3): sent with a part of the Kaution held back → what is kept · what moves by bank, in the words of
+  // Casa Castel's list (was: 'pays you 450,00 €' while 150,00 € come by bank — the sheet says 'Lena transfers 150,00 €')
+  const kt = r.k === 'sent' ? _srKauOf({ st: r.st, it: r.it }) : null;
+  const say = kt ? (Math.abs(v) < 0.005 ? 'you pay back ' + stEur(kt.E) + ' (Kaution)' : 'kept ' + stEur(kt.E) + ' of the Kaution · ' + (kt.T > 0.004 ? 'pays you ' + stEur(kt.T) : kt.T < -0.004 ? 'gets ' + stEur(-kt.T) + ' back' : 'nothing to transfer'))
+    : v === null ? 'waiting for the Jahresabrechnung' : Math.abs(v) < 0.005 ? 'balanced' : v > 0 ? 'pays you ' + stEur(v) : 'gets ' + stEur(-v) + ' back';
+  const tone = kt && Math.abs(v) < 0.005 ? 'neg' : v === null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'pos' : 'neg';
   const chip = r.k === 'open' ? ['send', 'letter ready'] : r.k === 'sent' ? ['wait', 'sent'] : r.k === 'settled' ? ['done', r.skipped ? 'skipped' : 'settled'] : ['grey', 'waiting'];
   return '<button class="sc-row sr5-ln sr5-tl" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">' +
     '<span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span>' +
@@ -1590,7 +1596,7 @@ function _srModalHtml() {
   if (!c) return _srHead4('NK-Abrechnung', '') + '<div class="srm__b"><p class="cx-empty">This Wohnung is not in the list.</p></div>';
   SR.sel = { kind: m.view === 'tenant' ? 'ten' : 'hv', ck: m.ck, tid: m.tid };
   if (m.view === 'history') return _srHistoryView(c);
-  if (m.view === 'tenant') return _srTenView(c);
+  if (m.view === 'tenant') { _srKauAgain(m); return _srTenView(c); }
   if (m.view === 'settle') return _srSettleView(c);
   if (m.view === 'hv') return _srHvView(c);
   return _srNkView(c);
@@ -2096,7 +2102,7 @@ function _srTenView(c) {
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
     undo: sent && !settledT ? '<button type="button" class="tp-undo" data-sr="reopen">undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing || _srBusy.get(_srLineKey(c, it)) === 'send') + '</div>' };
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : _srKauWait(ti.st, ti.t) ? '' : '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing || _srBusy.get(_srLineKey(c, it)) === 'send') + '</div>' };
   let s2 = null;
   if (hasMoney) {
     const resVia = resVia0, b = ti.st.booking;
@@ -2222,6 +2228,21 @@ function _srKauOf(x) {
    one without a held part, so its Money step offers no amount and no button until a load has read them (was: the amount typed
    was booked as the whole result: +150 instead of +450, −350 instead of −50) */
 const _srKauLost = res => !!SR.kauLost && !!res && res.via === 'kaution';
+/* S3: … and a letter not sent yet: a tenant who moved out may have a part held back, so his letter is not offered (no PDF,
+   no Mark as sent — it would ask the whole result by bank) until the rows are read. His sheet reads them again when it
+   opens, once, silently: read → the page and the sheet are drawn again with the held part */
+const _srKauWait = (st, t) => !!SR.kauLost && !(st && st.res) && _srMovedOut(t);
+async function _srKauAgain(m) {
+  if (!SR.kauLost || !m || m._kau) return;
+  m._kau = true;
+  try {
+    const k = await _ctlSupa.from('rnt_kaution').select('*');
+    if (k.error || !SR.kauLost) return;
+    SR.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id) SR.kaution[String(x.tenant_id)] = x; });
+    SR.kauLost = false;
+  } catch (e) { return; }
+  if (ST.tab === 'rentals') stRenderRentals();
+}
 /* … and the ONE booking it makes, the NK result as it really happened (+ income · − expense, never clamped or turned):
    the part held back + what the tenant transferred − what you paid back (t: the transfer typed on the Money step).
    300 held · Nachzahlung 200, 100 paid back → +200 · Nachzahlung 450, 150 received → +450 (100 → +400, 0 → +300) ·

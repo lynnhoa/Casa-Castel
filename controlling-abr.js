@@ -24,8 +24,9 @@
        (it waits again, never turns into information). An older one confirmed 'via Kaution' without a booking
        stays information, as it was.
        F1 (Nov 2026): its row says what the BANK shows, as Settlements' Money step: the Soll is the real transfer
-       (result − the held part), the sub line names the held part ('300,00 € kept from the Kaution · Dan transfers
-       150,00 €'), and the amount typed is that transfer — booked as the held part ± it (150 received → +450 · 350 paid
+       (result − the held part), the sub line names the amount counted and the held part ('+ 450,00 € · 300,00 € kept
+       from the Kaution · Dan transfers 150,00 €', once paid without the transfer), and the amount typed is that
+       transfer — booked as the held part ± it (150 received → +450 · 350 paid
        back → −50 · 200 of 350 → +100 · balanced, 300 paid back → nothing). The totals count the booking.
    Bookings stay in ctrl_expense_one_time (kind NK-Abrechnung / Hausgeldabrechnung,
    source_ref 'abr:<id>' or the tenant-tab ref) → Dashboard unchanged.
@@ -503,13 +504,17 @@ function cxAbrSection(p, y, m, dir) {
     const k = !r.legacy && r.kau, kw = k && k.T < 0 ? -1 : 1;
     const bank = k ? { soll: cxR(Math.abs(k.T)), ist: r.ist === null ? null : cxR(kw * ((r.res.dir || dir) * r.ist - k.E)) } : null;
     const who = k ? String((r.res.db && r.res.db.tenant_name) || '').trim().split(/\s+/)[0] || 'The tenant' : '';
-    const kSub = k ? cxEur(k.E) + ' kept from the Kaution · ' + (k.T < -0.004 ? 'You pay back ' + cxEur(-k.T) : k.T > 0.004 ? who + ' transfers ' + cxEur(k.T) : 'nothing to transfer') : '';
+    // K1-CTL-450: the sub line starts with the amount counted, as every other row (+ 450,00 € — the month's summary counts it),
+    // then the held part, then the transfer while it is still to come (once paid: only the date — the Ist shows what moved).
+    // Each part stays on one line: the line wraps between the parts only
+    const kSub = k ? [cxIO(dir * r.soll, cxEur), cxEsc(cxEur(k.E) + ' kept from the Kaution')].concat(r.booking ? [] : [cxEsc(k.T < -0.004 ? 'You pay back ' + cxEur(-k.T) : k.T > 0.004 ? who + ' transfers ' + cxEur(k.T) : 'nothing to transfer')], [cxEsc(sub)])
+      .map((s, i, a) => '<span style="white-space:nowrap">' + s + (i < a.length - 1 ? ' ·' : '') + '</span>').join(' ') : '';
     h += cxRow({ id: r.id, label, soll: bank ? bank.soll : r.soll, ist: bank ? bank.ist : r.ist, allowEmpty: true, dir: bank ? kw : dir,   // CP2: differences from your view (no "On purpose" here)
                  emptyText: bank && !bank.soll ? 'open' : undefined,     // F1: nothing to transfer — still to confirm (type 0)
                  due: !!bank && !bank.soll,                              // fin2: … so amber 'open', as the card header counts it
                  lock: !!r.kauLost,                                      // fin2: the held part is not known — nothing typed here
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
-                 sub: (k ? cxEsc(kSub) : cxIO(dir * r.soll, cxEur) + (r.kauLost ? ' · via Kaution' : '')) + ' · ' + cxEsc(sub) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
+                 sub: (k ? kSub : cxIO(dir * r.soll, cxEur) + (r.kauLost ? ' · via Kaution' : '') + ' · ' + cxEsc(sub)) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
   return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
