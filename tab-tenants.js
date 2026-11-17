@@ -3256,7 +3256,7 @@ if (typeof ccKautionBookRegister === 'function') {
     all: () => _tnRecords,                                         // fix 3: the moved-out tenants' receipts are read once, after the page is drawn
   });
   { const open0 = _tnOpenModal, shown = () => { const m = document.getElementById('tnModal'); return m && m.classList.contains('open') ? 'open:' + _tnModalTid : ''; };
-    _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
+    _tnOpenModal = tid => ccKauBeforeOpen('tn', tid, () => open0(tid), shown); }   // opens at once · its receipts come in when they arrive (last tap)
 }
 
 

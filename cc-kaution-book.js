@@ -131,7 +131,7 @@ async function _ckbReceiptsReadAll(A, app, recs) {
   return out;
 }
 async function _ckbReceiptsRead(A, app, rec) { return (await _ckbReceiptsReadAll(A, app, [rec])).get(String(rec.id)) || []; }
-/* loaded ONCE per tenant: by the prefetch, else before the move-out form shows (pop-up open / Edit).
+/* loaded ONCE per tenant: by the prefetch, else when the move-out form shows (pop-up open / Edit) — the form never waits for it.
    The prefetch failed meanwhile ({ again }) → read for this tenant now, as a tap always did */
 function ccKauReceiptsLoad(app, tid) {
   const A = _CCK[app], key = app + '|' + tid, st = _CCKB.rc[key];
@@ -139,14 +139,14 @@ function ccKauReceiptsLoad(app, tid) {
   if (st && st.p) return st.p.then(r => (r && r.again ? ccKauReceiptsLoad(app, tid) : r));
   const rec = A && A.rec(tid);
   if (!A || !A.kb || !rec) return Promise.resolve({ list: [] });
-  const p = _ckbReceiptsRead(A, app, rec)
-    .then(list => (_CCKB.rc[key] = { list }), e => { delete _CCKB.rc[key]; console.warn('[kaution] receipts:', (e && e.message) || e); return { list: [] }; });
+  const p = _ckbReceiptsRead(A, app, rec)   // failed: a form that joined this read (Edit right after the pop-up opened) reads once more
+    .then(list => (_CCKB.rc[key] = { list }), e => { delete _CCKB.rc[key]; console.warn('[kaution] receipts:', (e && e.message) || e); return { list: [], again: true }; });
   _CCKB.rc[key] = { p };
   return p;
 }
 /* Prefetch (once per page): after the Tenants page has been drawn, when the phone is idle, ONE read for the receipts of
-   every moved-out tenant — a tap then opens the pop-up at once (it waits only while this read is still on its way).
-   Nothing on screen changes. A failed read keeps nothing: a tap reads that tenant's receipts as before. */
+   every moved-out tenant — the "From receipt" row of a form opened meanwhile gets them when they arrive.
+   Nothing else on screen changes. A failed read keeps nothing: a tap reads that tenant's receipts as before. */
 function ccKauPrefetch(app) {
   const A = _CCK[app];
   if (!A || !A.kb || !A.kb.all || _CCKB.pre[app]) return;
@@ -159,7 +159,7 @@ function ccKauPrefetch(app) {
     p.catch(e => console.warn('[kaution] receipts:', (e && e.message) || e));
     recs.forEach(r => {
       const key = app + '|' + r.id;
-      const q = p.then(m => (_CCKB.rc[key] = { list: m.get(String(r.id)) || [] }),
+      const q = p.then(m => { const st = (_CCKB.rc[key] = { list: m.get(String(r.id)) || [] }); _ckbFill(app, r.id); return st; },
         () => { if (_CCKB.rc[key] && _CCKB.rc[key].p === q) delete _CCKB.rc[key]; return { list: [], again: true }; });
       _CCKB.rc[key] = { p: q };
     });
@@ -174,28 +174,46 @@ function _ckbReceipts(A, app, tid) {
   Object.entries(A.map() || {}).forEach(([t, k]) => { if (String(t) !== String(tid)) { const c = _ckbKept(k).dmg.cost; if (c) taken.add(c); } });
   return st.list.filter(x => !taken.has(x.id));
 }
-/* Opening the pop-up of a moved-out tenant: its receipts first, so the form never changes after it shows.
-   Only the pop-up tapped last opens: a tenant tapped while another one's receipts load wins, and nothing opens once
-   another pop-up was opened (or this one closed) in the meantime (state: the app's pop-up as it is now) */
+const _ckbOpt = (f, x) => _ckbFmtD(x.date) + ' · ' + x.text + ' · ' + f(x.net);
+/* CARD-1 / F3: the receipts arrived — the "From receipt" rows drawn while they were on their way get their options (the pick
+   saved or typed before is selected again); nothing else changes, nothing moves. Not loaded (failed): "— none —" stays. */
+function _ckbFill(app, tid) {
+  const A = _CCK[app], st = _CCKB.rc[app + '|' + tid];
+  if (!A || !st || !st.list || typeof document === 'undefined') return;
+  const list = _ckbReceipts(A, app, tid);
+  document.querySelectorAll('select[data-wait][id^="cckb-kr-"]').forEach(sel => {
+    if (sel.dataset.app !== app || sel.dataset.tid !== String(tid)) return;
+    const pick = sel.dataset.pick || '';
+    list.forEach(x => sel.add(new Option(_ckbOpt(A.fmt, x), x.id)));
+    sel.value = list.some(x => x.id === pick) ? pick : '';
+    delete sel.dataset.wait; delete sel.dataset.pick;
+  });
+}
+/* the "From receipt" pick: while the receipts are on their way, the pick saved or typed before (kept for Save and the draft) */
+const _ckbPick = sel => (sel ? (sel.dataset && sel.dataset.wait ? sel.dataset.pick || '' : sel.value) : '');
+/* Opening the pop-up of a moved-out tenant (CARD-1 / F3): at once — the network never holds it. Its receipts come into the
+   "From receipt" row when they arrive, only for the pop-up tapped last and while it is still open (state: the app's pop-up now) */
 function ccKauBeforeOpen(app, tid, open, state) {
   const A = _CCK[app], tok = _CCKB.want[app] = ++_CCKB.seq;
   if (!ccKauOn(A, tid)) return open();
   ccKauCheck(app, tid);                                    // this tenant's bookings = the card as saved (in the background, quiet)
+  open();
   const st = _CCKB.rc[app + '|' + tid];
-  if (st && st.list) return open();
+  if (st && st.list) return;
   const s0 = state ? state() : '';
-  return ccKauReceiptsLoad(app, tid).then(() => { if (_CCKB.want[app] === tok && (!state || state() === s0)) open(); });
+  ccKauReceiptsLoad(app, tid).then(() => { if (_CCKB.want[app] === tok && (!state || state() === s0)) _ckbFill(app, tid); });
 }
-/* Edit (moved-out tenant): the receipts first · on a settled card the refund counts as typed (tk.paid = the refund
-   paid out): a change of Received / Rent owed / Damage goes into "Kept · other reasons"; typing "Kept · other reasons"
-   moves the NK amount (part T); without an NK field the refund follows, but never below what was paid out — keeping
-   more than that shows "Kept + refund can be at most …" and Save waits. Typing the refund itself ends this. */
-async function ccKauEdit(app, tid, ui, redraw) {
+/* Edit (moved-out tenant): at once, the receipts come in when they arrive (CARD-1) · on a settled card the refund counts as
+   typed (tk.paid = the refund paid out): a change of Received / Rent owed / Damage goes into "Kept · other reasons"; typing
+   "Kept · other reasons" moves the NK amount (part T); without an NK field the refund follows, but never below what was paid
+   out — keeping more than that shows "Kept + refund can be at most …" and Save waits. Typing the refund itself ends this. */
+function ccKauEdit(app, tid, ui, redraw) {
   const A = _CCK[app], k = A.map()[tid];
-  await ccKauReceiptsLoad(app, tid);
   const paid = !!(k && k.settled);
   ui.mode = 'edit'; ui.draft = null; ui.typed = paid ? 'ref' : null; ui.tk = paid ? { ref: 1, paid: _ckbR2(k.returned) } : null; delete ui.kbN;
-  return redraw();
+  const r = redraw(), st = _CCKB.rc[app + '|' + tid];
+  if (!(st && st.list)) ccKauReceiptsLoad(app, tid).then(() => _ckbFill(app, tid));
+  return r;
 }
 
 /* ── the rows on the card ─────────────────────────────────── */
@@ -252,11 +270,13 @@ function ccKauView(A, app, tid, R, k, P, editing, pfx, ui) {
     i ? bare(_cckMoney(`cckb-k${i}-${pfx}`, amt(i), on, '')) + bare(sel(i, monthOf(i)))
       : cell('Rent owed', _cckMoney(`cckb-k0-${pfx}`, amt(0), on, ''), 'cckb-k0') + cell('Month', sel(0, monthOf(0)), 'cckb-m0')}</div>`;
   const more = `<button type="button" class="cckb-more" id="cckb-more-${pfx}"${n >= 3 ? ' hidden' : ''} onclick="ccKauMore(${q})">+ month</button>`;
-  const list = _ckbReceipts(A, app, tid);
+  // CARD-1 / F3: "From receipt" is always drawn (same place, same height); while the receipts are on their way it shows
+  // "— none —" and keeps the pick — _ckbFill adds the receipts when they arrive. An empty list leaves "— none —".
+  const st = _CCKB.rc[app + '|' + tid], wait = !(st && st.list), list = _ckbReceipts(A, app, tid);
   const picked = dv('kr', K.dmg.cost || '');
-  const rcp = !list.length ? '' : `<div class="cck-grid cck-one">${cell('From receipt',
-    `<div class="cck-f"><select id="cckb-kr-${pfx}" onchange="ccKauPick(${q},this)"><option value="">— none —</option>${
-      list.map(x => `<option value="${_cckEsc(x.id)}"${x.id === picked ? ' selected' : ''}>${_cckEsc(_ckbFmtD(x.date) + ' · ' + x.text + ' · ' + f(x.net))}</option>`).join('')}</select></div>`, 'cckb-kr')}</div>`;
+  const rcp = `<div class="cck-grid cck-one">${cell('From receipt',
+    `<div class="cck-f"><select id="cckb-kr-${pfx}" data-app="${app}" data-tid="${_cckEsc(tid)}"${wait ? ` data-wait="1" data-pick="${_cckEsc(picked)}"` : ''} onchange="ccKauPick(${q},this)"><option value="">— none —</option>${
+      list.map(x => `<option value="${_cckEsc(x.id)}"${x.id === picked ? ' selected' : ''}>${_cckEsc(_ckbOpt(f, x))}</option>`).join('')}</select></div>`, 'cckb-kr')}</div>`;
   const dmg = `<div class="cck-grid">${cell('Damage', _cckMoney(`cckb-ka-${pfx}`, dv('ka', K.dmg.a > 0 ? K.dmg.a : ''), on, ''), 'cckb-ka')}${
     cell('Reason', _cckText(`cckb-kg-${pfx}`, dv('kg', K.dmg.r), on, ''), 'cckb-kg')}</div>`;
   const shown = { [`cckb-ka-${pfx}`]: dv('ka', K.dmg.a > 0 ? K.dmg.a : '') };   // the amounts as drawn (the note of a draft)
@@ -314,14 +334,14 @@ function ccKauDraftRead(pfx) {
     const a = $(`cckb-k${i}-${pfx}`), m = $(`cckb-m${i}-${pfx}`), r = $(`cckb-r${i}-${pfx}`);
     if (a) out['k' + i] = a.value; if (m) out['m' + i] = m.value; if (r && !r.hidden) out.kn = i + 1;
   }
-  [['kr', 'cckb-kr'], ['ka', 'cckb-ka'], ['kg', 'cckb-kg']].forEach(([key, id]) => { const el = $(`${id}-${pfx}`); if (el) out[key] = el.value; });
+  [['kr', 'cckb-kr'], ['ka', 'cckb-ka'], ['kg', 'cckb-kg']].forEach(([key, id]) => { const el = $(`${id}-${pfx}`); if (el) out[key] = key === 'kr' ? _ckbPick(el) : el.value; });
   return out;
 }
 /* "2.400,00 € received − 1.000,00 € rent − 400,00 € damage − 300,00 € for NK" (only parts above 0) */
 function ccKauNote(fmt, recv, parts) {
   return fmt(recv) + ' received' + parts.filter(([v]) => Number(v) > 0.004).map(([v, l]) => ' − ' + fmt(v) + ' ' + l).join('');
 }
-function ccKauLiveNote(A, F) { return ccKauNote(A.fmt, F.recv, [[F.kb.rent, 'rent'], [F.kb.dmg, 'damage'], [F.d, 'other'], [F.nIn ? F.n : 0, 'for NK']]); }
+function ccKauLiveNote(A, F) { return ccKauNote(A.fmt, F.recv, [[F.kb.rent, 'rent'], [F.kb.dmg, 'damage'], [F.sd, 'other'], [F.nIn ? F.sn : 0, 'for NK']]); }   // as the fields show them
 /* what Save keeps: rows with the same month added together, empty rows left out */
 function _ckbPlan(pfx) {
   const $ = id => document.getElementById(id), by = new Map();
@@ -334,7 +354,7 @@ function _ckbPlan(pfx) {
   const da = $(`cckb-ka-${pfx}`), dg = $(`cckb-kg-${pfx}`), dr = $(`cckb-kr-${pfx}`);
   const a = da && da.value !== '' ? Math.max(0, _ckbR2(da.value)) : 0;
   const r = dg ? String(dg.value || '').trim() : '';
-  const cost = dr && dr.value ? String(dr.value) : null;
+  const cost = _ckbPick(dr) ? String(_ckbPick(dr)) : null;
   const dmg = { a, r, cost };
   const kept = rent.length || a > 0 ? Object.assign(rent.length ? { rent } : {}, a > 0 ? { dmg } : {}) : null;
   return { rent, dmg, kept };
@@ -422,14 +442,17 @@ async function _ckbUnitMake(U, units) {
 
 /* ── the rent part: this tenant's Kaution part of one month row (kau-rent-math.js) ──
    split[tid] = max(0, split[tid] − kau_part[tid].a) + a · NK = old − kau_part[tid].nk + nk (≤ total) ·
-   a bank transfer typed in Controlling and another tenant's part stay untouched */
-function ccKauRentSet(row, tid, a, nk) {
+   a bank transfer typed in Controlling and another tenant's part stay untouched ·
+   F2: an old row saved as one sum (no split) is the money of `lead` (the tenancy Controlling credits it to, _ckbLead) —
+   it becomes that tenancy's part of the split, this tenant's Kaution part is added next to it */
+const _ckbSplitOf = row => (row && row.split && typeof row.split === 'object' && !Array.isArray(row.split) && Object.keys(row.split).length ? row.split : null);
+function ccKauRentSet(row, tid, a, nk, lead) {
   const kp = Object.assign({}, (row && row.kau_part && typeof row.kau_part === 'object') ? row.kau_part : {});
   const old = kp[tid] || { a: 0, nk: 0 };
   if (_ckbR2(old.a) === _ckbR2(a) && _ckbR2(old.nk) === _ckbR2(nk)) return { op: 'none' };
-  let split = row && row.split && typeof row.split === 'object' && !Array.isArray(row.split) && Object.keys(row.split).length ? Object.assign({}, row.split) : null;
-  const legacy = !!row && !split;                          // an old row without split: its amount was this tenant's
-  if (!split) split = row ? { [tid]: _ckbR2(Number(row.kaltmiete || 0) + Number(row.nebenkosten || 0)) } : {};
+  let split = _ckbSplitOf(row) ? Object.assign({}, row.split) : null;
+  const legacy = !!row && !split;                          // an old row without split: its amount was the lead tenancy's
+  if (!split) split = row ? { [lead || tid]: _ckbR2(Number(row.kaltmiete || 0) + Number(row.nebenkosten || 0)) } : {};
   const t = _ckbR2(Math.max(0, Number(split[tid] || 0) - _ckbR2(old.a)) + _ckbR2(a));
   if (t > 0) split[tid] = t; else delete split[tid];
   if (a > 0) kp[tid] = { a: _ckbR2(a), nk: _ckbR2(nk) }; else delete kp[tid];
@@ -445,18 +468,35 @@ function _ckbNkOf(A, rec, ym, a) {
   const T = Number(r.total) || 0, N = Math.max(0, Math.min(Number(r.nk) || 0, T));
   return T > 0 ? Math.min(_ckbR2(a), _ckbR2(a * N / T)) : 0;
 }
-/* another tenancy of the same unit lived there in that month (_cxTenancies windows) */
-function _ckbShared(A, rec, ym) {
+/* F2: whose money an old month row saved as one sum is — as Controlling reads it (ctlUnitSoll parts → ctlIstFor): of the
+   tenancies of the unit paying rent that month (_cxTenancies windows: Move-in / Move-out, rent from the Contract dates unless
+   Move dates are chosen), the one who lived there most days, then paid most days, then the one first in the month
+   (newest move-in first on the same day); nobody → this tenant */
+function _ckbLead(A, rec, ym) {
   const list = ((A.kb.others && A.kb.others(rec)) || []).concat([rec]);
-  const today = _ckbToday(), first = ym + '-01', lastD = ym + '-' + String(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()).padStart(2, '0');
+  const today = _ckbToday(), N = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
   const ws = list.map(t => ({ t, from: _ckbD(t.mietbeginn), to: _ckbD(t.mietende) })).filter(w => w.from).sort((a, b) => a.from.localeCompare(b.from));
   ws.forEach((w, i) => {
-    if (w.to) return;
-    if (w.t.status === 'active') { w.to = '9999-12-31'; return; }
-    const nx = ws.slice(i + 1).find(x => x.from > w.from);
-    if (nx) { const d = new Date(nx.from + 'T12:00:00'); d.setDate(d.getDate() - 1); w.to = d.toISOString().slice(0, 10); } else w.to = today;
+    if (!w.to) {
+      if (w.t.status === 'active') w.to = '9999-12-31';
+      else { const nx = ws.slice(i + 1).find(x => x.from > w.from);
+             if (nx) { const d = new Date(nx.from + 'T12:00:00'); d.setDate(d.getDate() - 1); w.to = d.toISOString().slice(0, 10); } else w.to = today; }
+    }
   });
-  return ws.some(w => String(w.t.id) !== String(rec.id) && w.from <= lastD && w.to >= first);
+  ws.forEach(w => {
+    const M = (A.kb.months && A.kb.months(w.t)) || {};
+    w.payFrom = (w.t.rent_from === 'move' ? '' : _ckbD(w.t.vertragsbeginn)) || w.from;
+    w.payTo = (w.t.rent_until === 'move' ? '' : _ckbD(M.end)) || w.to;
+  });
+  const parts = [], byNew = ws.slice().reverse();
+  for (let d = 1; d <= N; d++) {
+    const iso = ym + '-' + String(d).padStart(2, '0');
+    for (const w of byNew) if (w.payFrom <= iso && iso <= w.payTo) {
+      let p = parts.find(x => x.w === w); if (!p) parts.push(p = { w, days: 0, live: 0 });
+      p.days++; if (w.from <= iso && iso <= w.to) p.live++;
+    }
+  }
+  return parts.length ? String(parts.slice().sort((a, b) => b.live - a.live || b.days - a.days)[0].w.t.id) : String(rec.id);
 }
 
 /* ── Save, step 1 (before anything is written): the unit, when something is booked on it ──
@@ -471,28 +511,16 @@ async function ccKauPrep(app, pfx, tid, settled, settledAt) {
   let D;
   try { D = await _ckbReadUnits(app); } catch (e) { if (typeof ccSaveFailed === 'function') ccSaveFailed(e, A.failLabel); return { stop: true }; }
   KB.U = ccKauUnitOf(D, ref); KB.units = D.units;
-  if (!KB.U) { ccKauNotLinked(KB); return { stop: true }; }
-  // an old month row without split while another tenant also lived there: whose money it holds is unknown → not saved
-  if (KB.U.u.id != null) for (const t of KB.rent) {
-    const r = await sbL.from('ctrl_income_months').select('*').eq('unit_id', KB.U.u.id).eq('year', Number(t.m.slice(0, 4))).eq('month', Number(t.m.slice(5, 7)));
-    if (r.error) { if (typeof ccSaveFailed === 'function') ccSaveFailed(r.error, A.failLabel); return { stop: true }; }
-    const row = (r.data || [])[0];
-    if (row && ccKauRentSet(row, String(tid), t.a, 0).legacy && _ckbShared(A, rec, t.m)) { ccKauNotLinked(KB); return { stop: true }; }
-  }
+  if (!KB.U) { ccKauNotLinked(KB); return { stop: true }; }   // the one place this line is used: the unit really is not linked
   return KB;
 }
 function ccKauNotLinked(KB) {
   if (typeof ccToast === 'function') ccToast('Not saved — ' + ((KB.ref && KB.ref.label) || 'this unit') + ' is not linked in Controlling › Setup', true);
 }
-/* failed after the amounts: the existing message, or the one exact line for a unit that is not linked */
-function ccKauFailed(A, KB, res) {
-  if (res && res.notLinked) return ccKauNotLinked(KB);
-  if (typeof ccSaveFailed === 'function') ccSaveFailed(res && res.error, A.failLabel);
-}
 
 const _ckbLineItem = (ref, r) => [(ref && ref.label) || '', 'Erstattung Mieter', r, 'aus Kaution'].filter(Boolean).join(' · ');
 /* ── Save, step 2 (in the tenant's write queue, before the Kaution row): set every booking ──
-   reads first, works everything out, writes only what differs → { } · { error } · { notLinked } */
+   reads first, works everything out, writes only what differs → { } · { error } */
 async function ccKauApply(KB, kid) {
   try {
     const A = _CCK[KB.app], tid = String(KB.tid), sref = 'kau:' + KB.app + ':' + kid;
@@ -522,8 +550,7 @@ async function ccKauApply(KB, kid) {
         if (r.error) return { error: r.error };
         row = (r.data || [])[0] || null;
       }
-      const res = ccKauRentSet(row, tid, t.a, nk);
-      if (res.legacy && res.op !== 'none' && _ckbShared(A, KB.rec, t.m)) return { notLinked: true };   // whose money it was is unknown
+      const res = ccKauRentSet(row, tid, t.a, nk, row && !_ckbSplitOf(row) ? _ckbLead(A, KB.rec, t.m) : tid);   // F2: one-sum row → as Controlling reads it
       ops.push({ y, m, row, res });
     }
     for (const [k, row] of held) if (!want.has(k)) ops.push({ y: row.year, m: row.month, row, res: ccKauRentSet(row, tid, 0, 0), unit: row.unit_id });
@@ -576,19 +603,23 @@ async function ccKauApply(KB, kid) {
    and when a moved-out tenant's pop-up is opened (check: read first, write only when they differ, once per page).
    Quiet: no message, nothing is drawn again. Only the Kaution's own part of a month is set — an amount typed in
    Controlling stays. Anything that cannot be read or has no unit now is left for the next time. The check waits while a
-   Save of this card runs (one at a time, fix 4) — that Save sets every booking itself. */
+   Save of this card runs (one at a time, fix 4) — that Save sets every booking itself.
+   NP1 (fin): after a failed Save (back = { amt: Received / Refund before it, old: kept · settled · Settled on · NK before it })
+   the old Received / Refund are written back only while the row still holds the old state — a write that landed although
+   both answers were lost is kept, and the card in memory takes the row (was: the old refund over the new row). */
 function ccKauCheck(app, tid) {
   const key = app + '|' + tid;
   if (_CCKB.ok[key]) return;
   _CCKB.ok[key] = 1;
   ccKauHeal(app, tid, true).then(r => { if (r && (r.error || r.busy)) delete _CCKB.ok[key]; });
 }
-function ccKauHealAfterFail(app, tid) {
+function ccKauHealAfterFail(app, tid, back) {
   const key = app + '|' + tid;
   delete _CCKB.ok[key];                                    // the next open checks again
-  return ccKauHeal(app, tid, false);
+  return ccKauHeal(app, tid, false, back);
 }
-function ccKauHeal(app, tid, check) {
+const _ckbState = k => JSON.stringify([!!k.settled, _ckbD(k.settled_at), _ckbR2(k.nk_einbehalt), _ckbKept(k)]);
+function ccKauHeal(app, tid, check, back) {
   const A = _CCK[app], k0 = A && tid ? A.map()[tid] : null;
   if (!A || !A.kb || !k0 || !k0.id || typeof sbL === 'undefined' || !sbL) return Promise.resolve({});
   return ccQueueWrite(A.writeKey + tid, async () => {
@@ -601,6 +632,13 @@ function ccKauHeal(app, tid, check) {
         sbL.from('ctrl_expense_one_time').select('*').eq('source_ref', sref)] : []));
       const bad = res.find(r => r.error); if (bad) return { error: bad.error };
       const k = (res[0].data || [])[0];
+      if (k && back) {                                     // NP1: the row decides whether the amounts go back
+        if (_ckbState(k) === _ckbState(back.old)) {
+          const w = await sbL.from(A.table).update(back.amt).eq('id', k.id);
+          if (w.error) return { error: w.error };
+          Object.assign(k, back.amt);
+        } else Object.assign(A.map()[tid] || {}, k);
+      }
       if (!k || !_ckbHas(k, 'kept')) return {};
       if (check && !_ckbOff(A, String(tid), k, res[1].data || [], res[2].data || [])) return {};
       const KB = await _ckbSavedKB(A, app, String(tid), k);

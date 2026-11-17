@@ -2061,7 +2061,7 @@ if (typeof ccKautionBookRegister === 'function') {
     all: () => _rntRecords,                                        // fix 3: the moved-out tenants' receipts are read once, after the page is drawn
   });
   { const open0 = _rntOpenModal, shown = () => { const m = document.getElementById('rntModal'); return m && m.classList.contains('open') ? 'open:' + _rntModalTid : ''; };
-    _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid), shown); }   // receipts before the form shows · the last tap wins
+    _rntOpenModal = tid => ccKauBeforeOpen('rnt', tid, () => open0(tid), shown); }   // opens at once · its receipts come in when they arrive (last tap)
 }
 
 
