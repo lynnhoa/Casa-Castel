@@ -416,13 +416,14 @@ function _cckFormNow(pfx) { return JSON.stringify([_cckDraftRead(pfx), typeof cc
 function _cckShown(pfx) { const b = document.getElementById('cck-save-' + pfx); return !!b && b.getClientRects().length > 0; }
 async function _cckSave(A, app, pfx, tid, ui, redraw) {
   const $ = id => document.getElementById(id);
+  const half = el => !!el && !!String(_cckRaw(el)).trim() && !el.value;   // a date not typed in full (e.g. 15.01.202)
   ccKautionRest(app, pfx, tid);                          // fin NP3: Save writes what the fields show — an emptied "other" shows the rest first
   ui.sent = _cckFormNow(pfx);                            // what this Save reads (a Save tapped meanwhile runs only if the form changed)
   ui.newer = 0;                                          // C2: typed while it waited for an earlier write of the card is in it — only typing from now on keeps the form open
 
   // B25 (5): an unfinished date (e.g. 15.01.202) is never saved as "no date" — say so and stop
   const badDate = [[`cck-rd-${pfx}`, 'Received on'], [`cck-fd-${pfx}`, 'Settled on']]
-    .map(([id, label]) => [$(id), label]).find(([el]) => el && String(_cckRaw(el)).trim() && !el.value);
+    .map(([id, label]) => [$(id), label]).find(([el]) => half(el));
   if (badDate) {
     badDate[0].setAttribute('aria-invalid', 'true');
     const rn0 = $(`cck-rn-${pfx}`);
@@ -435,12 +436,22 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   const sv = $(`cck-sv-${pfx}`);
   if (sv && A.saveSoll) {
     const info0 = A.soll(A.rec(tid)); const cur = info0 ? _cckNum(info0.amount) : null;
-    const nv = sv.value === '' ? null : Number(sv.value);
-    if (nv !== cur && (nv === null || nv >= 0)) await A.saveSoll(tid, nv);
+    const svRead = sv.value, nv = svRead === '' ? null : Number(svRead);
+    if (nv !== cur && (nv === null || nv >= 0)) {
+      await A.saveSoll(tid, nv);
+      // C2: the rest of the form is read just below, after this write — what was typed meanwhile is in this Save, so only typing
+      // from now on keeps the form open. Not when the Soll was changed meanwhile (this Save wrote the one before) or a date is half typed
+      const sv2 = $(`cck-sv-${pfx}`);
+      if ((!sv2 || sv2.value === svRead) && !half($(`cck-rd-${pfx}`)) && !half($(`cck-fd-${pfx}`))) { ui.sent = _cckFormNow(pfx); ui.newer = 0; }
+    }
   }
   const F = _cckForm(pfx, k0, null, ui.typed, ui.tk);
   if (F.bad) { (F.fIn || F.dIn)?.focus(); return; }
   const fd = $(`cck-fd-${pfx}`), refDate = fd ? (fd.value || '') : '';
+  // C2: Received on · Reason read with the amounts (not after their write: typed then, they stay in the form, unsaved) —
+  // a Received on half typed meanwhile is not written (the saved date stays)
+  const rd = $(`cck-rd-${pfx}`), g = $(`cck-g-${pfx}`);
+  const rdV = rd && !half(rd) ? (rd.value || null) : undefined, gV = g ? (g.value.trim() || null) : undefined;
   // nothing kept and no refund typed: still held (0) — or, with a "Settled on" date, all of it went back
   const returned = F.any ? _cckR2(F.rf) : (refDate ? _cckR2(F.recv) : 0);
   // K1 (KAU-8): everything kept, nothing to refund → settled on Save (on the date typed, else today) — only after
@@ -469,9 +480,8 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   };
   const upd = {};
   if (_cckHasExtra(A)) {                                // (a first save may have just created the row)
-    const rd = $(`cck-rd-${pfx}`), g = $(`cck-g-${pfx}`);
-    if (rd) upd.received_at = rd.value || null;
-    if (g)  upd.deduction_reason = F.any ? (g.value.trim() || null) : null;
+    if (rdV !== undefined) upd.received_at = rdV;
+    if (gV !== undefined)  upd.deduction_reason = F.any ? gV : null;
   }
   if (Object.prototype.hasOwnProperty.call(k, 'nk_einbehalt')) upd.nk_einbehalt = F.any ? _cckR2(F.n) : 0;
   upd.settled = !!refDate || keptAll;                   // "Settled on" = the refund is paid (or nothing goes back)
