@@ -358,7 +358,7 @@ function ccKautionInput(app, pfx, tid, src) {
     rn.classList.toggle('cck-err', F.bad);
     rn.textContent = _cckNoteText(A, F);
   }
-  if (src) ui.busy = 0;                                // C2: typed while it saves → the dark Save again (what Save fills in itself keeps "Saving…")
+  if (src) { if (ui.saving) ui.newer = 1; ui.busy = 0; }   // C2: typed while it saves → the dark Save again (what Save fills in itself keeps "Saving…")
   const save = $(`cck-save-${pfx}`);
   if (save && typeof ccSaveSet === 'function' && !ui.busy) ccSaveSet(save, 'dirty');
   if (tid) { A.ui[tid] = A.ui[tid] || {}; A.ui[tid].draft = _cckDraftRead(pfx); }   // B25 (6): survives a redraw
@@ -382,7 +382,7 @@ async function ccKautionAct(app, pfx, tid, act) {
   // it ends, a plain double tap writes once; typing turns it back into the dark Save, a tap then runs Save again (ui.again)
   _cckBusy(ui, pfx);
   if (ui.saving) { ui.again = 1; return; }
-  ui.saving = 1; ui.again = 0;
+  ui.saving = 1; ui.again = 0; ui.newer = 0;
   let ok = false;
   try {
     if (typeof ccKauOn === 'function' && ccKauOn(A, tid)) await ccQueueWrite(A.writeKey + tid, async () => ({}));   // fin NP1: what a failed Save put back is in the card first
@@ -492,7 +492,8 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     if (KB) back();                                     // K1b: the bookings go back to the card as saved (same queue)
     return redraw();
   }
-  if (ui.again) return amtOk;                           // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct)
+  // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in while it saved (its dark Save)
+  if (ui.again || (ui.newer && _cckShown(pfx))) return amtOk;
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
   return amtOk;
