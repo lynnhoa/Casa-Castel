@@ -223,8 +223,9 @@ function nkLetterHtml(d) {
   const facts = (d.facts1 || []).length ? `<div class="facts">${d.facts1.map(f => `<div class="fact"><div class="fact__k">${esc(f[0])}</div><div class="fact__v">${esc(f[1])}</div>${f[2] ? `<div class="fact__s">${esc(f[2])}</div>` : ''}</div>`).join('')}</div>` : '';
   const calc = `<span class="calc">${eur(d.vz)} Vorauszahlungen \u2212 ${eur(d.sum)} Kosten</span>`;
 
-  // D39: with a Teil B page, a "Belegliste (Seite n)" reference follows where that page really lands (nkLetterPdf)
-  const pgB = s => TB ? s.replace(/(Belegliste (?:auf )?\(?Seite )(\d+)/g, '$1<span data-pgref="beleg">$2</span>') : s;
+  // D39 · K2: a "Belegliste (Seite n)" reference follows where that page really lands (nkLetterPdf) — in every letter,
+  // since a full page 1 can push the closing lines and the Belegliste one page on
+  const pgB = s => s.replace(/(Belegliste (?:auf )?\(?Seite )(\d+)/g, '$1<span data-pgref="beleg">$2</span>');
   const pgTB = `<span data-pgref="tb">2</span>`, pgTG = `<span data-pgref="tbg">2</span>`;   // Teil B starts · Gesamtverrechnung (can be a later page)
   const TS = TB ? Number(TB.saldo) || 0 : 0;
   const TB0 = !!TB && Math.abs(TS) < 0.005 && !(E > 0);    // total exactly 0 and no Kaution kept back: nothing to pay or to pay back
@@ -243,16 +244,16 @@ function nkLetterHtml(d) {
     <div class="total-box"><span>${TB ? 'Teil A \u00b7 ' : ''}${resLabel}${d.saldo ? calc : ''}</span><span>${d.saldo ? eur(amt) : eur(0)}</span></div>
     ${TB ? pay1B : pay}
     ${d.extraHtml || ''}
-    ${(d.hints || []).length ? `<div class="hints">${d.hints.map(h => `<div class="hint hint--s"><span>${pgB(esc(nb(h)))}</span></div>`).join('')}</div>` : ''}
-    <p class="greet">${esc(d.closing || 'Mit freundlichen Grüßen')}</p>
-    <p class="greet__name">${esc(d.vermieter)}</p>
+    ${(d.hints || []).length ? `<div class="hints" data-keep-next>${d.hints.map(h => `<div class="hint hint--s"><span>${pgB(esc(nb(h)))}</span></div>`).join('')}</div>` : ''}
+    <p class="greet" data-keep-next>${esc(d.closing || 'Mit freundlichen Grüßen')}</p>
+    <p class="greet__name" data-keep-next>${esc(d.vermieter)}</p>
     ${d.anlagen ? `<p class="anl">Anlage: ${pgB(esc(d.anlagen))}</p>` : ''}
   </div></div>`;
 
   // Belegliste (optional, own page)
   const X = d.extra;
   const pageX = X && X.rows && X.rows.length ? `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
-    <div class="doc-title doc-title--s"${TB ? ' data-pg="beleg"' : ''}>${esc(X.title)}</div>
+    <div class="doc-title doc-title--s" data-pg="beleg">${esc(X.title)}</div>
     <div class="doc-subtitle">${esc(X.intro || '')}</div>
     <table class="nk"><colgroup><col style="width:15%"/><col style="width:41%"/><col style="width:24%"/><col style="width:20%"/></colgroup>
       <thead><tr><th>Datum</th><th>Beschreibung</th><th>Firma</th><th class="r">Betrag</th></tr></thead>

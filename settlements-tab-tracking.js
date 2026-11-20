@@ -220,15 +220,24 @@ function _stPeriodRow(p) {
   const [mm, dd] = st.split('-');
   const opt = (n, sel) => '<option value="' + String(n).padStart(2, '0') + '"' + (Number(sel) === n ? ' selected' : '') + '>' + String(n).padStart(2, '0') + '</option>';
   let days = '', months = '';
-  for (let i = 1; i <= 31; i++) days += opt(i, dd);
+  for (let i = 1; i <= _stMonLen(mm); i++) days += opt(i, Math.min(Number(dd), _stMonLen(mm)));   // K2: only the days the month has
   for (let i = 1; i <= 12; i++) months += opt(i, mm);
   return '<div class="st-period st-period--edit"><span>Period starts on</span>' +
     '<select class="st-in st-sel" id="stPerD">' + days + '</select><span>.</span><select class="st-in st-sel" id="stPerM">' + months + '</select>' +
     '<button class="cx-btn cx-btn--s" data-st="perCancel">Cancel</button><button class="cx-btn cx-btn--p" data-st="perSave" data-k="' + p.id + '">Save</button></div>';
 }
+/* K2: a period start every year → February has 28 days (30.02 or 31.04 can't be picked or saved) */
+const _stMonLen = m => [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][(Number(m) || 1) - 1] || 31;
+function _stPerDaysFit() {                               // the month changed: the day list follows it, the day picked stays when it fits
+  const ds = document.getElementById('stPerD'), ms = document.getElementById('stPerM'); if (!ds || !ms) return;
+  const n = _stMonLen(ms.value), cur = Math.min(Number(ds.value) || 1, n);
+  ds.innerHTML = Array.from({ length: n }, (_, i) => '<option value="' + String(i + 1).padStart(2, '0') + '"' + (i + 1 === cur ? ' selected' : '') + '>' + String(i + 1).padStart(2, '0') + '</option>').join('');
+}
+document.addEventListener('change', e => { if (e.target && e.target.id === 'stPerM') _stPerDaysFit(); });
 async function _stPeriodSave(pid) {
-  const d = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
-  if (!d || !m) return;
+  const d0 = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
+  if (!d0 || !m) return;
+  const d = String(Math.min(Number(d0) || 1, _stMonLen(m))).padStart(2, '0');
   const v = m + '-' + d;
   const upd = { nk_period_start: v };                     // the purchase date comes from Properties, not from here
   const { error } = await _ctlSupa.from('ctrl_properties').update(upd).eq('id', pid);
@@ -239,7 +248,7 @@ async function _stPeriodSave(pid) {
 
 function _stLineHtml(l) {
   const s = l.state, w = l.who;
-  const per = l.from && l.to ? stDM(l.from) + '–' + stDate(l.to) + (l.type === 'gap' ? ' · ' + _stDays(l.from, l.to) + ' Tage' : '') : '';
+  const per = l.from && l.to ? stDM(l.from) + '–' + stDate(l.to) + (l.type === 'gap' ? ' · ' + _stDays(l.from, l.to) + (_stDays(l.from, l.to) === 1 ? ' Tag' : ' Tage') : '') : '';
   const res = s.text || '';
   return '<button class="st-line' + (ST.sel === l.id ? ' is-sel' : '') + (s.k === 'erledigt' ? ' is-done' : '') + (l.type === 'gap' ? ' is-gap' : '') + '" data-st="sel" data-id="' + stEsc(l.id) + '">' +
     '<span class="st-c st-c--who"><span class="st-who">' + stEsc(w.a) + (w.b ? '<span class="st-who__b"> · ' + stEsc(w.b) + '</span>' : '') + '</span>' +
@@ -273,7 +282,7 @@ function _stPanelHtml() {
   const kindText = l.type === 'gap' ? 'Leerstand' : weg ? 'Hausgeldabrechnung (WEG)' : 'NK-Abrechnung';
   let kv = '';
   const row = (a, b) => { kv += '<div class="cx-kv"><span>' + a + '</span><span>' + b + '</span></div>'; };
-  if (l.from && l.to) row('Zeitraum', stDate(l.from) + ' – ' + stDate(l.to) + ' · ' + _stDays(l.from, l.to) + ' Tage');
+  if (l.from && l.to) row('Zeitraum', stDate(l.from) + ' – ' + stDate(l.to) + ' · ' + _stDays(l.from, l.to) + (_stDays(l.from, l.to) === 1 ? ' Tag' : ' Tage'));
   if (l.frist) row('Frist', stDate(l.frist));
   if (l.type === 'row') {
     let f = null; try { f = ctlSettlementFigures(l.it.r); } catch (e) {}
