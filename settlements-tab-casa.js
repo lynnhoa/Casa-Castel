@@ -567,7 +567,10 @@ function scModel(y) {
     }
     const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
-    const movedOut = t.to < input.period.to || !!(tr && tr.mietende && scD(tr.mietende) < today);
+    // K2: a stay that ends before the year ends is a move-out only when the same tenant has no later stay in this year
+    // (Kalt + NK → Pauschal, or Pauschal → Kalt + NK: she still lives here) · a Mietende before today always is
+    const later = !!t.tenantId && R.tenants.some(x => x !== t && String(x.tenantId) === String(t.tenantId) && x.from > t.to);
+    const movedOut = (t.to < input.period.to && !later) || !!(tr && tr.mietende && scD(tr.mietende) < today);
     const alt = (Ralt.tenants.find(x => x.key === t.key) || {});
     return Object.assign({}, t, { altSaldo: alt.saldo, altSum: alt.sum, it, line, st, skipped, k, tr, movedOut, vzMissing: src.vzMissing || [], vzAuto: src.vzAuto ?? src.vz, vzMap: src.vzMap || {}, vzContract: src.vzContract || 0,
                                   extra: !!src.extra, xAddr: src.addr || '', set: ts[t.key] || {}, kau, einbehalt, _exp: src._exp || null });
@@ -801,7 +804,7 @@ function scRoomsHtml(M) {
       '<span class="sc-roomc__t"><b>' + stEsc(r.name) + '</b><small>' + (r.m2 ? String(r.m2).replace('.', ',') + ' m² · ' : '') + (list.length ? list.length + (list.length === 1 ? ' tenant' : ' tenants') : 'no tenant') + '</small></span>' +
       '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></div>' +
       items.map(it => it.gap
-        ? '<div class="sc-gap">empty ' + stPer(it.from, it.to) + ' · ' + NkCasa.daysBetween(it.from, it.to) + ' days</div>'
+        ? '<div class="sc-gap">empty ' + stPer(it.from, it.to) + ' · ' + scCnt(NkCasa.daysBetween(it.from, it.to), 'day', 'days') + '</div>'
         : scRowHtml(it, M, true)).join('') +
       (!M.locked ? '<button class="sc-addt" data-sc="extraNew" data-room="' + stEsc(r.name) + '"><i class="ti ti-user-plus" aria-hidden="true"></i> Add a tenant to this NK</button>' : '') + '</div>';
   }).join('');
@@ -1358,7 +1361,7 @@ function scJaCovTxt(z) {
   for (const p of scJaNkPeriods(z)) {
     let f = z.from > p.from ? z.from : p.from; if (since && f < since) f = since;
     const t = z.to < p.to ? z.to : p.to; if (f > t) continue;
-    out.push('NK ' + p.y + ': ' + NkCasa.daysBetween(f, t) + ' days');
+    out.push('NK ' + p.y + ': ' + scCnt(NkCasa.daysBetween(f, t), 'day', 'days'));
   }
   return out.length ? 'covers ' + out.join(' · ') : 'outside every NK year';
 }
@@ -2097,7 +2100,7 @@ function scTenView(M, m) {
   const res = t.k === 'sent' || t.k === 'done' ? t.st && t.st.res : null;
   const saldo = res ? res.dir * res.amount : t.saldo;
   const noData = !M.R.lines.length;
-  if (noData) return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'none', label: 'NK-Abrechnung ' + M.y, amount: null, sub: first + ' lived here ' + t.days + ' days · the share follows once the house costs are typed' }) +
+  if (noData) return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'none', label: 'NK-Abrechnung ' + M.y, amount: null, sub: first + ' lived here ' + scCnt(t.days, 'day', 'days') + ' · the share follows once the house costs are typed' }) +
     '<div class="mx-rows">' + stMRow({ icon: 'receipt', title: 'House costs', sub: 'nothing booked yet', right: '<button type="button" class="mx-pill" data-sc="costs">Type house costs</button>' }) + '</div>' +
     (t.extra ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant</button>' : '') + '</div>';
   const sent = t.k === 'sent' || t.k === 'done', done = t.k === 'done';
@@ -2144,7 +2147,7 @@ function scTenView(M, m) {
   const vzOver = s.vz !== undefined && s.vz !== null && s.vz !== '';
   const vzSrc = (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length)) ? 'changed by you' : t.vzContract ? t.vzContract + ' month(s) per contract' : 'per Controlling';
   const lk = 'tl:' + t.key, lo = !!SC.open[lk];
-  const calc = stTpRow({ title: 'Lived here', sub: stEsc(stPer(t.from, t.to)), value: M.method === 'quota' ? scMo(t.months) + ' months' : t.days + ' days' }) +
+  const calc = stTpRow({ title: 'Lived here', sub: stEsc(stPer(t.from, t.to)), value: M.method === 'quota' ? scMoTxt(t.months, ' month', ' months') : scCnt(t.days, 'day', 'days') }) +
     stTpRow({ title: 'Share', sub: stEsc(M.method === 'quota' && q.months ? scMo(t.months) + ' × ' + scE(q.rate) + ' · per cost type' : 'day by day · per cost type'), value: scE(t.sum),
       act: 'data-sc="fold" data-k="' + lk + '" aria-expanded="' + lo + '"', icon: lo ? 'chevron-up' : 'chevron-down' }) +
     (lo ? '<div class="sr-items tp-fold__b">' + scShareLines(t).map(g => '<div class="sr-it"><span>' + stEsc(g.label) + '<small class="sr-it__s">' + stEsc(scPct(g)) + ' of ' + scE(g.total) + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') + '</div>' : '') +
@@ -2161,7 +2164,7 @@ function scTenView(M, m) {
     const pill = SC.pill && SC.pill.k === t.key ? SC.pill.p : null, miss = !addr.trim();
     const lOpen = pill === 'letter' || pill === 'addr' || pill === 'via' || miss;
     const chip = miss ? '<span class="tp-chip is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> needs: address</span>' : '<span class="tp-chip is-ok"><i class="ti ti-check" aria-hidden="true"></i> complete</span>';
-    const lsub = [addrShort, scDate(s.date || cxToday()), (s.days ?? 30) + ' days', 'Belegliste ' + (list ? 'on' : 'off')].join(' · ');
+    const lsub = [addrShort, scDate(s.date || cxToday()), scCnt(s.days ?? 30, 'day', 'days'), 'Belegliste ' + (list ? 'on' : 'off')].join(' · ');
     letter = stTpLbl('mail', '#FAF0DC', '#854F0B', 'Letter') + '<div class="tp-card">' +
       '<button type="button" class="tp-r" data-sc="pill" data-p="letter" ' + kAttr + ' aria-expanded="' + lOpen + '"><span class="tp-r__m"><b>Letter details ' + chip + '</b><small>' + stEsc(lsub) + '</small></span><span class="tp-r__v"></span>' +
         '<span class="tp-r__i"><i class="ti ti-chevron-' + (lOpen ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
@@ -2426,6 +2429,8 @@ function scShareLines(t) {
   return out.filter(g => !g.allg).sort((a, b) => scCatOrd(a.catId) - scCatOrd(b.catId)).concat(out.filter(g => g.allg));     // the one order · Allgemeine Hauskosten always last
 }
 const scMo = v => (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 });   // 7 · 6,5 · 0,77
+const scMoTxt = (v, one = ' Monat', many = ' Monate') => scMo(v) + (scMo(v) === '1' ? one : many);   // K2: "1 Monat" · "6,5 Monate"
+const scCnt = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);                              // K2: "1 day" · "31 days"
 function scPct(g) {                                     // share of the house cost, e.g. "10,21 %"
   if (!g.total || Math.abs(g.total) < 0.005) return '\u2013';
   return (g.amount / g.total * 100).toFixed(2).replace('.', ',') + '\u00a0%';
@@ -2441,7 +2446,9 @@ async function scLetterData(M, t) {
   const addr = String(set.addr !== undefined ? set.addr : scAddrDefault(t).join('\n')).split('\n').map(x => x.trim()).filter(Boolean);
   const former = set.former !== undefined ? !!set.former : t.movedOut;
   const list = set.list !== undefined ? !!set.list : scListDefault();
-  const date = set.date || cxToday(), days = Number(set.days ?? 30) || 30;
+  // K2: a letter already sent and drawn again (no archived copy) keeps the date and due date it went out with
+  const sentRes = t.st && t.st.res, sentDue = sentRes && sentRes.db && sentRes.db.due_date ? scD(sentRes.db.due_date) : '';
+  const date = (sentRes && sentRes.date) || set.date || cxToday(), days = Number(set.days ?? 30) || 30;
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   const ort = s.unterschrift_ort || ((String(s.vermieter_adresse || '').match(/\d{5}\s+([^,\n]+)/) || [])[1] || '').trim();
   const y = M.y, per = M.R.period, partial = t.days < M.R.days;
@@ -2484,7 +2491,7 @@ async function scLetterData(M, t) {
     introHtml: 'anbei die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Zeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
       ' Die Kosten des Hauses werden tagesgenau auf alle Personen verteilt, die im Haus wohnen.' +
       (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + t.days + ' von ' + M.R.days + ' Tagen) – berechnet werden nur diese Tage.' : ''),
-    sum: t.sum, vz: t.vz, saldo: t.saldo, via: t.saldo ? scVia(t) : 'zahlung', einbehalt: t.einbehalt || 0, due: NkCasa.addDays(date, days),
+    sum: t.sum, vz: t.vz, saldo: t.saldo, via: t.saldo ? scVia(t) : 'zahlung', einbehalt: t.einbehalt || 0, due: sentDue || NkCasa.addDays(date, days),
     bank: { inhaber: s.kontoinhaber || s.vermieter_name || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     verwendung: 'NK ' + y + ' Casa Castel ' + t.room + ' ' + String(t.name).split(' ').slice(-1)[0], tenantIban: set.iban || '', former,
     hinweise: [],
@@ -2510,7 +2517,7 @@ async function scLetterData(M, t) {
              'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums.',
              ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
              'Nicht umlagefähige Kosten sind nicht enthalten.'],
-    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung eingeflossen sind – Jahresabrechnungen mit ihrem Anteil für ' + y + '. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite ' + ((t.teilB || []).length ? 1 : 2) + ' in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',   // D39: with Teil B the right page
+    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung eingeflossen sind – Jahresabrechnungen mit ihrem Anteil für ' + y + '. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite 1 in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',   // K2: the cost table is on Seite 1 in every letter (one-page layout, with or without Teil B)
       rows: extraLines.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(extraLines.reduce((a, l) => a + l.info.amount, 0)) } : null,
   };
   if (!Q) return scLetterLayout(D, M, t, { SL, Q, merged, list, extraLines, house, partial });
@@ -2518,7 +2525,7 @@ async function scLetterData(M, t) {
   const mo = scMo(t.months);
   D.introHtml = 'anbei die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Zeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
     ' Die Kosten des Hauses werden gleichmäßig auf alle bewohnten Monate verteilt – jeder Monat, in dem jemand im Haus gewohnt hat, trägt den gleichen Betrag.' +
-    (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + mo + ' Monate).' : '');
+    (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + scMoTxt(t.months) + ').' : '');
   const kz = Number(Q.kurz) || 0, base = kz ? Q.pool : Q.total;           // Nov 2026: − Anteil Kurzzeitvermietung
   D.facts = [['Abrechnungszeitraum', span(per.from, per.to), M.R.days + ' Tage'],
              ['Bewohnte Monate im Haus', scMo(Q.months), 'Ø ' + nf(Q.persons, 1) + ' Personen'],
@@ -2541,8 +2548,13 @@ function scLetterLayout(D, M, t, o) {
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const Q = o.Q, mo = scMo(t.months), per = M.R.period;
   D.title = 'Betriebskostenabrechnung ' + dt(t.from) + ' \u2013 ' + dt(t.to);
+  // K2: a part-year tenant's letter also names the year the house costs belong to (Kostenquote) \u00b7 "1 Monat" \u00b7 "62 von 365 Tagen"
+  const pf = String(per.from || ''), pt = String(per.to || '');
+  const perTxt = pf.slice(5, 10) === '01-01' && pt.slice(5, 10) === '12-31' && pf.slice(0, 4) === pt.slice(0, 4)
+    ? 'Abrechnungsjahr ' + pt.slice(0, 4) : 'Abrechnungszeitraum ' + dt(pf) + ' \u2013 ' + dt(pt);
   D.facts1 = [['Zimmer', t.room, 'Casa Castel \u00b7 ' + (o.house[0] || '')],
-              ['Zeitraum', dt(t.from) + ' \u2013 ' + dt(t.to), Q ? mo + ' Monate' : t.days + (o.partial ? ' von ' + M.R.days : '') + ' Tage'],
+              ['Zeitraum', dt(t.from) + ' \u2013 ' + dt(t.to), Q ? scMoTxt(t.months) + (o.partial ? ' \u00b7 ' + perTxt : '')
+                                                                 : o.partial ? t.days + ' von ' + M.R.days + ' Tagen' : scCnt(t.days, 'Tag', 'Tage')],
               Q ? ['Anteil', nf(t.months / Q.months * 100, 2) + '\u00a0%', mo + ' von ' + scMo(Q.months) + ' bewohnten Monaten']
                 : ['Abrechnungsjahr', dt(per.from) + ' \u2013 ' + dt(per.to), 'Verteilung nach Personen']];
   D.introHtml = 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (o.partial ? ' Berechnet werden nur die bewohnten ' + (Q ? 'Monate.' : 'Tage.') : '');

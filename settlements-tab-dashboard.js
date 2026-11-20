@@ -704,7 +704,14 @@ async function sdLetterData(d) {
   D.introHtml = 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (x.partial ? ' Die Kosten sind nach Tagen anteilig berechnet.' : '');
   D.costs = { cols: [{ label: 'Kostenart', w: '70%' }, { label: x.partial ? 'Anteil ' + x.useDays + '/' + x.perDays + ' Tage' : 'Betrag', w: '30%', cls: 'r' }],
               rows: x.lines.map(l => [l.label, l.share === null ? '\u2014' : eur(l.share)]) };
-  D.vzMonths = x.months.map(ym => ({ label: MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), amt: sdNum(sdVzOf(d, ym)) || 0 }));
+  // K2: only the months the tenant lived there, a part month with its days (as the Rentals letter) — not 0,00 € for the
+  // months before the move-in or after the move-out (an amount typed there still counts: the letter shows it as 'Korrektur')
+  D.vzMonths = sdUseMonths(d).map(ym => {
+    const N = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
+    const a = ym + '-01' > x.uf ? ym + '-01' : x.uf, b = ym + '-' + String(N).padStart(2, '0') < x.ut ? ym + '-' + String(N).padStart(2, '0') : x.ut;
+    const days = b >= a ? sdDays(a, b) : 0;
+    return { label: MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), part: days > 0 && days < N ? days + '/' + N + ' Tage' : '', amt: sdNum(sdVzOf(d, ym)) || 0 };
+  });
   D.hints = casa ? ['Nicht umlagefähige Kosten sind nicht enthalten.']
                  : ['Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.',
                     'Die Belege können nach Terminabsprache eingesehen werden. Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'];
@@ -733,13 +740,16 @@ async function sdSend(btn) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
   const saved = await sdSave(true); if (!saved) { if (btn) { btn.disabled = false; btn.textContent = 'Mark as sent'; } return; }
   const Y = Number(String(d.period_to).slice(0, 4)), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0, amount = cxR(Math.abs(x.saldo));
+  // K2: the letter, the result and the tenant's line are for the days the tenant lived there (x.uf–x.ut), as the letter
+  // says — not the whole Abrechnungszeitraum (Controlling showed 'NK 01.01.–31.12.' and Rentals kept the tenant's NK open)
+  const pf = sdD(x.uf) || d.period_from, pt = sdD(x.ut) || d.period_to;
   let letterId = null;
   try {
     const out = await nkLetterPdf(await sdLetterData(d), sdFileName(d));
     const path = 'manual/' + Y + '/' + Date.now() + '-' + out.name;
     const up = await _ctlSupa.storage.from('nk-letters').upload(path, out.blob, { contentType: 'application/pdf', upsert: false });
     if (up.error) throw up.error;
-    const row = { app: 'manual', property_id: d.property_id || null, year: Y, period_from: d.period_from, period_to: d.period_to, tenant_id: d.tenant_ref || null,
+    const row = { app: 'manual', property_id: d.property_id || null, year: Y, period_from: pf, period_to: pt, tenant_id: d.tenant_ref || null,
                   tenant_name: d.tenant_name || null, unit_label: d.unit_label || sdPropName(d), address: d.address || null, direction: dir, amount,
                   file_path: path, file_name: out.name, source: 'manual', sent_at: new Date().toISOString() };
     const ins = await _ctlSupa.from('nk_letters').insert(row).select().single();
@@ -751,7 +761,7 @@ async function sdSend(btn) {
   if (d.book && d.property_id) {
     try {
       const p = (window._ctrl.properties || []).find(q => q.id === Number(d.property_id));
-      await _stWriteResult(null, { property_id: p.id, kind: 'nk_tenant', year: Y, period_from: d.period_from, period_to: d.period_to, app: p.id === CASA_PROP_ID ? 'casa' : 'rentals',
+      await _stWriteResult(null, { property_id: p.id, kind: 'nk_tenant', year: Y, period_from: pf, period_to: pt, app: p.id === CASA_PROP_ID ? 'casa' : 'rentals',
         tenant_id: d.tenant_ref || null, unit_label: d.unit_label || null, tenant_name: d.tenant_name || null, direction: dir, amount,
         result_date: d.letter_date || cxToday(), due_date: dir ? sdD(new Date(new Date((d.letter_date || cxToday()) + 'T12:00:00Z').getTime() + (Number(d.due_days ?? 30) || 30) * 864e5).toISOString()) : null,
         settle_via: dir ? sdVia(d) : 'zahlung', status: 'fertig', source: 'manual' });
@@ -762,11 +772,11 @@ async function sdSend(btn) {
   if (d.tenant_ref && d.property_id) {
     try {
       const pid = Number(d.property_id), app = pid === CASA_PROP_ID ? 'casa' : 'rentals';
-      const res = d.book ? (window._src.abr || []).concat([]).reverse().find(a => String(a.tenant_id || '') === String(d.tenant_ref) && sdD(a.period_from) === sdD(d.period_from) && a.status !== 'storniert') : null;
-      const line = { property_id: pid, tenant_id: String(d.tenant_ref), app, kind: 'nk_tenant', covers_year: Y, period_from: d.period_from, period_to: d.period_to,
+      const res = d.book ? (window._src.abr || []).concat([]).reverse().find(a => String(a.tenant_id || '') === String(d.tenant_ref) && sdD(a.period_from) === pf && a.status !== 'storniert') : null;
+      const line = { property_id: pid, tenant_id: String(d.tenant_ref), app, kind: 'nk_tenant', covers_year: Y, period_from: pf, period_to: pt,
                      status: dir && d.book ? 'verschickt' : 'erledigt', amount, direction: dir, settled_via: sdVia(d), note: 'manual',
                      paid_date: dir && d.book ? null : (d.letter_date || cxToday()), result_id: res ? String(res.id) : null };
-      const old = (window._src.settle || []).find(r => String(r.tenant_id) === String(d.tenant_ref) && r.app === app && sdD(r.period_from) === sdD(d.period_from));
+      const old = (window._src.settle || []).find(r => String(r.tenant_id) === String(d.tenant_ref) && r.app === app && sdD(r.period_from) === pf);
       const q = old ? _ctlSupa.from('ctrl_settlements').update(line).eq('id', old.id).select().single() : _ctlSupa.from('ctrl_settlements').insert(line).select().single();
       const { data, error } = await q;
       if (!error && data) { window._src.settle = (window._src.settle || []).filter(r => r.id !== data.id).concat([data]); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }

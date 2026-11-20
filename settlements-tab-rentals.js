@@ -407,7 +407,7 @@ function _srCalc(c, it, rec, rule) {
   const vz = vzOv !== null ? vzOv : (vzIst !== null ? vzIst : (vzSoll || 0));
   const f = { istPartial: vzPartialFlag };
   sum = cxR(sum);
-  const kauAvail = _srEinbehalt(r, ts.date || cxToday());          // B20: Kaution kept for this NK (K1: by the letter date)
+  const kauAvail = _srEinbehalt(r, _srLetterDate(ts));             // B20: Kaution kept for this NK (K1: by the letter date)
   const kau = kauAvail > 0 ? { amount: kauAvail } : null;
   const einbehalt = kauAvail;                                       // K1: always offset — no choice (an old draft's 'via' is not read)
   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
@@ -564,10 +564,16 @@ const _srOnYouTxt = o => o.onYou >= 0 ? 'on you ' + stEur(o.onYou) : 'covered ·
    The list always adds up to the Vorauszahlungen of the Abrechnung — cent rounding goes into the last month,
    an amount typed by hand shows as one "Korrektur" line.                                                 */
 function _srVzMonths(mlist, mode, vz) {
-  const rows = (mlist || []).filter(mo => mo.days > 0).map(mo => ({
-    label: SR_MON[mo.m - 1] + ' ' + mo.y, part: mo.days < mo.N ? mo.days + '/' + mo.N + ' Tage' : '',
-    amt: cxR(mode === 'ist' && !mo.pre ? (mo.ist ?? 0) : mo.soll),          // paid per Controlling: a month without payment is 0 €
-  }));
+  // K2: in the year of purchase the purchase month comes in two parts (before it → contract, after it → Controlling):
+  // one row per month, its days and amounts added up (was: 'März 2025 14/31 Tage' and 'März 2025 17/31 Tage')
+  const byM = new Map();
+  for (const mo of (mlist || [])) {
+    if (!(mo.days > 0)) continue;
+    const k = mo.y + '-' + mo.m, amt = cxR(mode === 'ist' && !mo.pre ? (mo.ist ?? 0) : mo.soll);   // paid per Controlling: a month without payment is 0 €
+    const g = byM.get(k);
+    if (g) { g.days += mo.days; g.amt = cxR(g.amt + amt); } else byM.set(k, { y: mo.y, m: mo.m, N: mo.N, days: mo.days, amt });
+  }
+  const rows = [...byM.values()].map(g => ({ label: SR_MON[g.m - 1] + ' ' + g.y, part: g.days < g.N ? g.days + '/' + g.N + ' Tage' : '', amt: g.amt }));
   if (!rows.length) return [];
   const tot = cxR(rows.reduce((a, r) => a + r.amt, 0)), diff = cxR(vz - tot);
   if (Math.abs(diff) >= 0.005 && Math.abs(diff) < 0.05) rows[rows.length - 1].amt = cxR(rows[rows.length - 1].amt + diff);
@@ -575,6 +581,9 @@ function _srVzMonths(mlist, mode, vz) {
   return rows;
 }
 const _srMovedOut = t => !!(t && t.mietende && _cxD(t.mietende) && _cxD(t.mietende) < cxToday());
+/* K2: the letter date = the day the letter goes out, unless you picked a date yourself in Letter details
+   (a date stored only because something else was typed — before this fix — no longer counts) */
+const _srLetterDate = ts => (ts && ts.date_set && _srD(ts.date)) || cxToday();
 const _srSaldoText = s => !s ? 'Ausgeglichen' : (s > 0 ? 'Nachzahlung ' : 'Guthaben ') + stEur(Math.abs(s));
 
 /* Jahresabrechnung (step ①) — where it stands
@@ -793,8 +802,12 @@ function _srCollectTenant() {
       return;
     }
     if (k === 'new_vz') { ts.new_vz = v === '' ? null : cxParse(v); return; }
+    // K2: the letter date, payment days, address and Anlage are kept only once you changed them — a default shown in the
+    // field (today, 30 days, the tenant's address) is not stored when something else is typed, so it keeps following
+    if (['date', 'days', 'addr', 'anlagen'].includes(k) && !inp.dataset.touched) return;
     if (k === 'days') { ts.days = v === '' ? null : Math.max(0, Math.round(Number(String(v).replace(',', '.')) || 0)); return; }
-    if (k === 'date' || k === 'new_vz_from') { ts[k] = v ? _srD(v) : null; return; }
+    if (k === 'date') { ts.date = v ? _srD(v) : null; ts.date_set = !!ts.date; return; }
+    if (k === 'new_vz_from') { ts[k] = v ? _srD(v) : null; return; }
     ts[k] = v;
   });
   return { c, it, rec, ts };
@@ -871,7 +884,7 @@ async function _srArchive(c, it, rec, ts, x, dir, amount) {
 function _srLetterData(c, it, rec, x, ts) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const t = x.t, apt = x.apt || c.apt || {};
-  const date = ts.date || cxToday();
+  const date = _srLetterDate(ts);
   const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
   const per = (!x.old && x.per) || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file) — a letter sent before: as it went out
   const sentRes = _srLine(c, it).state.res;                                  // K1: a letter already sent keeps its way
@@ -907,6 +920,9 @@ function srLetterHtml(d) {
   const parts = String(d.objekt || '').split(/\s*,\s*/).filter(Boolean);
   const plz = parts.length > 1 && /^\d{5}\b/.test(parts[parts.length - 1]) ? parts.pop() : '';
   const year = String(d.perTo || '').slice(0, 4);
+  // K2: a period that is not the calendar year (Kostheim: 01.07.–30.06.) is named with its dates, not by the year it ends in
+  const calYear = String(d.perFrom || '').slice(5, 10) === '01-01' && String(d.perTo || '').slice(5, 10) === '12-31' && String(d.perFrom || '').slice(0, 4) === year;
+  const perTxt = calYear || !d.perFrom ? 'Abrechnungsjahr ' + year : 'Abrechnungszeitraum ' + dt(d.perFrom) + ' – ' + dt(d.perTo);
   const unitWord = d.isGewerbe ? 'Gewerbefläche' : 'Wohnung';
   const vzNew = d.newVz !== null && d.newVz !== undefined
     ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung ${d.isGewerbe ? '' : 'nach §\u00a0560 Abs.\u00a04 BGB '}${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
@@ -915,7 +931,7 @@ function srLetterHtml(d) {
     footer: d.footer, sender: d.sender, vermieter: d.vermieter, ort: d.ort, date: d.date, names: d.names, addr: d.addr,
     title: 'Betriebskostenabrechnung ' + dt(d.useFrom) + ' \u2013 ' + dt(d.useTo),
     facts1: [[unitWord, parts.join(', ') || d.aptName, plz],
-             ['Zeitraum', dt(d.useFrom) + ' \u2013 ' + dt(d.useTo), d.partial ? d.tDays + ' von ' + d.perDays + ' Tagen \u00b7 Abrechnungsjahr ' + year : d.perDays + ' Tage'],
+             ['Zeitraum', dt(d.useFrom) + ' \u2013 ' + dt(d.useTo), d.partial ? d.tDays + ' von ' + d.perDays + ' Tagen \u00b7 ' + perTxt : d.perDays + ' Tage'],
              ['Grundlage', 'Hausgeldabrechnung', [d.hvName, d.hvDate ? 'vom ' + dt(d.hvDate) : ''].filter(Boolean).join(' ')]],
     greeting: d.names.length ? 'Guten Tag ' + _srJoin(d.names) + ',' : 'Sehr geehrte Damen und Herren,',
     introHtml: 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (d.partial ? ' Die Kosten sind nach Tagen anteilig berechnet.' : ''),
@@ -984,7 +1000,7 @@ async function _srSendNow(btn, got, key) {
   // K1: else always by bank transfer (no 'with the rent', no 'via Kaution' without a part held back)
   const via = _srViaOf(x);
   const amountRec = amount;
-  const date = ts.date || cxToday();
+  const date = _srLetterDate(ts);
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
   if (!q) clearTimeout(_srTsTimer);                          // C6: after a wait (above) the setting waiting to be saved can be
@@ -2077,7 +2093,7 @@ function _srTenView(c) {
     return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'zero', label: 'This NK is skipped', amount: null, sub: 'no letter and no result – it counts as done' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '') }) +
       '<div class="tp-acts" style="margin-top:12px">' + stTpBtn('data-sr="setUndo" ' + idAttr, 'arrow-back-up', 'Bring it back', false) + '</div></div>';   // Nov 2026: labelled
   }
-  const ts = x.ts, sent = !!ti.st.res, settledT = ti.k === 'settled', date = ts.date || cxToday(), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
+  const ts = x.ts, sent = !!ti.st.res, settledT = ti.k === 'settled', date = _srLetterDate(ts), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
   SR.sign = _srSign(x);
   const perC = _srPer(c, rec);
   const v = sent ? ti.st.res.dir * ti.st.res.amount : x.saldo;           // > 0 the tenant pays you
@@ -2644,6 +2660,7 @@ function srIsRentalsLine() { return false; }
     }
     const t = e.target.closest('[data-srt]');
     if (t) {
+      t.dataset.touched = '1';                                // K2: you changed this field (_srCollectTenant keeps it)
       const res = _srRefreshTenant(); if (!res) return;
       _srQueueTenantSave(res.got.rec);
       if (_srSign(res.x) !== SR.sign || t.dataset.srt === 'date' || t.dataset.srt === 'vz') _srRerenderPanel();
@@ -2652,6 +2669,7 @@ function srIsRentalsLine() { return false; }
   host.addEventListener('input', e => {
     if (e.target.closest('[data-srf]')) { _srRefreshTotals(); _srAutoQueue(); }
     const t = e.target.closest('[data-srt]');
+    if (t) t.dataset.touched = '1';                            // K2: typed in → kept (also when Mark as sent follows at once)
     if (t && (t.dataset.srt === 'vz' || t.dataset.srt.startsWith('direct.'))) _srRefreshTenant(true);
   });
   // phone keyboard "Next": jump to the next amount
