@@ -249,7 +249,7 @@ function sdOverviewHTML(Y, O) {
   const K = O.casa && O.casa.costs;
   if (K && K.total) {
     const ch = K.prev ? (K.total - K.prev) / K.prev * 100 : null;
-    const pills = [K.months ? scMo(K.months) + ' months lived' : '', K.rate ? cxW2(K.rate) + ' per month' : '',
+    const pills = [K.months ? scMoTxt(K.months, ' month lived', ' months lived') : '', K.rate ? cxW2(K.rate) + ' per month' : '',
       ch !== null ? 'vs ' + (Y - 1) + ' ' + (ch >= 0 ? '+' : '\u2212') + Math.abs(ch).toFixed(0) + '\u00a0%' : ''].filter(Boolean);
     costs = '<div class="sdo-card sd2-card"><div class="sd2-lb">Casa Castel \u00b7 house costs ' + Y + '<span>' + (K.locked ? 'locked' : K.pv ? 'preview' : 'not locked') + '</span></div>' +
       '<div class="sd2-hc"><b class="sdo-f">' + cxW2(K.total) + '</b>' + (K.you !== null ? '<span>you ' + cxW2(K.you) + '</span>' : '') + '</div>' +
@@ -742,7 +742,8 @@ async function sdSend(btn) {
   const Y = Number(String(d.period_to).slice(0, 4)), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0, amount = cxR(Math.abs(x.saldo));
   // K2: the letter, the result and the tenant's line are for the days the tenant lived there (x.uf–x.ut), as the letter
   // says — not the whole Abrechnungszeitraum (Controlling showed 'NK 01.01.–31.12.' and Rentals kept the tenant's NK open)
-  const pf = sdD(x.uf) || d.period_from, pt = sdD(x.ut) || d.period_to;
+  // a name typed by hand (no tenant from the app) keeps the whole period, as before: its result still closes that unit's line
+  const pf = (d.tenant_ref && sdD(x.uf)) || d.period_from, pt = (d.tenant_ref && sdD(x.ut)) || d.period_to;
   let letterId = null;
   try {
     const out = await nkLetterPdf(await sdLetterData(d), sdFileName(d));

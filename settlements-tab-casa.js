@@ -2188,7 +2188,8 @@ function scToggle(f, key, on, t, s, can) {
     '<span class="sc-tg__t"><b>' + t + '</b><small>' + s + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>';
 }
 function scLetterBtn(t) {
-  const L = SC.letters.find(l => l.app === 'casa' && String(l.tenant_id) === String(t.tenantId) && scD(l.period_from) === t.from);
+  // K2: the archived copy — also a letter sent with 'NK-Abrechnung erstellen' (Dashboard) for this tenant and stay
+  const L = SC.letters.find(l => (l.app === 'casa' || (l.app === 'manual' && Number(l.property_id) === CASA_PROP_ID)) && String(l.tenant_id) === String(t.tenantId) && scD(l.period_from) === t.from);
   return L ? '<button class="cx-btn cx-btn--s" data-sc="letter" data-id="' + stEsc(L.id) + '"><i class="ti ti-file-text" aria-hidden="true"></i> Open letter</button>'
            : '<button class="cx-btn cx-btn--s" data-sc="pdf" data-k="' + stEsc(t.key) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF (recreated)</button>';
 }

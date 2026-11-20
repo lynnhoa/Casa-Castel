@@ -584,6 +584,7 @@ const _srMovedOut = t => !!(t && t.mietende && _cxD(t.mietende) && _cxD(t.mieten
 /* K2: the letter date = the day the letter goes out, unless you picked a date yourself in Letter details
    (a date stored only because something else was typed — before this fix — no longer counts) */
 const _srLetterDate = ts => (ts && ts.date_set && _srD(ts.date)) || cxToday();
+const _srCnt = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);       // K2: "1 day" · "31 days"
 const _srSaldoText = s => !s ? 'Ausgeglichen' : (s > 0 ? 'Nachzahlung ' : 'Guthaben ') + stEur(Math.abs(s));
 
 /* Jahresabrechnung (step ①) — where it stands
@@ -884,10 +885,12 @@ async function _srArchive(c, it, rec, ts, x, dir, amount) {
 function _srLetterData(c, it, rec, x, ts) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const t = x.t, apt = x.apt || c.apt || {};
-  const date = _srLetterDate(ts);
+  const sentRes = _srLine(c, it).state.res;                                  // K1: a letter already sent keeps its way
+  // K2: … and its date and due date (drawn again with 'Open letter' after Mark as sent)
+  const date = (sentRes && _srD(sentRes.date)) || _srLetterDate(ts);
+  const due = sentRes && sentRes.db && sentRes.db.due_date ? _srD(sentRes.db.due_date) : _srAdd(date, _srNum(ts.days) ?? 30);
   const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
   const per = (!x.old && x.per) || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file) — a letter sent before: as it went out
-  const sentRes = _srLine(c, it).state.res;                                  // K1: a letter already sent keeps its way
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
@@ -898,7 +901,7 @@ function _srLetterData(c, it, rec, x, ts) {
     vermieter: s.vermieter_name || '', sender,
     bank: { inhaber: s.kontoinhaber || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     names: _srTNames(t), addr: String(addr || '').split('\n').map(z => z.trim()).filter(Boolean),
-    date, due: _srAdd(date, _srNum(ts.days) ?? 30), periodLabel, perFrom: per.from, perTo: per.to, perDays: x.perDays,
+    date, due, periodLabel, perFrom: per.from, perTo: per.to, perDays: x.perDays,
     useFrom: x.from, useTo: x.to, tDays: x.tDays, partial: x.partial,
     hvName: (c.verw && c.verw.hausverwaltung) || '', hvDate: rec.hv_date,
     lines: x.lines.filter(l => l.amt !== null), direct: x.direct,
@@ -2009,7 +2012,7 @@ function _srNkTens(c, d, rec, hvReady) {
       : v === null ? '' : '<b class="' + (v > 0 ? 'is-g' : v < 0 ? '' : 'is-z') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'pays you' : v < 0 ? 'gets back' : 'balanced') + '</small>';   // Nov 2026: your side
     const pill = ti.kind === 'pausch' ? (ti.skipped ? ['ok', 'no NK'] : ['grey', 'Pauschal']) : ti.kind === 'unlinked' ? ['grey', 'no tenant'] :
       ti.skipped ? ['grey', 'skipped'] : ti.k === 'settled' ? ['ok', 'settled'] : ti.k === 'sent' ? ['beige', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['beige', 'letter ready'] : ['grey', 'waiting'];
-    const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srDays(ti.l.from, ti.l.to) + ' days' + (ti.skipped ? ' · tap to undo' : '');
+    const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srCnt(_srDays(ti.l.from, ti.l.to), 'day', 'days') + (ti.skipped ? ' · tap to undo' : '');
     const act = ti.kind === 'pausch' && !ti.skipped ? 'data-sr="nd" data-id="' + stEsc(id) + '"' : ti.kind === 'ten' ? 'data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '"' : '';
     const sub2 = o ? 'Pauschal · NK share ' + stEur(o.share) + ' − davon NK ' + stEur(o.covered) + (ti.skipped ? '' : ' · tap to mark as no NK')
       : ti.kind === 'pausch' && !ti.skipped ? 'Pauschal · tap to mark as no NK' : sub;
@@ -2018,7 +2021,7 @@ function _srNkTens(c, d, rec, hvReady) {
   }).join('');
   const leer = oy ? oy.rows.filter(x => x.kind === 'leer').map(o =>
     '<div class="sr-tenrow is-leer"><span class="sr-tenrow__m"><span class="sr-tenrow__n">Leerstand</span><span class="sr-tenrow__s">' +
-      stEsc(stDM(o.from) + '–' + stDate(o.to) + ' · ' + o.days + ' days · fixed ' + stEur(o.fixed) + (o.cons ? ' · consumption ' + stEur(o.cons) + ' (measured)' : ' · no consumption')) + '</span></span>' +
+      stEsc(stDM(o.from) + '–' + stDate(o.to) + ' · ' + _srCnt(o.days, 'day', 'days') + ' · fixed ' + stEur(o.fixed) + (o.cons ? ' · consumption ' + stEur(o.cons) + ' (measured)' : ' · no consumption')) + '</span></span>' +
     '<span class="sr-tenrow__r"><b>' + stEur(o.onYou) + '</b><small>on you</small>' + cxPill('grey', 'Leerstand') + '</span></div>').join('') : '';
   const tot = oy && oy.total > 0 ? '<div class="sr-onyou"><span>Not covered by tenants · on you</span><b>' + stEur(oy.total) + '</b>' +
     '<small>' + [oy.pausch > 0 ? 'Pauschal ' + stEur(oy.pausch) : '', oy.leer > 0 ? 'Leerstand ' + stEur(oy.leer) : ''].filter(Boolean).join(' + ') + '</small></div>' : '';
@@ -2113,7 +2116,10 @@ function _srTenView(c) {
   // step stays so the line can be settled ('Done', confirmed without a booking) (was: no step, the line stayed 'sent')
   const kauGone = sent && !settledT && !kau && !kLost && resVia0 === 'kaution' && Math.abs(v) < 0.005;
   const hasMoney = Math.abs(v) >= 0.005 || kau || kauGone;
-  const pdf = stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
+  // K2: sent with 'NK-Abrechnung erstellen' (Dashboard) → that archived letter opens, not one drawn from this calculation
+  const manL = sent ? (SR.letters || []).find(l => l.app === 'manual' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') && _srD(l.period_from) === _srD(it.r.period_from)) : null;
+  const pdf = manL ? stTpBtn('data-sr="letterOpen" data-id="' + stEsc(manL.id) + '"', 'file-text', 'Open letter (PDF)', false, false)
+    : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
@@ -2137,7 +2143,7 @@ function _srTenView(c) {
     ? '<div class="sr-peredit"><div class="sr-grid2"><label class="st-f"><span class="st-f__l">From</span><input class="st-in" type="date" id="srTpF" value="' + stEsc(_srD(it.r.period_from)) + '"/></label>' +
       '<label class="st-f"><span class="st-f__l">To</span><input class="st-in" type="date" id="srTpT" value="' + stEsc(_srD(it.r.period_to)) + '"/></label></div>' +
       '<div class="sr-peredit__b"><button class="cx-link" data-sr="tenPerCancel">Cancel</button><button class="cx-link sr-acc" data-sr="tenPerSave">Save</button></div></div>'
-    : stTpRow({ title: 'Period', sub: x.tDays + ' days · this NK only', value: stEsc(stDM(x.from) + '–' + stDate(x.to)), act: sent ? '' : 'data-sr="tenPerEdit"', icon: sent ? '' : 'pencil' });
+    : stTpRow({ title: 'Period', sub: _srCnt(x.tDays, 'day', 'days') + ' · this NK only', value: stEsc(stDM(x.from) + '–' + stDate(x.to)), act: sent ? '' : 'data-sr="tenPerEdit"', icon: sent ? '' : 'pencil' });
   const vzSrc = x.vzOv !== null ? (x.vzSoll !== null && Math.abs(x.vzOv - x.vzSoll) < 0.005 ? 'per contract' : 'by hand') : x.vzIst !== null ? 'per Controlling' : 'per contract';
   const vzAlt = [];
   if (!sent && x.vzIst !== null && (x.vzOv !== null || Math.abs(x.vz - x.vzIst) >= 0.01)) vzAlt.push(['ist', 'Controlling ' + stEur(x.vzIst)]);
@@ -2167,7 +2173,7 @@ function _srTenView(c) {
   if (!sent) {
     const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
     const moved = _srMovedOut(ti.t), miss = _srChecks(c, it, rec, x).length > 0;
-    const lsub = (addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing') + ' · ' + stDate(date) + ' · ' + days + ' days';
+    const lsub = (addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing') + ' · ' + stDate(date) + ' · ' + _srCnt(days, 'day', 'days');
     letter = stTpLbl('mail', '#FAF0DC', '#854F0B', 'Letter') + '<div class="tp-card"><details class="tp-fold tp-letter"' + (SR.briefOpen || miss ? ' open' : '') + '><summary>' +
       '<div class="tp-r"><span class="tp-r__m"><b>Letter details <span data-sr-check>' + _srCheckHtml(c, it, rec, x) + '</span></b><small>' + stEsc(lsub) + '</small></span><span class="tp-r__v"></span><span class="tp-r__i"><i class="ti ti-chevron-down" aria-hidden="true"></i></span></div></summary>' +
       '<div class="tp-form">' +
