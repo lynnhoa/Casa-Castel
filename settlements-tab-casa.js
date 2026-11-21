@@ -568,7 +568,7 @@ function scModel(y) {
     const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
     // K2: a stay that ends before the year ends is a move-out only when the same tenant has no later stay in this year
-    // (Kalt + NK → Pauschal, or Pauschal → Kalt + NK: she still lives here) · a Mietende before today always is
+    // (Kalt + NK → Pauschal, Pauschal → Kalt + NK, or another room: she still lives in the house) · a Mietende before today always is
     const later = !!t.tenantId && R.tenants.some(x => x !== t && String(x.tenantId) === String(t.tenantId) && x.from > t.to);
     const movedOut = (t.to < input.period.to && !later) || !!(tr && tr.mietende && scD(tr.mietende) < today);
     const alt = (Ralt.tenants.find(x => x.key === t.key) || {});
@@ -2188,8 +2188,10 @@ function scToggle(f, key, on, t, s, can) {
     '<span class="sc-tg__t"><b>' + t + '</b><small>' + s + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>';
 }
 function scLetterBtn(t) {
-  // K2: the archived copy — also a letter sent with 'NK-Abrechnung erstellen' (Dashboard) for this tenant and stay
-  const L = SC.letters.find(l => (l.app === 'casa' || (l.app === 'manual' && Number(l.property_id) === CASA_PROP_ID)) && String(l.tenant_id) === String(t.tenantId) && scD(l.period_from) === t.from);
+  // K2: the archived copy of the letter that was sent — a result made with 'NK-Abrechnung erstellen' (Dashboard) opens
+  // that letter; any other result the Casa letter (a Dashboard letter set back to open and sent again here is not opened)
+  const res = t.st && t.st.res, man = !!(res && res.db && res.db.source === 'manual');
+  const L = SC.letters.find(l => (man ? l.app === 'manual' && Number(l.property_id) === CASA_PROP_ID : l.app === 'casa') && String(l.tenant_id) === String(t.tenantId) && scD(l.period_from) === t.from);
   return L ? '<button class="cx-btn cx-btn--s" data-sc="letter" data-id="' + stEsc(L.id) + '"><i class="ti ti-file-text" aria-hidden="true"></i> Open letter</button>'
            : '<button class="cx-btn cx-btn--s" data-sc="pdf" data-k="' + stEsc(t.key) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF (recreated)</button>';
 }
@@ -2549,7 +2551,7 @@ function scLetterLayout(D, M, t, o) {
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const Q = o.Q, mo = scMo(t.months), per = M.R.period;
   D.title = 'Betriebskostenabrechnung ' + dt(t.from) + ' \u2013 ' + dt(t.to);
-  // K2: a part-year tenant's letter also names the year the house costs belong to (Kostenquote) \u00b7 "1 Monat" \u00b7 "62 von 365 Tagen"
+  // K2: a part-year tenant's letter also names the year the house costs belong to (Kostenquote) · "1 Monat" · "62 von 365 Tagen"
   const pf = String(per.from || ''), pt = String(per.to || '');
   const perTxt = pf.slice(5, 10) === '01-01' && pt.slice(5, 10) === '12-31' && pf.slice(0, 4) === pt.slice(0, 4)
     ? 'Abrechnungsjahr ' + pt.slice(0, 4) : 'Abrechnungszeitraum ' + dt(pf) + ' \u2013 ' + dt(pt);

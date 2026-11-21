@@ -741,7 +741,7 @@ function _srBig(x, date, days, via) {
 function _srChecks(c, it, rec, x) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const ts = x.ts, via = _srViaOf(x);
-  const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
+  const addr = _srAddrOf(c, it, x, ts, false);
   const miss = [];
   if (!String(s.vermieter_name || '').trim()) miss.push('your name → Profile');
   if (!String(s.vermieter_adresse || '').trim()) miss.push('your address → Profile');
@@ -773,11 +773,29 @@ function _srRefreshTenant(typing) {
   document.querySelectorAll('#srPanel [data-sr="pdf"], #srPanel [data-sr="send"]').forEach(b => { b.disabled = !!x.missing || (sending && b.dataset.sr === 'send'); });
   return { got, x };
 }
+function _srAptAddr(c, x) {                                  // the flat's own address (the letter's address while the tenant lives there)
+  const apt = x.apt || c.apt;
+  return apt ? [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean).join('\n') : '';
+}
 function _srDefaultAddr(c, it, x) {
   const t = x.t, apt = x.apt || c.apt;
-  const aptLines = apt ? [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean).join('\n') : '';
+  const aptLines = _srAptAddr(c, x);
   if (_srMovedOut(t) && t.address && String(t.address).trim() && !(apt && apt.adresse && String(t.address).includes(apt.adresse))) return String(t.address).trim().replace(/,\s*(\d{5})/, '\n$1');
   return aptLines;
+}
+/* K2: an address or Anlage stored before this fix only because it was the default then (the flat's own address, the
+   standard Anlage — saved when anything else was typed) follows the default again, so a tenant who moved out gets the
+   letter at the new address. What you typed yourself stays; a letter already sent keeps what it went out with. */
+function _srAddrOf(c, it, x, ts, sent) {
+  const a = ts.addr !== undefined && ts.addr !== null ? String(ts.addr) : null;
+  if (a !== null && (sent || ts.addr_set || a.trim() !== _srAptAddr(c, x).trim())) return a;
+  return _srDefaultAddr(c, it, x);
+}
+const SR_ANL_STD = ['Einzelabrechnung der Hausverwaltung', 'Einzelabrechnung der Hausverwaltung, Heizkostenabrechnung'];
+function _srAnlOf(rec, ts, sent) {
+  const a = ts.anlagen !== undefined && ts.anlagen !== null ? String(ts.anlagen) : null;
+  if (a !== null && (sent || ts.anlagen_set || !SR_ANL_STD.includes(a.trim()))) return a;
+  return _srDefaultAnlagen(rec);
 }
 function _srDefaultAnlagen(rec) {
   const heat = (rec.positions || []).some(p => p.u && (p.key === 'verbrauch' || ['heizung', 'warmwasser'].includes(p.kind)));
@@ -808,6 +826,7 @@ function _srCollectTenant() {
     if (['date', 'days', 'addr', 'anlagen'].includes(k) && !inp.dataset.touched) return;
     if (k === 'days') { ts.days = v === '' ? null : Math.max(0, Math.round(Number(String(v).replace(',', '.')) || 0)); return; }
     if (k === 'date') { ts.date = v ? _srD(v) : null; ts.date_set = !!ts.date; return; }
+    if (k === 'addr' || k === 'anlagen') { ts[k] = v; ts[k + '_set'] = true; return; }
     if (k === 'new_vz_from') { ts[k] = v ? _srD(v) : null; return; }
     ts[k] = v;
   });
@@ -889,7 +908,7 @@ function _srLetterData(c, it, rec, x, ts) {
   // K2: … and its date and due date (drawn again with 'Open letter' after Mark as sent)
   const date = (sentRes && _srD(sentRes.date)) || _srLetterDate(ts);
   const due = sentRes && sentRes.db && sentRes.db.due_date ? _srD(sentRes.db.due_date) : _srAdd(date, _srNum(ts.days) ?? 30);
-  const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
+  const addr = _srAddrOf(c, it, x, ts, !!sentRes);
   const per = (!x.old && x.per) || c.per, periodLabel = _srPerLabel(per.from, per.to);   // K1: this Abrechnung's own period (label, Verwendungszweck, file) — a letter sent before: as it went out
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
@@ -907,7 +926,7 @@ function _srLetterData(c, it, rec, x, ts) {
     lines: x.lines.filter(l => l.amt !== null), direct: x.direct,
     sum: x.sum, vz: x.vz, vzMonths: x.vzMonths || [], saldo: x.saldo, via: sentRes ? sentRes.via : _srViaOf(x), einbehalt: x.einbehalt,
     newVz: _srNum(ts.new_vz), newVzFrom: ts.new_vz_from || null,
-    anlagen: ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec),
+    anlagen: _srAnlOf(rec, ts, !!sentRes),
     hasVerbrauch: x.lines.some(l => l.pos.key === 'verbrauch' || ['heizung', 'warmwasser'].includes(l.pos.kind)), hasFlaeche: x.lines.some(l => l.pos.key === 'flaeche'), hasMea: x.lines.some(l => l.pos.key === 'mea'),
     keyMode: rec.key_mode || 'flaeche',
     tenantIban: ts.iban || '', former: _srMovedOut(t),
@@ -2117,7 +2136,7 @@ function _srTenView(c) {
   const kauGone = sent && !settledT && !kau && !kLost && resVia0 === 'kaution' && Math.abs(v) < 0.005;
   const hasMoney = Math.abs(v) >= 0.005 || kau || kauGone;
   // K2: sent with 'NK-Abrechnung erstellen' (Dashboard) → that archived letter opens, not one drawn from this calculation
-  const manL = sent ? (SR.letters || []).find(l => l.app === 'manual' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') && _srD(l.period_from) === _srD(it.r.period_from)) : null;
+  const manL = sent && ti.st.res.db && ti.st.res.db.source === 'manual' ? (SR.letters || []).find(l => l.app === 'manual' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') && _srD(l.period_from) === _srD(it.r.period_from)) : null;
   const pdf = manL ? stTpBtn('data-sr="letterOpen" data-id="' + stEsc(manL.id) + '"', 'file-text', 'Open letter (PDF)', false, false)
     : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
@@ -2171,7 +2190,7 @@ function _srTenView(c) {
   // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (!sent) {
-    const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
+    const addr = _srAddrOf(c, it, x, ts, false);
     const moved = _srMovedOut(ti.t), miss = _srChecks(c, it, rec, x).length > 0;
     const lsub = (addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing') + ' · ' + stDate(date) + ' · ' + _srCnt(days, 'day', 'days');
     letter = stTpLbl('mail', '#FAF0DC', '#854F0B', 'Letter') + '<div class="tp-card"><details class="tp-fold tp-letter"' + (SR.briefOpen || miss ? ' open' : '') + '><summary>' +
@@ -2184,7 +2203,7 @@ function _srTenView(c) {
         '<label class="tp-f"><span>Pay within (days)</span><input class="st-in" inputmode="numeric" data-srt="days" value="' + days + '"/></label></div>' +
       (!moved ? '<div class="tp-g2"><label class="tp-f"><span>New NK / month</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srt="new_vz" value="' + stEsc(_srE2in(ts.new_vz)) + '"/><span>€</span></span></label>' +
         '<label class="tp-f"><span>from</span><input class="st-in" type="date" data-srt="new_vz_from" value="' + stEsc(ts.new_vz_from || '') + '"/></label></div>' : '') +
-      '<label class="tp-f"><span>Anlage</span><input class="st-in" data-srt="anlagen" value="' + stEsc(ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec)) + '"/></label></div></details></div>';
+      '<label class="tp-f"><span>Anlage</span><input class="st-in" data-srt="anlagen" value="' + stEsc(_srAnlOf(rec, ts, false)) + '"/></label></div></details></div>';
   }
   return head + '<div class="srm__b mx-b tp-b">' + hero + stTpSteps([s1, s2]) +
     stTpLbl('calculator', '#E6EEF6', '#2F5470', 'Calculation') + '<div class="tp-card">' + calc + '</div>' + letter +
