@@ -2396,7 +2396,7 @@ async function scSetUndo(key) {
     if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return;
     const s = (scRecEnsure(y).tenants[t.key] || {}).sent; if (!s || !s.settled) return;
     const was = s.settled; delete s.settled;
-    try { await scSaveRec(scRecEnsure(y)); } catch (e) { s.settled = was; stSay('Could not undo — ' + (e.message || e)); return; }
+    try { await scSaveRec(scRecEnsure(y)); } catch (e) { s.settled = was; stSay('Could not undo — ' + (e.message || e)); return scSaveEnd(y, t.key, m0); }
     stSay('Back to open');
     return scSaveEnd(y, t.key, m0);
   }
@@ -2737,15 +2737,21 @@ async function scClick(e) {
     if (t && t.extra) {                                           // added tenant: no booking in Controlling – just mark it
       const y = SC.year, m0 = SC.modal;
       if (!(await stConfirm({ title: 'Mark ' + t.name + '\'s NK-Abrechnung as settled?', ok: 'Settled' }))) return;
-      const s = scSet(t.key); if (s.sent) s.sent.settled = cxToday();
-      try { await scSaveRec(scRecEnsure(y)); } catch (err) {}
+      const s = scSet(t.key), was = s.sent ? s.sent.settled : undefined; if (s.sent) s.sent.settled = cxToday();
+      try { await scSaveRec(scRecEnsure(y)); }
+      catch (err) { if (s.sent) { if (was === undefined) delete s.sent.settled; else s.sent.settled = was; } stSay('Could not save — ' + (err.message || err)); }   // K2: not saved → not shown as settled
       return scSaveEnd(y, t.key, m0);
     }
     SC.modal = { view: 'ten', key: b.dataset.k }; return scRenderModal();   // Oct 2026: no separate settle level
   }
   if (a === 'payOn') {                                              // the money switch: full amount today (change it under "Payment details")
     const t = M && M.ten.find(x => x.key === b.dataset.k); if (!t) return;
-    if (t.extra) { const y = SC.year, m0 = SC.modal, s2 = scSet(t.key); if (s2.sent) s2.sent.settled = cxToday(); try { await scSaveRec(scRecEnsure(y)); } catch (err) {} return scSaveEnd(y, t.key, m0); }
+    if (t.extra) {                                                  // K2: a failed save is taken back and said (was: shown settled, not saved)
+      const y = SC.year, m0 = SC.modal, s2 = scSet(t.key), was = s2.sent ? s2.sent.settled : undefined; if (s2.sent) s2.sent.settled = cxToday();
+      try { await scSaveRec(scRecEnsure(y)); }
+      catch (err) { if (s2.sent) { if (was === undefined) delete s2.sent.settled; else s2.sent.settled = was; } stSay('Could not save — ' + (err.message || err)); }
+      return scSaveEnd(y, t.key, m0);
+    }
     const res = t.st && t.st.res; if (!res) { stSay('Send the letter first'); return; }
     if (scKauLost(t, res)) return;                                // fin2: the held part is not known yet (the step has no button)
     const date = scD(scPayVal('date')) || cxToday();
@@ -2767,7 +2773,14 @@ async function scClick(e) {
   if (a === 'skip') return scSkip(b.dataset.k);
   if (a === 'reopen') {
     const t = M && M.ten.find(x => x.key === b.dataset.k);
-    if (t && t.extra) { const y = SC.year, m0 = SC.modal; if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(y)); } catch (err) {} return scSaveEnd(y, t.key, m0); }
+    if (t && t.extra) {                                             // K2: a failed save keeps the letter sent and says so (was: shown
+      const y = SC.year, m0 = SC.modal;                             // open, still sent — a 2nd Mark as sent archived a 2nd copy)
+      if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return;
+      const s = scRecEnsure(y).tenants[t.key] || {}, was = s.sent; delete s.sent;
+      try { await scSaveRec(scRecEnsure(y)); }
+      catch (err) { if (was !== undefined) s.sent = was; stSay('Could not save — ' + (err.message || err)); }
+      return scSaveEnd(y, t.key, m0);
+    }
     return scReopen(b.dataset.k);
   }
 }
