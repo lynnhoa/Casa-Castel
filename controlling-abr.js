@@ -554,7 +554,9 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
   }
   if (amount === null) {
     if (!same) return;                                                     // a booking of the other direction is not this payment
-    if (kau) { await _cxAbrKauOpen(r); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }   // K1: the line waits again
+    // K1: a Kaution result's line waits again · K2 (30): every result's line — it stayed 'settled' with its paid date, so the
+    // tenant card said 'paid' while Settlements and Controlling waited for the money
+    await _cxAbrKauOpen(r); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
     await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
     return;
   }

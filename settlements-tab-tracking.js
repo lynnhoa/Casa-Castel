@@ -79,12 +79,16 @@ function _stState(line) {
     }
     // K1: a Kaution result is paid like a transfer (its booking: the kept part ± the transfer); an older one confirmed without
     // a booking stays settled as it was. Only rent / Hausgeld wait for your Confirm (no booking)
-    const b = res.via === 'zahlung' || res.via === 'kaution' ? ctlAbrBooking(res) : null;
+    // K2 (31): a booking of the other direction is not this result's payment — the result changed since it was paid (a WEG
+    // Nachzahlung corrected to a Guthaben): the result is open, as Controlling shows it. The Money step turns that booking
+    // (stale) instead of adding a 2nd one · a Kaution result's booking counts either way (the held part ± the transfer)
+    const b0 = res.via === 'zahlung' || res.via === 'kaution' ? ctlAbrBooking(res) : null;
+    const b = b0 && (res.via === 'kaution' || _cxAbrDir(b0) === res.dir) ? b0 : null, stale = b0 && !b ? b0 : null;
     if (b) return { k: 'erledigt', pill: ['ok', 'paid'], res, booking: b, text: txt };
     if (res.via !== 'zahlung' && _stConfirmed(r)) return { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
     // sent: waiting for the money — or, settled with the rent / Hausgeld, waiting for your Confirm
     const conf = res.via === 'miete' || res.via === 'hausgeld';
-    return { k: 'verschickt', pill: ['beige', conf ? 'confirm' : weg ? 'received' : 'sent'], res, text: txt, confirm: conf };
+    return { k: 'verschickt', pill: ['beige', conf ? 'confirm' : weg ? 'received' : 'sent'], res, text: txt, confirm: conf, stale };
   }
   if (r.status === 'bezahlt' || r.status === 'erledigt') return { k: 'erledigt', pill: ['ok', 'settled'], text: '' };   // older tracking
   return { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist soon'] : ['open', 'open'], text: '' };
@@ -418,7 +422,9 @@ async function _stSyncStatus() {
       if (!_stKauBack(res)) paid = res.date || cxToday();
       else { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
     }
-    else if (res.via === 'zahlung' || res.via === 'kaution') { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
+    else if (res.via === 'zahlung' || res.via === 'kaution') {                                 // K2 (31): only a booking in its direction
+      const b = ctlAbrBooking(res); if (b && (res.via === 'kaution' || _cxAbrDir(b) === res.dir)) paid = _stD(b.invoice_date);
+    }
     if (!paid) continue;
     try {
       const { data, error } = await _ctlSupa.from('ctrl_settlements').update({ status: 'erledigt', paid_date: paid }).eq('id', r.id).select().single();

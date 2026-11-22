@@ -2317,7 +2317,7 @@ function scSetObj(t, M) {
 /* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
 async function scSetAmount(key, raw, btn, when) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
-  const st = t.st || {}, res = st.res, b = st.booking;
+  const st = t.st || {}, res = st.res, b = st.booking || st.stale || null;   // K2 (31): a booking the other way round is turned
   // K1 (C11 · R2): offset with the held Kaution part (a balanced result too) — what you typed is the real transfer;
   // Controlling books ONE line: the held part + what the tenant transferred − what you paid back, in that sign (> 0 income ·
   // < 0 expense), in the month it moved: +200 / +450 / −50 when it moved in full · only 100 of 150 → +400 · 200 of 350 back
