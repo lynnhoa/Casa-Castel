@@ -684,10 +684,10 @@ async function _srWriteWegNow(c, rec) {
   if (now) c = Object.assign({}, c, { weg: Object.assign({}, c.weg, { r: now, virtual: false }) });
   const l = _srLine(c, c.weg), st = l.state, existing = st.res || null;
   const dir = Number(rec.weg_direction), amount = dir ? cxR(_srNum(rec.weg_amount) || 0) : 0;
-  const via = rec.weg_via === 'hausgeld' && !(existing && st.booking) ? 'hausgeld' : 'zahlung';   // K1 (C4): once booked, a transfer
+  const via = rec.weg_via === 'hausgeld' && !(existing && (st.booking || st.stale)) ? 'hausgeld' : 'zahlung';   // K1 (C4): once booked, a transfer
   if (existing && existing.dir === dir && Math.abs(existing.amount - amount) < 0.005 && existing.via === via &&
       _srD(existing.db.due_date) === _srD(rec.weg_due)) return;                                      // unchanged
-  if (existing && st.booking && (existing.dir !== dir || Math.abs(existing.amount - amount) >= 0.005) &&
+  if (existing && (st.booking || st.stale) && (existing.dir !== dir || Math.abs(existing.amount - amount) >= 0.005) &&
       !(await stConfirm({ title: 'Change the WEG result?', text: 'It is already booked as paid in Controlling.', ok: 'Change it' }))) return;
   const r = c.weg.r;
   const resRow = { property_id: c.p.id, kind: 'weg_hausgeld', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
@@ -1341,7 +1341,7 @@ function _srWegSync(infos) {
     const st = i.hv && i.hv.wegSt;
     if (!st || !st.res) { if (mark !== 'w') { SR._wegSync[ck] = 'w'; jobs.push(() => _srWriteWeg(c, rec)); } continue; }
     SR._wegSync[ck] = 'ok';
-    if (st.booking || st.k === 'erledigt' || !st.res.amount || !st.res.dir) continue;
+    if (st.booking || st.stale || st.k === 'erledigt' || !st.res.amount || !st.res.dir) continue;   // K2: stale → the money step turns or links it
     const b = _srFindBooking(c, st.res, rec);
     if (b) jobs.push(() => _srLinkBooking(b, st.res));
   }
@@ -2311,7 +2311,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   // K1 (R2): with a held part the typed amount is the transfer → the booking = held part ± transfer, its sign kept: in the
   // result's direction (a minus amount when the money went the other way); a balanced result: where the money went
   const kv = kt ? _srKauB(kt, parsed) : null, bdir = kt && !res.dir ? (kv < 0 ? -1 : 1) : res.dir;
-  const amt = kt ? cxR(res.dir ? res.dir * kv : Math.abs(kv)) : cxR(Math.abs(parsed)), b = x.st.booking;
+  const amt = kt ? cxR(res.dir ? res.dir * kv : Math.abs(kv)) : cxR(Math.abs(parsed)), b = x.st.booking || x.st.stale || null;   // K2 (31): a booking the other way round is turned
   const own = !kt || (!!res.dir && amt > 0);                 // your own entry in Controlling: never for a minus / balanced one
   let date = _srD(when) || cxToday(), linkedManual = null, took = null;
   if (btn) btn.disabled = true;
@@ -2325,7 +2325,9 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
                       : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : res.dir ? 'Guthaben' : 'balanced');
     let mine = null;
-    if (b && amt && own && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
+    // K2: also for a booking the other way round (stale): your own entry in the new direction is the payment — the apps'
+    // booking goes and your entry is linked (turning it as well counted the money twice)
+    if (b && amt && own && ((Number(b.direction) === 1 ? 1 : -1) === res.dir || b === x.st.stale) && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
       // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
       // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
       await ctlDeleteOneTime(b.id);
