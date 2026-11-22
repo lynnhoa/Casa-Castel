@@ -159,7 +159,7 @@ function ccNksOpenLabel(tid, legacy, due) {
   const yr = _ccNksYr;
   let lbl = '', from = '';
   if (rows.length && rows[0].period_from && rows[0].period_to) { lbl = yr(rows[0].period_from, rows[0].period_to); from = String(rows[0].period_from).slice(0, 10); }
-  if (dOpen.length && (!from || dOpen[0].spanFrom < from)) lbl = yr(dOpen[0].from, dOpen[0].to);
+  if (dOpen.length && (!from || dOpen[0].spanFrom <= from)) lbl = yr(dOpen[0].from, dOpen[0].to);   // K2: the same line → its NK year ("2025/26")
   if (!lbl) {
     const o = (legacy || []).filter(e => !e.paid).sort((a, b) => String(a.period || '').localeCompare(String(b.period || '')))[0];
     const ys = o ? String(o.period || '').match(/20\d\d/g) : null;
@@ -368,7 +368,9 @@ function _ccNksFirst(tid) {
 /* "Open NK-Abrechnung" → Settlements opens that tab, year and tenant (settlements-ui.js · stOpenLink) · Casa (K2, 56): and
    that line's first day — a year with a Pauschal part has two parts, the link opened the Pauschal one ('no NK letter') */
 function _ccNksLink(r, tid) {
-  const app = _ccNksApp(), y = Number(String(r.period_to || '').slice(0, 4)) || r.covers_year || '';
+  // K2: the NK year = the year its period ends (Settlements' year, the line's covers_year) — a part or a stay that ends
+  // earlier (a 01.07.–30.06. period: Kalt + NK until 31.12., a move-out in autumn) opened the year before
+  const app = _ccNksApp(), y = Number(r.covers_year) || Number(String(r.period_to || '').slice(0, 4)) || '';
   const f = app === 'casa' && /^\d{4}-\d{2}-\d{2}/.test(String(r.period_from || '')) ? '&f=' + String(r.period_from).slice(0, 10) : '';
   return 'settlements.html#tab=' + (app === 'casa' ? 'casa' : 'rentals') + '&y=' + y + '&t=' + encodeURIComponent(tid) + f + (app === 'rentals' && r.property_id ? '&p=' + r.property_id : '');
 }

@@ -301,7 +301,7 @@ function stOpenLink(q) {
         // K2 (56): the part the card's line starts on (f) — a year with a Pauschal part has two; an older link without f:
         // the first part with an NK letter (was the first part: 'pays Pauschal · no NK letter')
         const mine = M.ten.filter(x => String(x.tenantId) === String(q.t));
-        const t = mine.find(x => q.f && x.from === q.f) || mine.find(x => x.k !== 'none') || mine[0];
+        const t = mine.find(x => q.f && x.from === q.f && x.k !== 'none') || mine.find(x => x.k !== 'none') || mine[0];   // never a Pauschal part
         if (t) { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }
         return;
       }
