@@ -1341,7 +1341,7 @@ function _srWegSync(infos) {
     const st = i.hv && i.hv.wegSt;
     if (!st || !st.res) { if (mark !== 'w') { SR._wegSync[ck] = 'w'; jobs.push(() => _srWriteWeg(c, rec)); } continue; }
     SR._wegSync[ck] = 'ok';
-    if (st.booking || st.k === 'erledigt' || !st.res.amount || !st.res.dir) continue;
+    if (st.booking || st.stale || st.k === 'erledigt' || !st.res.amount || !st.res.dir) continue;   // K2: stale → the money step turns or links it
     const b = _srFindBooking(c, st.res, rec);
     if (b) jobs.push(() => _srLinkBooking(b, st.res));
   }
@@ -2325,7 +2325,9 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
                       : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : res.dir ? 'Guthaben' : 'balanced');
     let mine = null;
-    if (b && amt && own && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
+    // K2: also for a booking the other way round (stale): your own entry in the new direction is the payment — the apps'
+    // booking goes and your entry is linked (turning it as well counted the money twice)
+    if (b && amt && own && ((Number(b.direction) === 1 ? 1 : -1) === res.dir || b === x.st.stale) && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
       // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
       // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
       await ctlDeleteOneTime(b.id);

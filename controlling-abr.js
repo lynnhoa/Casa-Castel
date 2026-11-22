@@ -556,7 +556,8 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
     if (!same) return;                                                     // a booking of the other direction is not this payment
     // K1: a Kaution result's line waits again · K2 (30): every result's line — it stayed 'settled' with its paid date, so the
     // tenant card said 'paid' while Settlements and Controlling waited for the money
-    await _cxAbrKauOpen(r); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
+    const other = ctlAbrBookings(r).some(o => o !== b && (kau || _cxAbrDir(o) === r.dir));   // another booking still pays it → stays paid
+    if (!other) { await _cxAbrKauOpen(r); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
     await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
     return;
   }
@@ -574,7 +575,8 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
   if (b) {
     // C3c: the apps' booking now gets the amount of your own unlinked entry (a typo corrected) → that booking goes and
     // your entry is the payment again (it counted twice: the corrected booking and your entry)
-    if (same && at && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(r.pid, at, amt, weg))) {
+    // K2: also for a booking the other way round (the result changed since) — turning it as well counted the money twice
+    if (at && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(r.pid, at, amt, weg))) {
       await ctlDeleteOneTime(b.id);
       window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
     } else {

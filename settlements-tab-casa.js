@@ -2340,7 +2340,8 @@ async function scSetAmount(key, raw, btn, when) {
     // K1 (C6): a Kaution result is never turned into a bank transfer (only an old 'with the rent' from the settle view)
     if (res.via !== 'zahlung' && res.via !== 'kaution') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
     let mine = null;
-    if (b && amt && own && (Number(b.direction) === 1 ? 1 : -1) === dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(CASA_PROP_ID, rs, amt, false))) {
+    // K2: also for a booking the other way round (stale) — your own entry in the new direction is the payment (no double count)
+    if (b && amt && own && ((Number(b.direction) === 1 ? 1 : -1) === dir || b === st.stale) && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(CASA_PROP_ID, rs, amt, false))) {
       // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
       // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
       await ctlDeleteOneTime(b.id);
