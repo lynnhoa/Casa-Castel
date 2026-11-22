@@ -2086,7 +2086,8 @@ function scTenView(M, m) {
   if (!t) return stMHead('Tenant', '', 'calc', 'data-sc="close"') + '<div class="srm__b mx-b"><p class="cx-empty">Not found.</p></div>';
   const s = t.set, c = scAv(t.room), first = scFirst(t.name);
   const kAttr = 'data-k="' + stEsc(t.key) + '"';
-  const head = stMHead(t.name, t.room + (t.m2 ? ' · ' + String(t.m2).replace('.', ',') + ' m²' : '') + ' · ' + stNkLabel(M.per.from, M.per.to) + (t.movedOut ? ' · moved out' : ''), { ini: scAbbr(t.room), bg: c[0], fg: c[1] }, 'data-sc="close"');
+  // K2 (PRE-SHEET-PERIOD): the tenant's own days, as in the list, the calculation and the letter (was the house's NK year)
+  const head = stMHead(t.name, t.room + (t.m2 ? ' · ' + String(t.m2).replace('.', ',') + ' m²' : '') + ' · ' + stNkLabel(t.from, t.to) + (t.movedOut ? ' · moved out' : ''), { ini: scAbbr(t.room), bg: c[0], fg: c[1] }, 'data-sc="close"');
   const flowLnk = m.flow ? '<button class="mx-skip" data-sc="flowNext">' + (m.i + 1) + ' of ' + m.flow.length + ' · next ›</button>' : '';
   if (t.k === 'none') {
     const pc = Number(t.pnkPaid) || 0;                     // Nov 2026: a short-term stay carries only the NK inside its Pauschale
