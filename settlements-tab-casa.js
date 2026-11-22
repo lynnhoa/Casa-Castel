@@ -2102,7 +2102,7 @@ function scTenView(M, m) {
   const noData = !M.R.lines.length;
   if (noData) return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'none', label: 'NK-Abrechnung ' + M.y, amount: null, sub: first + ' lived here ' + scCnt(t.days, 'day', 'days') + ' · the share follows once the house costs are typed' }) +
     '<div class="mx-rows">' + stMRow({ icon: 'receipt', title: 'House costs', sub: 'nothing booked yet', right: '<button type="button" class="mx-pill" data-sc="costs">Type house costs</button>' }) + '</div>' +
-    (t.extra ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant</button>' : '') + '</div>';
+    (t.extra && !M.locked ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant</button>' : '') + '</div>';
   const sent = t.k === 'sent' || t.k === 'done', done = t.k === 'done';
   const hero = stTpHero({ tone: saldo > 0.004 ? 'get' : saldo < -0.004 ? 'pay' : 'zero',
     label: saldo > 0.004 ? first + (done ? ' paid you' : ' pays you') : saldo < -0.004 ? first + (done ? ' got back' : ' gets back') : 'All even',
@@ -2177,7 +2177,9 @@ function scTenView(M, m) {
         scToggle('former', t.key, s.former !== undefined ? !!s.former : t.movedOut, 'Former tenant', 'the letter says "das ehemalige Zimmer"', true) +
       '</div>' : '') + '</div>';
   }
-  const xDel = t.extra && t.k === 'open' ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant from this NK</button>'
+  // K2 (53): only while the house costs are not locked, as 'Add a tenant to this NK' — a locked year keeps its numbers
+  // (removing him there changed nothing: the locked figures still held his months, and his letter could still be sent)
+  const xDel = t.extra && t.k === 'open' && !M.locked ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant from this NK</button>'
     : t.k === 'open' && t.line ? '<button class="mx-skip" data-sc="skip" ' + kAttr + '>Skip this NK-Abrechnung</button>' : '';
   return head + '<div class="srm__b mx-b tp-b">' + hero + stTpSteps([s1, s2]) +
     stTpLbl('calculator', '#E6EEF6', '#2F5470', 'Calculation') + '<div class="tp-card">' + calc + '</div>' + letter + xDel + flowLnk + '</div>';
@@ -2386,7 +2388,19 @@ async function scSkip(key) {
 }
 /* Back to open (sent, waiting): the booking in Controlling goes too; a skipped NK comes back as open */
 async function scSetUndo(key) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
+  // K2 (54): a tenant added by hand has no Controlling line: 'undo' takes back only 'Received' (sent, waiting again)
+  if (t.extra) {
+    const y = SC.year, m0 = SC.modal;
+    if (!scSet(t.key).sent || !scSet(t.key).sent.settled) return;
+    if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return;
+    const s = (scRecEnsure(y).tenants[t.key] || {}).sent; if (!s || !s.settled) return;
+    const was = s.settled; delete s.settled;
+    try { await scSaveRec(scRecEnsure(y)); } catch (e) { s.settled = was; stSay('Could not undo — ' + (e.message || e)); return; }
+    stSay('Back to open');
+    return scSaveEnd(y, t.key, m0);
+  }
+  if (!t.line) return;
   const st = t.st || {}, res = st.res, b = st.booking;
   if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open',
     text: _stUndoText(b, scDate, scE) }))) return;
@@ -2706,6 +2720,7 @@ async function scClick(e) {
     SC.model = scModel(SC.year); stRenderCasa(!!SC.modal && SC.modal.view === 'extra'); stSay(name + ' added for ' + y); return;   // not drawn again, what is typed there stays)
   }
   if (a === 'extraDel') {
+    if (M && M.locked) return;                                     // K2 (53): locked → unlock the house costs first
     if (!(await stConfirm({ title: 'Remove this tenant?', text: 'Only from ' + stNkLabel(M.per.from, M.per.to) + ' – nothing changes in Casa Castel › Tenants.', ok: 'Remove', danger: true }))) return;
     const r = scRecEnsure(SC.year), id = String(b.dataset.k).replace(/^x:/, '');
     r.tenants.__extra = (r.tenants.__extra || []).filter(x => x.id !== id); delete r.tenants[b.dataset.k];
