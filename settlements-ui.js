@@ -272,7 +272,7 @@ function stConfirm(o) {
 function stNotice(msg) { stSay(msg); }
 
 /* ── Deep links ───────────────────────────────────────────── */
-/* #tab=casa&y=2025&t=12 · #tab=rentals&y=2026&p=4&t=31 — opened from the tenant cards ("Open NK-Abrechnung")
+/* #tab=casa&y=2025&t=12&f=2025-07-01 · #tab=rentals&y=2026&p=4&t=31 — opened from the tenant cards ("Open NK-Abrechnung")
    #tab=casa&y=2026&v=ja&ot=812 — a Jahresabrechnung opened from Controlling › One-off */
 function stReadLink() {
   const h = String(location.hash || '').replace(/^#/, ''); if (!h) return null;
@@ -298,7 +298,10 @@ function stOpenLink(q) {
           if (oy && Number(oy) !== Number(SC.year) && !q._moved) { q._moved = true; SC.year = Number(oy); stRenderCasa(); n = 0; setTimeout(tryOpen, 150); return; }
           SC.modal = { view: 'costs' }; if (typeof scJaFocus === 'function') scJaFocus(q.ot); scRenderModal(); return;   // Nov 2026: House costs, the bill opened
         }
-        const t = M.ten.find(x => String(x.tenantId) === String(q.t));
+        // K2 (56): the part the card's line starts on (f) — a year with a Pauschal part has two; an older link without f:
+        // the first part with an NK letter (was the first part: 'pays Pauschal · no NK letter')
+        const mine = M.ten.filter(x => String(x.tenantId) === String(q.t));
+        const t = mine.find(x => q.f && x.from === q.f) || mine.find(x => x.k !== 'none') || mine[0];
         if (t) { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }
         return;
       }

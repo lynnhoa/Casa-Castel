@@ -1405,7 +1405,23 @@ function _tnHasKaltNKBetween(rec, from, to) {
     .concat(per.filter(p => ccRpIso(p.valid_from) > from && ccRpIso(p.valid_from) <= to));
   return modes.some(p => p.mode !== 'pauschal');
 }
-function _tnNkDue(rec) { return rec && typeof ccNksDue === 'function' ? ccNksDue(rec, (f, t) => _tnHasKaltNKBetween(rec, f, t)) : []; }
+/* K2 (52): the tenant's first Kalt + NK stretch between from and to → { from, to } · null: Pauschal only. Settlements keeps
+   one line per stretch of equal rent type (Pauschal ↔ Kalt + NK), so the card's NK, its Skip and its link use that line
+   (was the whole span: 'NK 01.02.–31.12.' for a Kalt + NK part 01.07.–31.12., and a Skip landed on the Pauschal part) */
+function _tnKaltNKSpan(rec, from, to) {
+  const per = typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id) : [];
+  if (!per.length) return _tnLegacyMode(rec.room, rec) !== 'pauschal' ? { from, to } : null;
+  const kn = d => { const p = ccRpAt(per, d); return (p ? p.mode : _tnLegacyMode(rec.room, rec)) !== 'pauschal'; };
+  const dayBefore = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - 1); return x.toISOString().slice(0, 10); };
+  const days = [from].concat(per.map(p => ccRpIso(p.valid_from)).filter(d => d > from && d <= to));   // ccRpFor: oldest first
+  let a = null;
+  for (const d of days) {
+    if (kn(d)) { if (a === null) a = d; }
+    else if (a !== null) return { from: a, to: dayBefore(d) };
+  }
+  return a === null ? null : { from: a, to };
+}
+function _tnNkDue(rec) { return rec && typeof ccNksDue === 'function' ? ccNksDue(rec, (f, t) => _tnKaltNKSpan(rec, f, t)) : []; }
 function _tnNkOpenLabel(rec) {
   return typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _tnNK[rec.id], _tnNkDue(rec)) : 'NK open';
 }

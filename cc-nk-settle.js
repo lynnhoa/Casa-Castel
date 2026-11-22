@@ -120,7 +120,8 @@ function ccNksDueFor(rec, apt, hasKaltNK) {   // hasKaltNK(from, to): as ccNksDu
   const p = _ccNksPropForApt(apt, rec && rec.id);
   return p ? ccNksDue(rec, hasKaltNK || null, p).map(x => ({ ...x, pid: p.id })) : [];
 }
-/* hasKaltNK(from, to) → true when the tenant paid Kalt + NK on any day of that span */
+/* hasKaltNK(from, to) → true when the tenant paid Kalt + NK on any day of that span · Casa (K2, 52): or the Kalt + NK
+   stretch itself ({ from, to }), the line Settlements keeps for it → spanFrom / spanTo (a Pauschal part is not in it) */
 function ccNksDue(rec, hasKaltNK, prop) {
   const mb = String(rec && rec.mietbeginn || '').slice(0, 10);
   if (!mb) return [];
@@ -128,8 +129,10 @@ function ccNksDue(rec, hasKaltNK, prop) {
   return ccNksPeriods(prop).map(P => {
     const from = mb > P.from ? mb : P.from, to = me < P.to ? me : P.to;
     if (from > to) return null;
-    if (typeof hasKaltNK === 'function' && !hasKaltNK(from, to)) return null;   // pauschal → no Abrechnung
-    return { ...P, spanFrom: from, spanTo: to, label: _ccNksPerLabel(P.from, P.to) };
+    const kn = typeof hasKaltNK === 'function' ? hasKaltNK(from, to) : true;
+    if (!kn) return null;                                                          // pauschal → no Abrechnung
+    const s = typeof kn === 'object' ? kn : { from, to };
+    return { ...P, spanFrom: s.from, spanTo: s.to, label: _ccNksPerLabel(P.from, P.to) };
   }).filter(Boolean);
 }
 /* The due periods that are not done yet */
@@ -362,10 +365,12 @@ function _ccNksFirst(tid) {
   const r = list.find(x => String(x.id) === String(tid));
   return (r && (r.first_name || r.last_name)) || 'The tenant';
 }
-/* "Open NK-Abrechnung" → Settlements opens that tab, year and tenant (settlements-ui.js · stOpenLink) */
+/* "Open NK-Abrechnung" → Settlements opens that tab, year and tenant (settlements-ui.js · stOpenLink) · Casa (K2, 56): and
+   that line's first day — a year with a Pauschal part has two parts, the link opened the Pauschal one ('no NK letter') */
 function _ccNksLink(r, tid) {
   const app = _ccNksApp(), y = Number(String(r.period_to || '').slice(0, 4)) || r.covers_year || '';
-  return 'settlements.html#tab=' + (app === 'casa' ? 'casa' : 'rentals') + '&y=' + y + '&t=' + encodeURIComponent(tid) + (app === 'rentals' && r.property_id ? '&p=' + r.property_id : '');
+  const f = app === 'casa' && /^\d{4}-\d{2}-\d{2}/.test(String(r.period_from || '')) ? '&f=' + String(r.period_from).slice(0, 10) : '';
+  return 'settlements.html#tab=' + (app === 'casa' ? 'casa' : 'rentals') + '&y=' + y + '&t=' + encodeURIComponent(tid) + f + (app === 'rentals' && r.property_id ? '&p=' + r.property_id : '');
 }
 function _ccNksStyle() {
   if (document.getElementById('cc-nkb-style')) return;
@@ -483,8 +488,10 @@ function ccNkDocLines(rec) {
       // here (a Pauschal part has no NK-Abrechnung); no line in Settlements yet → one line for the tenancy's span
       const rowsP = myRows.filter(r => Number(r.covers_year) === Number(to.slice(0, 4)) || inP(r.period_from));
       const kRows = rowsP.filter(r => String(r.note || '') !== 'Pauschal').sort((x, z) => _nkdD(x.period_from).localeCompare(_nkdD(z.period_from)));
+      // K2 (52): no line yet → Casa shows the Kalt + NK part of the span (the line Settlements will keep), as the NK card does
+      const kn = !kRows.length && app === 'casa' && typeof _tnKaltNKSpan === 'function' ? _tnKaltNKSpan(rec, spanFrom, spanTo) : null;
       const parts = kRows.length ? kRows.map(r => ({ row: r, a: _nkdD(r.period_from) || spanFrom, b: _nkdD(r.period_to) || spanTo, key: kRows.length > 1 ? _nkdD(r.period_from) || from : from }))
-                                 : [{ row: null, a: spanFrom, b: spanTo, key: from }];
+                                 : [{ row: null, a: kn ? kn.from : spanFrom, b: kn ? kn.to : spanTo, key: from }];
       for (const pt of parts) {
         const row = pt.row, res = resOf(row), sentRow = !!(row && NKD_SENT.includes(row.status));
         // the letter of THIS line: same start as the line (Settlements pairs them the same way), its line sent now,
