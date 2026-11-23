@@ -175,6 +175,12 @@ function srSaveRow(rec, from, only) {
     if (now && now !== rec) { only.forEach(f => { if (/^keys\./.test(f)) now.keys = Object.assign({}, now.keys, { [f.slice(5)]: rec.keys[f.slice(5)] }); else now[f] = rec[f]; }); rec = now; }
     // K1: a save from a copy made before a letter went out keeps that letter's mark (ts.k1, _srOldCalc) — was: lost
     for (const t of k1) if (!(rec.tenants && rec.tenants[t] && rec.tenants[t].k1)) rec.tenants = Object.assign({}, rec.tenants, { [t]: Object.assign({}, rec.tenants && rec.tenants[t], { k1: true }) });
+    // K2 (38): … and the figures it went out with (ts.as_sent, written only by Mark as sent) — a Jahresabrechnung draft is an
+    // older copy: the stored record's figures stay
+    if (!only && cur && cur !== rec) for (const t of Object.keys(cur.tenants || {})) {
+      const a = cur.tenants[t] && cur.tenants[t].as_sent;
+      if (a) rec.tenants = Object.assign({}, rec.tenants, { [t]: Object.assign({}, rec.tenants && rec.tenants[t], { as_sent: a }) });
+    }
     const data = await _srSaveRowNow(rec);
     if (from && !from.id) from.id = data.id;
     return data;
@@ -363,6 +369,23 @@ function _srSentCalc(c, it, rec) {
   if (!res || Math.abs(x.saldo - res.dir * res.amount) < 0.005) return x;
   const y = _srCalc(c, it, rec, false);
   return Math.abs(y.saldo - res.dir * res.amount) < 0.005 ? y : x;
+}
+/* One cost line of the tenant's calculation (window): [name, how it was split] */
+function _srLnTxt(x, ln) {
+  const small = ln.pos.split === 'mieter' ? 'per tenant · Zwischenablesung' : ln.cons ? stEur(ln.unit ?? 0) + ' · ' + ln.cons.en   // K1 (R5): how it was split
+    : x.partial ? stEur(ln.unit ?? 0) + ' × ' + x.tDays + '/' + x.perDays + ' days' : 'Kosten der Wohnung';
+  return [ln.pos.label || _srKind(ln.pos.kind).l, small];
+}
+const _srVzSrc = x => x.vzOv !== null ? (x.vzSoll !== null && Math.abs(x.vzOv - x.vzSoll) < 0.005 ? 'per contract' : 'by hand') : x.vzIst !== null ? 'per Controlling' : 'per contract';
+/* K2 (38): the figures a letter went out with — kept on Mark as sent in the tenant's settings (ts.as_sent: costs, lines,
+   Vorauszahlungen; its own key — ts.k1 and the other settings stay as they are). A sent line shows them while they give the
+   stored result, so a later correction of the costs or of the Vorauszahlungen does not change it (was: hero 620 € from the
+   result, bars and Calculation 1.200 € / 500 € live). Sent before (nothing kept) or with 'NK-Abrechnung erstellen': null */
+function _srAsSent(ti) {
+  const f = ti.ts && ti.ts.as_sent, res = ti.st && ti.st.res;
+  if (!f || !res || (res.db && res.db.source === 'manual') || !Array.isArray(f.lines)) return null;
+  const sum = Number(f.sum) || 0, vz = Number(f.vz) || 0, saldo = cxR(sum - vz);
+  return Math.abs(saldo - (res.dir || 0) * (Number(res.amount) || 0)) < 0.005 ? Object.assign({}, f, { sum, vz, saldo }) : null;
 }
 /* One tenant's settlement → { lines, sum, vz, vzSoll, vzIst, saldo, tDays, perDays, from, to, partial, missing, direct }
    rule: true = the rules before K1, false = the K1 rules · left out: as the line went out (_srOldCalc, _srSentCalc) */
@@ -878,9 +901,27 @@ function _srQueueTenantSave(rec) {
 }
 
 /* 4 · PDF letter ─────────────────────────────────────────── */
+/* K2 (38): the copy kept of a sent line's letter (nk_letters, newest first — the one History opens), else null. A result made
+   with 'NK-Abrechnung erstellen' opens that letter (manL in _srTenView); a copy for another result is not this letter, nor
+   one made before this letter was marked as sent (ts.as_sent.at) — that copy went out with a letter withdrawn with undo. A
+   letter sent before as_sent.at was kept: a copy only while the line was never undone (else drawn again, as before) */
+function _srSentLetter(c, it, ts) {
+  const res = it ? _srLine(c, it).state.res : null;
+  if (!res || (res.db && res.db.source === 'manual')) return null;
+  const at = ts && ts.as_sent && Date.parse(ts.as_sent.at), from = _srD(it.r.period_from);
+  if (!at && (window._src.abr || []).some(a => a && a.status === 'storniert' && a.kind === 'nk_tenant' && (!a.app || a.app === 'rentals') &&
+    Number(a.property_id) === Number(c.p.id) && String(a.tenant_id) === String(it.r.tenant_id) && _srD(a.period_from) === from)) return null;
+  return (SR.letters || []).find(l => l.app === 'rentals' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') &&
+    _srD(l.period_from) === from && (Number(l.direction) || 0) === (Number(res.dir) || 0) && Math.abs((Number(l.amount) || 0) - (Number(res.amount) || 0)) < 0.005 &&
+    (!at || Date.parse(l.sent_at) >= at)) || null;
+}
 async function _srPdf(btn) {
   const got = _srCollectTenant(); if (!got) return;
   const { c, it, rec, ts } = got;
+  // K2 (38): a sent letter opens its archived copy — the letter that went out, as the History opens it (was: drawn again from
+  // the costs as they are now: 1.200 € / 500 € instead of the 1.080 € / 620 € sent). None archived → drawn again, dated as sent
+  const L = _srSentLetter(c, it, ts);
+  if (L) { await _srOpenLetter(L.id); return; }
   if (_srKauWait(_srLine(c, it).state, _srTenantOf(it.r))) return;   // S3: the held part is not known yet (no PDF offered)
   if (_srGewDrawnOff(c, rec)) return;
   _srQueueTenantSave(rec);
@@ -1055,6 +1096,8 @@ async function _srSendNow(btn, got, key) {
   ts.k1 = true;                                              // this letter goes out with the K1 rules (_srOldCalc)
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
+  // K2 (38): the figures of this letter, saved with the settings below — the sent line keeps showing them (_srAsSent)
+  ts.as_sent = { at: new Date().toISOString(), sum: x.sum, vz: x.vz, src: _srVzSrc(x), lines: x.lines.map(ln => _srLnTxt(x, ln).concat([ln.amt])) };
   const l = _srLine(c, it), r = it.r, t = x.t;
   const amount = Math.abs(x.saldo), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0;
   // B20: with a Kaution-Einbehalt the result is settled with the Kaution (Nachzahlung, Guthaben or 0 €) and Controlling
@@ -1462,7 +1505,7 @@ function stRenderRentals() {
   // Nov 2026 · Hausgeld first, then Tenants (as in Casa Castel) · the "x of y in" count is in the ring
   const money = '<div class="st-money">' +
     stTile('Jahresabrechnungen', 'receipt', S.hg, '', 'data-sr="sumHg"') +
-    stTile('NK-Abrechnungen', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
+    stTile('NK-Abrechnungen', 'users', S.ten, S.wait ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
   const next = _srNextSteps(live);
   const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
   cxPaint(el, '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
@@ -1514,13 +1557,14 @@ function _srNextSteps(live) {
 /* One net amount per tile — shared with the Dashboard: > 0 money comes to you · < 0 you pay */
 function srSummary(infos) {
   const live = infos.filter(i => i.k !== 'before');
-  const S = { ten: null, nIn: 0, nOut: 0, hg: null, nHgIn: 0, tenRows: [], hgRows: [] };
+  const S = { ten: null, nIn: 0, nOut: 0, hg: null, nHgIn: 0, tenRows: [], hgRows: [], tenAll: [] };
   let tn = 0, any = false, hg = 0, anyHg = false;
   live.forEach(i => {
     const idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === i.c.p.id);
     for (const r of i.rows) {
-      if (r.kind !== 'ten' || r.skipped) continue;
-      const v = r.st.res ? r.st.res.dir * r.st.res.amount : r.k === 'open' && r.x && !r.x.missing ? r.x.saldo : null;
+      if (r.kind !== 'ten') continue;
+      const v = r.skipped ? null : r.st.res ? r.st.res.dir * r.st.res.amount : r.k === 'open' && r.x && !r.x.missing ? r.x.saldo : null;
+      S.tenAll.push({ i, r, v, idx });                      // K2 (49): every tenant for the sheet (also waiting / skipped) — tenRows stay as they were
       if (v === null) continue;
       any = true; tn += v; if (v > 0.004) S.nIn++; else if (v < -0.004) S.nOut++;
       S.tenRows.push({ i, r, v, idx });
@@ -1531,6 +1575,8 @@ function srSummary(infos) {
   });
   if (any) S.ten = cxR(tn);
   if (anyHg) S.hg = cxR(hg);
+  // K2 (49): 'waiting' only while a tenant has no amount yet (was: also when every tenant is skipped — the sheet listed them as settled)
+  S.wait = S.ten === null && (!S.tenAll.length || S.tenAll.some(x => x.v === null && !x.r.skipped));
   return S;
 }
 function _srWegWords(dir, amount, done) {
@@ -1569,11 +1615,13 @@ function _srCard5(info) {
   else { jaD = c.running ? 'running' : 'not in yet'; jaS = c.running ? 'runs until ' + stDe(c.per.to) : (hv.exp ? 'expected ' + hv.exp.label : 'expected'); }
   const hgCost = info.sum && (info.sum.u || info.sum.nu) ? cxR((info.sum.u || 0) + (info.sum.nu || 0)) : null;
   const jaOk = _srJaDone(info.rec, info.sum), nkTot = jaOk ? _srNkCostTotal(info.rec, c.apt) : null;
-  const vals = T5.map(r => r.st.res ? r.st.res.dir * r.st.res.amount : r.x && !r.x.missing ? r.x.saldo : null);
-  const nkNet = T5.length && vals.every(v => v !== null) ? cxR(vals.reduce((a, v) => a + v, 0)) : null;
-  const nkD = !T5.length ? 'no NK' : nkNet === null ? 'not yet' : null;
-  const nkS = !T5.length ? (info.rows.length ? 'Pauschal / no tenant' : 'no tenant with Kalt + NK')
-    : nkNet === null ? 'waiting for the Jahresabrechnung' : T5.length === 1 ? '1 tenant' : 'net · ' + T5.length + ' tenants';
+  // K2 (45): a skipped NK has no letter and no result — left out, as in the top tile and the Dashboard (was: still counted)
+  const T5n = T5.filter(r => !r.skipped);
+  const vals = T5n.map(r => r.st.res ? r.st.res.dir * r.st.res.amount : r.x && !r.x.missing ? r.x.saldo : null);
+  const nkNet = T5n.length && vals.every(v => v !== null) ? cxR(vals.reduce((a, v) => a + v, 0)) : null;
+  const nkD = !T5n.length ? 'no NK' : nkNet === null ? 'not yet' : null;
+  const nkS = !T5.length ? (info.rows.length ? 'Pauschal / no tenant' : 'no tenant with Kalt + NK') : !T5n.length ? 'skipped'
+    : nkNet === null ? 'waiting for the Jahresabrechnung' : T5n.length === 1 ? '1 tenant' : 'net · ' + T5n.length + ' tenants';
   const mini = (act, icon, label, net, dirWord, lines) => {
     const k = net === null || net === undefined ? 'nil' : net > 0.004 ? 'in' : net < -0.004 ? 'out' : 'nil';
     const d = dirWord || (k === 'in' ? 'you get' : k === 'out' ? (act === 'openNk' ? 'you pay back' : 'you pay') : 'balanced');
@@ -1585,7 +1633,7 @@ function _srCard5(info) {
   h += '<div class="sr5-bx">' +
     mini('openHv', 'receipt', 'Jahresabrechnung', jaNet, jaD, [[jaS, jaWarn ? 'is-warn' : ''], [hgCost !== null ? 'Hausgeld costs ' + stEur(hgCost) : '', 'sr5-mini__c']]) +
     mini('openNk', 'users', 'NK-Abrechnung', nkNet, nkD, [[nkS, ''], [nkTot !== null ? 'NK costs ' + stEur(nkTot) : '', 'sr5-mini__c']]) + '</div>';
-  const oneTen = T5.length === 1;                               // one tenant: the amount is in the NK box, the line shows who and when
+  const oneTen = T5n.length === 1;                              // one tenant counted (K2 45: a skipped one is not): the amount is in the NK box, the line shows who and when
   for (const r of info.rows) h += _srTenLine(c, r, oneTen);
   return h + '</div>';
 }
@@ -1604,7 +1652,7 @@ function _srTenLine(c, r, noAmt) {
   const per = stPer(r.l.from, r.l.to);
   if (r.kind !== 'ten') return '<div class="sc-row sr5-ln sr5-tl is-dim"><span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span>' +
     '<span class="sc-row__s">' + stEsc((r.kind === 'pausch' ? 'Pauschal – no NK' : 'no NK') + ' · ' + per) + '</span></span></div>';
-  const res = r.st.res, v = res ? res.dir * res.amount : r.x && !r.x.missing ? r.x.saldo : null;
+  const res = r.st.res, v = r.skipped ? null : res ? res.dir * res.amount : r.x && !r.x.missing ? r.x.saldo : null;   // K2 (45): skipped → no amount
   // K1-SET-VIA-KAUTION (R3): sent with a part of the Kaution held back → what is kept · what moves by bank, in the words of
   // Casa Castel's list (was: 'pays you 450,00 €' while 150,00 € come by bank — the sheet says 'Lena transfers 150,00 €')
   const kt = r.k === 'sent' ? _srKauOf({ st: r.st, it: r.it }) : null;
@@ -1614,7 +1662,7 @@ function _srTenLine(c, r, noAmt) {
   const chip = r.k === 'open' ? ['send', 'letter ready'] : r.k === 'sent' ? ['wait', 'sent'] : r.k === 'settled' ? ['done', r.skipped ? 'skipped' : 'settled'] : ['grey', 'waiting'];
   return '<button class="sc-row sr5-ln sr5-tl" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">' +
     '<span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span>' +
-    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span><span class="sc-row__s">' + (noAmt && v !== null ? '' : '<b class="sr5-tl__v ' + tone + '">' + stEsc(say) + '</b> · ') + stEsc(per) + '</span></span>' +
+    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span><span class="sc-row__s">' + (r.skipped || (noAmt && v !== null) ? '' : '<b class="sr5-tl__v ' + tone + '">' + stEsc(say) + '</b> · ') + stEsc(per) + '</span></span>' +
     '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
 }
 /* The NK line of a card: one summary for all tenants of the period */
@@ -1694,14 +1742,16 @@ function _srSumSheet(view) {
   const infos = _srYearModel(SR.year).map(_srCardInfo4), S = srSummary(infos);
   const close = 'data-sr="close"';
   if (view === 'sumTen') {
-    const rows = S.tenRows.map(x => { const av = stAv(x.idx), amt = Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0;
-      return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to) + (x.r.skipped ? ' · skipped' : ''),
-               amount: amt, dir: x.v > 0 ? 1 : -1, chip: amt ? null : ['grey', 'balanced'], k: x.r.k,
+    // K2 (49): every Kalt + NK tenant of the year — waiting ones under 'Not yet', skipped ones under 'Settled' (was: only
+    // tenants with an amount, so 'Not yet' never showed and the count said '1 of 2' while the ring said 1/9)
+    const rows = S.tenAll.map(x => { const av = stAv(x.idx), amt = x.v !== null && Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0;
+      return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to),
+               amount: amt, dir: x.v > 0 ? 1 : -1, chip: amt ? null : x.r.skipped ? ['grey', 'skipped'] : x.v === null ? ['grey', 'waiting'] : ['grey', 'balanced'], k: x.r.k,
                act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"' }; });
     const action = '';                                       // Nov 2026: each line opens its tenant — a button for the first one was the same way in
     const nSet = rows.filter(r => r.k === 'settled').length, nAll = rows.length;
     return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action, dots: { done: nSet, total: nAll },
-      sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
+      sub2: (S.wait ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back')) + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
       groups: [{ title: 'To send', count: true, rows: rows.filter(r => r.k === 'open') }, { title: 'Waiting for money', count: true, rows: rows.filter(r => r.k === 'sent') },
                { title: 'Not yet', count: true, rows: rows.filter(r => r.k === 'waiting') }, { title: 'Settled', count: true, rows: rows.filter(r => r.k === 'settled') }] }, close);
   }
@@ -2187,10 +2237,13 @@ function _srTenView(c) {
   SR.sign = _srSign(x);
   const perC = _srPer(c, rec);
   const v = sent ? ti.st.res.dir * ti.st.res.amount : x.saldo;           // > 0 the tenant pays you
+  // K2 (38): a sent line shows its letter's figures — costs, Vorauszahlungen, result (_srAsSent) — in the bars and the
+  // Calculation; a letter sent before (nothing kept): the calculation as it is
+  const fx = sent ? _srAsSent(ti) : null, F = fx || { sum: x.sum, vz: x.vz, saldo: x.saldo, src: _srVzSrc(x) }, calcMiss = !fx && !!x.missing;
   const hero = stTpHero({ tone: v > 0.004 ? 'get' : v < -0.004 ? 'pay' : 'zero',
     label: v > 0.004 ? first + (settledT ? ' paid you' : ' pays you') : v < -0.004 ? first + (settledT ? ' got back' : ' gets back') : 'All even',
-    amount: Math.abs(v) < 0.005 ? 0 : v, sub: x.missing ? 'some costs are still missing' : '', settled: settledT,
-    bars: [['Costs', x.sum, '#E3B9A6'], ['Paid', x.vz, '#A9BFD3']] });                // Nov 2026: why, at a glance
+    amount: Math.abs(v) < 0.005 ? 0 : v, sub: calcMiss ? 'some costs are still missing' : '', settled: settledT,
+    bars: [['Costs', F.sum, '#E3B9A6'], ['Paid', F.vz, '#A9BFD3']] });                // Nov 2026: why, at a glance
   // ── Nov 2026 · steps with labelled buttons (no unlabelled switches) · the PDF is a real button
   const late = !sent && perC.frist && date > perC.frist && x.saldo > 0;
   const how = { zahlung: 'bank transfer', miete: 'with the rent', kaution: 'via Kaution' };
@@ -2206,7 +2259,7 @@ function _srTenView(c) {
   // K2: sent with 'NK-Abrechnung erstellen' (Dashboard) → that archived letter opens, not one drawn from this calculation
   const manL = sent && ti.st.res.db && ti.st.res.db.source === 'manual' ? (SR.letters || []).find(l => l.app === 'manual' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') && _srD(l.period_from) === _srD(it.r.period_from)) : null;
   const pdf = manL ? stTpBtn('data-sr="letterOpen" data-id="' + stEsc(manL.id) + '"', 'file-text', 'Open letter (PDF)', false, false)
-    : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing);
+    : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing && !_srSentLetter(c, it, ti.ts));   // K2 (38): the copy kept opens (_srPdf)
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
@@ -2231,30 +2284,30 @@ function _srTenView(c) {
       '<label class="st-f"><span class="st-f__l">To</span><input class="st-in" type="date" id="srTpT" value="' + stEsc(_srD(it.r.period_to)) + '"/></label></div>' +
       '<div class="sr-peredit__b"><button class="cx-link" data-sr="tenPerCancel">Cancel</button><button class="cx-link sr-acc" data-sr="tenPerSave">Save</button></div></div>'
     : stTpRow({ title: 'Period', sub: _srCnt(x.tDays, 'day', 'days') + ' · this NK only', value: stEsc(stDM(x.from) + '–' + stDate(x.to)), act: sent ? '' : 'data-sr="tenPerEdit"', icon: sent ? '' : 'pencil' });
-  const vzSrc = x.vzOv !== null ? (x.vzSoll !== null && Math.abs(x.vzOv - x.vzSoll) < 0.005 ? 'per contract' : 'by hand') : x.vzIst !== null ? 'per Controlling' : 'per contract';
+  const vzSrc = F.src || _srVzSrc(x);
   const vzAlt = [];
   if (!sent && x.vzIst !== null && (x.vzOv !== null || Math.abs(x.vz - x.vzIst) >= 0.01)) vzAlt.push(['ist', 'Controlling ' + stEur(x.vzIst)]);
   if (!sent && x.vzSoll !== null && Math.abs(x.vz - x.vzSoll) >= 0.01) vzAlt.push(['soll', 'Contract ' + stEur(x.vzSoll)]);
   let lines = '';
-  for (const ln of x.lines) {
-    const label = ln.pos.label || _srKind(ln.pos.kind).l, direct = ln.pos.split === 'mieter';
-    const small = direct ? 'per tenant · Zwischenablesung' : ln.cons ? stEur(ln.unit ?? 0) + ' · ' + ln.cons.en   // K1 (R5): how it was split
-      : x.partial ? stEur(ln.unit ?? 0) + ' × ' + x.tDays + '/' + x.perDays + ' days' : 'Kosten der Wohnung';
+  const costL = fx ? fx.lines : x.lines.map(ln => _srLnTxt(x, ln).concat([ln.amt, ln]));   // K2 (38): sent → the lines of its letter
+  for (const [label, small, amt, ln] of costL) {
+    const direct = !!ln && ln.pos.split === 'mieter';
     lines += '<div class="sr-cl"><span class="sr-cl__t">' + stEsc(label) + '<small>' + stEsc(small) + '</small></span>' +
       (direct && !sent ? '<label class="cx-f sr-in-s"><input type="text" inputmode="decimal" data-srt="direct.' + stEsc(ln.pos.id) + '" value="' + stEsc(_srE2in(ts.direct && ts.direct[ln.pos.id])) + '" aria-label="' + stEsc(label) + ' for this tenant"><span>€</span></label>'
-                       : '<span class="sr-cl__v">' + (ln.amt === null ? '<em class="sr-miss">missing</em>' : stEur(ln.amt)) + '</span>') + '</div>';
+                       : '<span class="sr-cl__v">' + (amt === null ? '<em class="sr-miss">missing</em>' : stEur(amt)) + '</span>') + '</div>';
   }
   const calc = perRow +
     (since && perC.from < since && x.from >= since && !sent ? '<p class="sr-hint2">Bought on ' + stDate(since) + ': if ' + stEsc(ti.name) + ' already lived there before, extend the period to ' + stDM(perC.from) + ' – the NK covers the whole year.</p>' : '') +
-    '<details class="tp-fold"' + (x.missing ? ' open' : '') + '><summary>' + stTpRow({ title: 'Costs', sub: stEsc(first) + '’s share · ' + x.lines.length + (x.lines.length === 1 ? ' item' : ' items'), value: stEur(x.sum), vAttr: 'data-sr-sum', icon: 'chevron-down' }) + '</summary>' +
+    // K2 (38): costs corrected since the letter went out → its row says 'as sent' (the lines below are the letter's)
+    '<details class="tp-fold"' + (calcMiss ? ' open' : '') + '><summary>' + stTpRow({ title: 'Costs', sub: (fx && Math.abs(fx.sum - x.sum) >= 0.005 ? 'as sent' : stEsc(first) + '’s share') + ' · ' + costL.length + (costL.length === 1 ? ' item' : ' items'), value: stEur(F.sum), vAttr: 'data-sr-sum', icon: 'chevron-down' }) + '</summary>' +
       '<div class="sr-calc tp-fold__b">' + lines + '</div></details>' +
     stTpRow({ title: '− Vorauszahlungen', sub: stEsc(vzSrc) + (sent ? '' : ' · editable'),
-      value: sent ? stEur(x.vz) : '<label class="tp-in"><input type="text" inputmode="decimal" data-srt="vz" value="' + stEsc(cxE2(x.vz)) + '" aria-label="Vorauszahlungen"><em>€</em></label>' }) +
+      value: sent ? stEur(F.vz) : '<label class="tp-in"><input type="text" inputmode="decimal" data-srt="vz" value="' + stEsc(cxE2(x.vz)) + '" aria-label="Vorauszahlungen"><em>€</em></label>' }) +
     (vzAlt.length ? '<div class="sr-vzalt"><span>use instead:</span>' + vzAlt.map(([k, t]) => '<button class="sr-vzalt__b" data-sr="vzUse" data-v="' + k + '">' + stEsc(t) + '</button>').join('') + '</div>' : '') +
     (x.pre ? '<p class="sr-hint2">Before the purchase (' + stDM(x.pre.from) + '–' + stDate(x.pre.to) + '): ' + stEur(x.pre.soll) + ' per contract – check with the seller.</p>' : '') +
-    stTpRow({ title: '= ' + (x.saldo > 0 ? first + ' pays you' : x.saldo < 0 ? first + ' gets back' : 'all even'), value: stEur(Math.abs(x.saldo)), vAttr: 'data-sr-res', tone: x.saldo > 0 ? 'pos' : x.saldo < 0 ? 'neg' : '', tot: true }) +
+    stTpRow({ title: '= ' + (F.saldo > 0 ? first + ' pays you' : F.saldo < 0 ? first + ' gets back' : 'all even'), value: stEur(Math.abs(F.saldo)), vAttr: 'data-sr-res', tone: F.saldo > 0 ? 'pos' : F.saldo < 0 ? 'neg' : '', tot: true }) +
     // fin2: the result = the held part (T = 0) → 'nothing to transfer', as in Casa Castel (was: 'pay back to the tenant 0,00 €')
-    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc(Math.abs(cxR(x.einbehalt - x.saldo)) < 0.005 ? 'nothing to transfer' : (cxR(x.einbehalt - x.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - x.saldo)))), value: stEur(x.einbehalt) }) : '');
+    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc(Math.abs(cxR(x.einbehalt - F.saldo)) < 0.005 ? 'nothing to transfer' : (cxR(x.einbehalt - F.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - F.saldo)))), value: stEur(x.einbehalt) }) : '');
   // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (!sent) {
