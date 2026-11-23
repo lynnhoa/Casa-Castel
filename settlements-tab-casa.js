@@ -2175,7 +2175,8 @@ function scTenView(M, m) {
         (cxR((t.einbehalt || 0) - saldo) > 0 ? '<label class="tp-f"><span>' + stEsc(first) + '’s IBAN · for the ' + (t.einbehalt > 0 ? 'money back' : 'Guthaben') + '</span><input class="st-in" data-sc-in="iban" ' + kAttr + ' value="' + stEsc(s.iban || '') + '" placeholder="DE…"/></label>' : '') +
         '<div class="tp-g2"><label class="tp-f"><span>Pay within (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" ' + kAttr + ' value="' + stEsc(s.days ?? 30) + '"/></label>' +
           '<div class="tp-f"><span>Belegliste</span><button class="sc-pill' + (list ? ' is-ok' : '') + '" data-sc="tg" data-f="list" ' + kAttr + ' aria-pressed="' + list + '"><i class="ti ti-' + (list ? 'check' : 'list') + '" aria-hidden="true"></i>' + (list ? 'on' : 'off') + '</button></div></div>' +
-        scToggle('former', t.key, s.former !== undefined ? !!s.former : t.movedOut, 'Former tenant', 'the letter says "das ehemalige Zimmer"', true) +
+        // K2 (43, owner 23.11.2026): no 'Former tenant' switch — it promised "das ehemalige Zimmer", which the letter never
+        // says; a Casa letter shows the tenant's bank box for money back either way
       '</div>' : '') + '</div>';
   }
   // K2 (53): only while the house costs are not locked, as 'Add a tenant to this NK' — a locked year keeps its numbers
@@ -2186,10 +2187,6 @@ function scTenView(M, m) {
     stTpLbl('calculator', '#E6EEF6', '#2F5470', 'Calculation') + '<div class="tp-card">' + calc + '</div>' + letter + xDel + flowLnk + '</div>';
 }
 
-function scToggle(f, key, on, t, s, can) {
-  return '<button type="button" class="sc-tg' + (on ? ' on' : '') + '" data-sc="tg" data-f="' + f + '" data-k="' + stEsc(key) + '"' + (can ? '' : ' disabled') + ' aria-pressed="' + on + '">' +
-    '<span class="sc-tg__t"><b>' + t + '</b><small>' + s + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>';
-}
 function scLetterBtn(t) {
   // K2: the archived copy of the letter that was sent — a result made with 'NK-Abrechnung erstellen' (Dashboard) opens
   // that letter; any other result the Casa letter (a Dashboard letter set back to open and sent again here is not opened)
