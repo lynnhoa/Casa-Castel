@@ -919,7 +919,8 @@ function _kSafeChatText(t) {
 }
 
 /* ── FEED RENDERER (identical to landlord, no delete buttons) */
-function _kTenBuildFeedHtml(comments, weekRow) {
+// Nov 2026 · lateShown = the photo URLs of the '[late]' items that are in the chat right now (_kTenLateShown)
+function _kTenBuildFeedHtml(comments, weekRow, lateShown) {
   const labels = { trash: 'Trash', geschirr: 'Dishes', overview: 'Overview' };
   const lbl    = t => labels[t] || t;
   const events = [];
@@ -939,7 +940,8 @@ function _kTenBuildFeedHtml(comments, weekRow) {
     } else if (c.text && c.text.startsWith('[late] ')) {
       try {
         const p = JSON.parse(c.text.slice(7));
-        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], week:p.week||'' });
+        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[],
+          week:String(p.week||'').replace(/(\b\d{1,2}\.\d{1,2})\b(?!\.)/g, '$1.') });   // Nov 2026: '16.11 – 22.11' → '16.11. – 22.11.' as in the dividers
       } catch(e) {}
     } else if (c.text && c.text.startsWith('[system] ')) {
       events.push({ _type:'system', _ts:new Date(c.created_at).getTime(), text:c.text.slice(9) });
@@ -974,7 +976,13 @@ function _kTenBuildFeedHtml(comments, weekRow) {
 
     if (ev._type === 'submission') {
       const isRe = flagSeen; flagSeen = false;
-      const photoStrip = ev.photos && ev.photos.length
+      /* Nov 2026 · uploaded after its own week ended = the late proof → "↑ Late proof" (calendar days, DST-safe).
+         Its photos show once — in the "Late proof" item of the week it came in. Here it is one line
+         (room · ↑ Late proof · time); only when that item is really in the chat, otherwise the photos stay here. */
+      const isLate   = !!(weekRow && weekRow.week_index != null && kWeekIdx(new Date(ev._ts)) > weekRow.week_index);
+      const urls     = (ev.photos || []).map(p => p && _kProofUrl(p.url)).filter(Boolean);
+      const shownIn  = isLate && urls.length > 0 && !!lateShown && urls.every(u => lateShown.has(u));
+      const photoStrip = !shownIn && ev.photos && ev.photos.length
         ? '<div style="display:flex;gap:4px;margin-top:8px;">'
           + ev.photos.filter(p => p && _kProofUrl(p.url)).map(p =>
               `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="_kTenOpenPhoto(this.dataset.url,this.dataset.label)">`
@@ -985,6 +993,7 @@ function _kTenBuildFeedHtml(comments, weekRow) {
         : '';
       const badge = isRe
         ? '<span class="k-reupload-badge">↑ Re-uploaded</span>'
+        : isLate ? '<span class="k-late-badge">↑ Late proof</span>'
         : '<span style="font-size:9px;font-weight:500;background:#EDF5E8;color:#3A6A1A;border:0.5px solid #9AC87A;border-radius:3px;padding:1px 5px;">↑ Submitted</span>';
       return `<div style="padding:8px 0;border-bottom:0.5px solid var(--cc-rule);">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -1004,7 +1013,7 @@ function _kTenBuildFeedHtml(comments, weekRow) {
       flagSeen = true;
       const why = ev.text && ev.text.startsWith('⚑ Redo: ') ? ev.text.slice(2) : 'Re-upload requested';
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)}${_kTenSysTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
@@ -1014,19 +1023,19 @@ function _kTenBuildFeedHtml(comments, weekRow) {
       const isAuto     = ev.text.startsWith('✓ Approved automatically');
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? '✓ Done' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? '✓ Done' : '↩ Approval undone'}${_kTenSysTs(ev._ts)}
         </span><div class="k-sys-event__line"></div></div>`;
     }
 
     if (ev.text && ev.text.startsWith('✗ ')) {
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kTenSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kTenSysText(ev.text))}${_kTenSysTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kTenSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kTenSysText(ev.text))}${_kTenSysTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
@@ -1063,6 +1072,9 @@ function _kTenBuildFeedHtml(comments, weekRow) {
      as it arrives, that section goes. A late proof for last week posted this week doesn't count.
    Each section shows that week's proof, status lines and messages. A week where nothing happened
    gets no section; test weeks (before K_TEN_HISTORY_FROM, 05.10.2026) never show.
+   Nov 2026 · a late proof is shown with its photos where it came in ("Late proof · 16.11 – 22.11",
+   e.g. under this week); the section of the week it was for keeps one line without the photos
+   ("↑ Late proof"), so each photo is in the chat once.
    Display only: the stored data and the 30-day photo clean-up are unchanged.
    The management app (tab-kitchen.js) has the same rule — keep both identical. */
 function _kTenWeekDivider(label, row) {
@@ -1097,11 +1109,21 @@ async function _kTenEarlierWeeks(weekRow) {
   return out;
 }
 /* One earlier week as a chat section — '' when nothing happened that week */
-function _kTenEarlierHtml(label, wk) {
+function _kTenEarlierHtml(label, wk, lateShown) {
   if (!wk) return '';
-  const body = _kTenBuildFeedHtml(wk.comments, wk.row);
+  const body = _kTenBuildFeedHtml(wk.comments, wk.row, lateShown);
   if (/^<p class="cc-note"/.test(body)) return '';
   return _kTenWeekDivider(label, wk.row) + body;
+}
+/* Nov 2026 · the photo URLs of the '[late]' items in the chats that are shown (a section with a
+   '[late]' item is always shown) — the late proof's photos are then not repeated in its own week */
+function _kTenLateShown(lists) {
+  const s = new Set();
+  lists.forEach(cs => (cs || []).forEach(c => {
+    if (!c.text || !c.text.startsWith('[late] ')) return;
+    try { (JSON.parse(c.text.slice(7)).photos || []).forEach(p => { const u = p && _kProofUrl(p.url); if (u) s.add(u); }); } catch (e) {}
+  }));
+  return s;
 }
 /* Is this week's own proof there? Same rule the chat uses for "↑ Submitted" ([late] = last week's proof → no) */
 function _kTenHasOwnProof(comments, weekRow) {
@@ -1121,10 +1143,12 @@ async function _kTenRenderFeed() {
     return;
   }
   const [comments, earlier] = await Promise.all([_kTenGetComments(row.id), _kTenEarlierWeeks(row)]);
-  let html = _kTenBuildFeedHtml(comments, row);
   // W2: 2 weeks ago only until this week's own proof is there · then last week · then this week
-  const prevHtml = (_kTenHasOwnProof(comments, row) ? '' : _kTenEarlierHtml('2 weeks ago', earlier.before))
-                 + _kTenEarlierHtml('Last week', earlier.last);
+  const showBefore = !_kTenHasOwnProof(comments, row);
+  const lateShown  = _kTenLateShown([comments, earlier.last && earlier.last.comments, showBefore && earlier.before && earlier.before.comments]);
+  let html = _kTenBuildFeedHtml(comments, row, lateShown);
+  const prevHtml = (showBefore ? _kTenEarlierHtml('2 weeks ago', earlier.before, lateShown) : '')
+                 + _kTenEarlierHtml('Last week', earlier.last, lateShown);
   if (prevHtml) html = prevHtml + _kTenWeekDivider('This week', row) + html;   // earlier weeks first, then this week
   // same content as on screen → leave it (no blink, photos are not reloaded)
   [elMob, elDsk].forEach(el => {
@@ -1161,6 +1185,11 @@ function _kTenSysText(t) {
   if (/^✗ Marked missed/.test(t)) return '✗ Marked missed';
   if (/^✓ Flag removed/.test(t))  return '✓ Redo cancelled';
   return t.replace(/\s+by\s+(the\s+)?(landlord|Casa Castel)\.?$/i, '').replace(/\.$/, '');
+}
+/* Nov 2026 · ' · 23.11. · 00:05' after a status line — a long line wraps inside the chat,
+   the date and time always stay together on one line (non-breaking spaces) */
+function _kTenSysTs(ts) {
+  return '&nbsp;· ' + fmtTs(ts).replace(/ /g, '&nbsp;');
 }
 
 /* ── FRESH WEEK STATUS ──────────────────────────────────────
