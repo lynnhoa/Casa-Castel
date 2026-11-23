@@ -1656,7 +1656,11 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-chat-text{font-size:12px;font-weight:300;color:var(--cc-charcoal);line-height:1.5;margin:0;}
 .k-sys-event{display:flex;align-items:center;gap:8px;padding:7px 0;}
 .k-sys-event__line{flex:1;height:0.5px;background:var(--cc-rule);}
-.k-sys-event__text{font-size:10px;color:var(--cc-stone);white-space:nowrap;}
+/* Nov 2026 · a long status line (e.g. "No proof by Sunday …", a long Redo reason) wraps, centred, inside
+   the chat instead of running off the right edge; the thin lines step aside. Short lines look as before. */
+.k-sys-event__text{font-size:10px;color:var(--cc-stone);white-space:normal;text-align:center;overflow-wrap:anywhere;text-wrap:balance;}
+/* … a line with a ✕ keeps room for it (20 px + gap), so showing the ✕ on hover does not re-wrap the text */
+.k-sys-event:has(.k-delete-btn--sys) .k-sys-event__text{max-width:calc(100% - 44px);}
 .k-sys-event__text--flag{color:var(--cc-notice-text);}
 .k-sys-event__text--approved{color:#3A6A1A;}
 .k-sys-event__text--done{color:#78640A;}
@@ -2248,7 +2252,6 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-last__room { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 300; color: var(--cc-ink); line-height: 1; }
 .k-last__meta { font-size: 10px; color: var(--cc-taupe); line-height: 1.3; }
 .k-last__body { display: flex; align-items: flex-end; gap: 10px; margin-top: 2px; }
-.k-last__photos { flex: 1; min-width: 0; max-width: 180px; }
 .k-last .k-mob-status-chip, #k-dsk-last .k-mob-status-chip { flex-shrink: 0; }
 
 /* Flag sheet */

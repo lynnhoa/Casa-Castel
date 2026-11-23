@@ -327,6 +327,11 @@ function _kSysText(t) {
   if (/^✓ Flag removed/.test(t))  return '✓ Redo cancelled';
   return t.replace(/\s+by\s+(the\s+)?(landlord|Casa Castel)\.?$/i, '').replace(/\.$/, '');
 }
+/* Nov 2026 · ' · 23.11. · 00:05' after a status line — a long line wraps inside the chat,
+   the date and time always stay together on one line (non-breaking spaces) */
+function _kSysTs(ts) {
+  return '&nbsp;· ' + fmtTs(ts).replace(/ /g, '&nbsp;');
+}
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
 const K_HISTORY_FROM  = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
@@ -595,7 +600,8 @@ function _kPhotoStrip(photos) {
 }
 
 /* ── FEED HTML BUILDER ──────────────────────────────────── */
-function _kBuildFeedHtml(comments, weekRow) {
+// Nov 2026 · lateShown = the photo URLs of the '[late]' items that are in the chat right now (_kLateShown)
+function _kBuildFeedHtml(comments, weekRow, lateShown) {
   const labels = { trash:'Trash', geschirr:'Dishes', overview:'Overview' };
   const lbl    = t => labels[t] || t;
   const events = [];
@@ -612,7 +618,8 @@ function _kBuildFeedHtml(comments, weekRow) {
     } else if (c.text && c.text.startsWith('[late] ')) {
       try {
         const p = JSON.parse(c.text.slice(7));
-        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], week:p.week||'' });
+        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[],
+          week:String(p.week||'').replace(/(\b\d{1,2}\.\d{1,2})\b(?!\.)/g, '$1.') });   // Nov 2026: '16.11 – 22.11' → '16.11. – 22.11.' as in the dividers
       } catch(e) {}
     } else if (c.text && c.text.startsWith('[system] ')) {
       events.push({ _type:'system', _ts:new Date(c.created_at).getTime(), text:c.text.slice(9) });
@@ -634,7 +641,13 @@ function _kBuildFeedHtml(comments, weekRow) {
     }
     if (ev._type === 'submission') {
       const isRe = flagSeen; flagSeen = false;
-      const photoStrip = ev.photos && ev.photos.length
+      /* Nov 2026 · uploaded after its own week ended = the late proof → "↑ Late proof" (calendar days, DST-safe).
+         Its photos show once — in the "Late proof" item of the week it came in. Here it is one line
+         (room · ↑ Late proof · time); only when that item is really in the chat, otherwise the photos stay here. */
+      const isLate   = !!(weekRow && weekRow.week_index != null && kWeekIdx(new Date(ev._ts)) > weekRow.week_index);
+      const urls     = (ev.photos || []).map(p => p && _kProofUrl(p.url)).filter(Boolean);
+      const shownIn  = isLate && urls.length > 0 && !!lateShown && urls.every(u => lateShown.has(u));
+      const photoStrip = !shownIn && ev.photos && ev.photos.length
         ? '<div style="display:flex;gap:4px;margin-top:8px;">'
           + ev.photos.filter(p => p && _kProofUrl(p.url)).map(p =>
               `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="openPhotoModal(this.dataset.url,this.dataset.label)">`
@@ -645,6 +658,7 @@ function _kBuildFeedHtml(comments, weekRow) {
         : '';
       const badge = isRe
         ? '<span class="k-reupload-badge">↑ Re-uploaded</span>'
+        : isLate ? '<span class="k-late-badge">↑ Late proof</span>'
         : '<span style="font-size:9px;font-weight:500;background:#EDF5E8;color:#3A6A1A;border:0.5px solid #9AC87A;border-radius:3px;padding:1px 5px;">↑ Submitted</span>';
       return `<div style="padding:8px 0;border-bottom:0.5px solid var(--cc-rule);">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -664,7 +678,7 @@ function _kBuildFeedHtml(comments, weekRow) {
       const why = ev.text && ev.text.startsWith('⚑ Redo: ') ? ev.text.slice(2) : 'Re-upload requested';
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)}${_kSysTs(ev._ts)}</span>
         <button class="k-delete-btn k-delete-btn--sys" title="Delete">✕</button>
         <div class="k-sys-event__line"></div></div>`;
     }
@@ -675,20 +689,20 @@ function _kBuildFeedHtml(comments, weekRow) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? '✓ Done' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? '✓ Done' : '↩ Approval undone'}${_kSysTs(ev._ts)}
         </span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('✗ ')) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kSysText(ev.text))}${_kSysTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kSysText(ev.text))}${_kSysTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('[photo] ') && _kProofUrl(ev.text.slice(8))) {
@@ -739,10 +753,12 @@ async function _kRenderFeed(weekRow) {
   }
   const [comments, earlier] = await Promise.all([_kGetComments(weekRow.id), _kEarlierWeeks(weekRow)]);
   if (seq !== _kFeedSeq) return;
-  let html = _kBuildFeedHtml(comments, weekRow);
   // W2: 2 weeks ago only until this week's own proof is there · then last week · then this week
-  const prevHtml = (_kHasOwnProof(comments, weekRow) ? '' : _kEarlierHtml('2 weeks ago', earlier.before))
-                 + _kEarlierHtml('Last week', earlier.last);
+  const showBefore = !_kHasOwnProof(comments, weekRow);
+  const lateShown  = _kLateShown([comments, earlier.last && earlier.last.comments, showBefore && earlier.before && earlier.before.comments]);
+  let html = _kBuildFeedHtml(comments, weekRow, lateShown);
+  const prevHtml = (showBefore ? _kEarlierHtml('2 weeks ago', earlier.before, lateShown) : '')
+                 + _kEarlierHtml('Last week', earlier.last, lateShown);
   if (prevHtml) html = prevHtml + _kWeekDivider('This week', weekRow) + html;   // earlier weeks first, then this week
   const changed = [_kSet(el, html) ? el : null, _kSet(elDsk, html) ? elDsk : null];
   // Wire delete buttons on both feeds (only a feed that was just redrawn — the others are wired already)
@@ -769,6 +785,9 @@ async function _kRenderFeed(weekRow) {
      as it arrives, that section goes. A late proof for last week posted this week doesn't count.
    Each section shows that week's proof, status lines and messages. A week where nothing happened
    gets no section; test weeks (before K_HISTORY_FROM, 05.10.2026) never show.
+   Nov 2026 · a late proof is shown with its photos where it came in ("Late proof · 16.11 – 22.11",
+   e.g. under this week); the section of the week it was for keeps one line without the photos
+   ("↑ Late proof"), so each photo is in the chat once.
    Display only: the stored data and the 30-day photo clean-up are unchanged.
    The tenant app (tab-kitchen-tenant.js) has the same rule — keep both identical. */
 function _kWeekDivider(label, row) {
@@ -803,11 +822,21 @@ async function _kEarlierWeeks(weekRow) {
   return out;
 }
 /* One earlier week as a chat section — '' when nothing happened that week */
-function _kEarlierHtml(label, wk) {
+function _kEarlierHtml(label, wk, lateShown) {
   if (!wk) return '';
-  const body = _kBuildFeedHtml(wk.comments, wk.row);
+  const body = _kBuildFeedHtml(wk.comments, wk.row, lateShown);
   if (/^<p class="cc-note"/.test(body)) return '';
   return _kWeekDivider(label, wk.row) + body;
+}
+/* Nov 2026 · the photo URLs of the '[late]' items in the chats that are shown (a section with a
+   '[late]' item is always shown) — the late proof's photos are then not repeated in its own week */
+function _kLateShown(lists) {
+  const s = new Set();
+  lists.forEach(cs => (cs || []).forEach(c => {
+    if (!c.text || !c.text.startsWith('[late] ')) return;
+    try { (JSON.parse(c.text.slice(7)).photos || []).forEach(p => { const u = p && _kProofUrl(p.url); if (u) s.add(u); }); } catch (e) {}
+  }));
+  return s;
 }
 /* Is this week's own proof there? Same rule the chat uses for "↑ Submitted" ([late] = last week's proof → no) */
 function _kHasOwnProof(comments, weekRow) {
@@ -1005,24 +1034,16 @@ function _kRenderWeekCard(weekRow, absData) {
 
 /* ── LAST WEEK CARD ─────────────────────────────────────────
    Shown only while last week still needs you: a (late) proof is
-   waiting for review. Same Approve / Flag as this week.          */
-let _kLastSeq = 0;   // S1: only the newest draw counts — an older one can't bring the card back after it was hidden
+   waiting for review. Same Approve / Flag as this week.
+   Nov 2026 · no photos on the card: they are in the chat once (like
+   this week's card). It now draws at once (nothing to load), so an
+   older draw can no longer overtake a newer one.  */
 async function _kRenderLastWeek(lastRow) {
   const mob    = document.getElementById('k-mob-last');
   const dsk    = document.getElementById('k-dsk-last');
   const dskSec = document.getElementById('k-dsk-last-sec');
-  const seq    = ++_kLastSeq;
   const hide = () => { if (mob) mob.style.display = 'none'; if (dskSec) dskSec.style.display = 'none'; };
   if (!lastRow || lastRow.status !== 'submitted') { hide(); return; }
-
-  // Photos of the newest upload for that week
-  let photos = lastRow.photos || [];
-  try {
-    const comments = await _kGetComments(lastRow.id);
-    const subs = comments.filter(c => c.text && c.text.startsWith('[submission] '));
-    if (subs.length) photos = JSON.parse(subs[subs.length - 1].text.slice(13)).photos || photos;
-  } catch (e) {}
-  if (seq !== _kLastSeq) return;
 
   const at    = _kAutoAt(lastRow);
   const label = lastRow.is_late ? '↑ Late proof' : '↑ In review';
@@ -1037,7 +1058,6 @@ async function _kRenderLastWeek(lastRow) {
       <span class="k-mob-status-chip submitted">${label}</span>
     </div>
     <div class="k-last__body">
-      <div class="k-last__photos">${_kPhotoStrip(photos)}</div>
       <div class="k-mob-week-acts">
         <button class="k-mob-wact green" onclick="kApprove('last')" aria-label="Approve last week"><i class="ti ti-circle-check"></i><span>Approve</span></button>
         <button class="k-mob-wact red"   onclick="kFlag('last')"    aria-label="Flag last week"><i class="ti ti-flag"></i><span>Flag</span></button>
