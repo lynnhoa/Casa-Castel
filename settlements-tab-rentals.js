@@ -604,9 +604,10 @@ function _srHvState(c, rec, sum) {
   const fristSoon = per.frist && per.frist <= _srAdd(today, 60);
   const wegL = c.weg ? _srLine(c, c.weg) : null;
   const wegSt = wegL ? wegL.state : null;
-  // K2 (50): a WEG result typed before this screen existed (old Tracking, no record) means the Jahresabrechnung is in
-  const oldWeg = !rec && !!(wegSt && wegSt.res);
-  const received = !!(rec && (rec.received_on || rec.hv_date)) || oldWeg;
+  // K2 (50): a WEG result typed before this screen existed (old Tracking: no record, or one with only 'asked HV') means the
+  // Jahresabrechnung is in — received on the result's date
+  const recvOn = rec && (rec.received_on || rec.hv_date), oldWeg = !recvOn && !!(wegSt && wegSt.res);
+  const received = !!recvOn || oldWeg;
   if (!received) {
     const over = exp ? today > exp.overdue : false;
     const line2 = exp ? (over ? 'overdue – expected ' + exp.label : 'expected around ' + exp.label) : 'expected – month not set';
@@ -618,7 +619,7 @@ function _srHvState(c, rec, sum) {
              pill: k === 'ueberfaellig' ? ['diff', word] : ['grey', 'expected'],
              line2: line2 + (asked.length ? ' · asked ' + stDate(asked[asked.length - 1]) : '') };
   }
-  const recv = 'received ' + stDate(oldWeg ? wegSt.res.date : rec.received_on || rec.hv_date);
+  const recv = 'received ' + stDate(oldWeg ? wegSt.res.date : recvOn);
   if (!sum.ok || !_srJaDone(rec, sum)) return { k: 'erfassen', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'to enter'], line2: recv + ' · not complete yet' };
   const wegSet = rec.weg_direction !== null && rec.weg_direction !== undefined;
   if (!wegSet && !(wegSt && wegSt.res)) return { k: 'weg', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'WEG result'], line2: recv + ' · WEG result missing' };
@@ -1523,7 +1524,7 @@ function _srCard5(info) {
   const hv = info.hv, rec = info.rec, wegSt = hv.wegSt, wRes = wegSt && wegSt.res;
   const bk = wegSt && wegSt.booking, bDate = bk && bk.invoice_date ? ' ' + stDe(bk.invoice_date) : '';
   let jaNet = null, jaD, jaS, jaWarn = false;
-  if (wRes && (hv.k === 'fertig' || hv.k === 'zahlung' || (hv.k === 'erfassen' && !rec))) {   // K2 (50): an old WEG result (no record) shows too
+  if (wRes && (hv.k === 'fertig' || hv.k === 'zahlung' || hv.k === 'erfassen')) {   // K2 (50): a stored WEG result shows (also an old one)
     jaNet = (wRes.dir || 0) * (wRes.amount || 0);
     const paidW = hv.k === 'fertig' || wegSt.k === 'erledigt';
     jaS = paidW ? (!jaNet ? 'settled' : (jaNet > 0 ? 'received' : 'paid') + bDate) : (jaNet > 0 ? 'not received yet' : 'not paid yet');
@@ -1731,11 +1732,16 @@ function _srMakeDraft(c) {
     const same = (a, b) => a.kind === b.kind && String(a.label || '') === String(b.label || '') && _srIsNkOnly(a) === _srIsNkOnly(b);
     d.positions = d.positions.concat(offer.filter(o => !d.positions.some(p => same(p, o))));
   }
-  // K2 (50): a WEG result typed before this screen existed (old Tracking, no record) → its step shows it; saving it again
-  // writes the same result (_srWriteWegNow: unchanged)
-  if (!rec && c.weg) {
+  // K2 (50): a WEG result typed before this screen existed (old Tracking) and no received date yet → the steps show it:
+  // received on the result's date, the result itself — the first save keeps both, and writes the same result again
+  // (_srWriteWegNow: unchanged)
+  if (!(rec && (rec.received_on || rec.hv_date)) && c.weg) {
     const r = _srLine(c, c.weg).state.res;
-    if (r) Object.assign(d, { weg_direction: r.dir || 0, weg_amount: r.dir ? r.amount : null, weg_due: _srD(r.db && r.db.due_date) || null, weg_via: r.via === 'hausgeld' ? 'hausgeld' : 'zahlung' });
+    if (r) {
+      if (!d.received_on && r.date) d.received_on = r.date;
+      if (d.weg_direction === null || d.weg_direction === undefined)
+        Object.assign(d, { weg_direction: r.dir || 0, weg_amount: r.dir ? r.amount : null, weg_due: _srD(r.db && r.db.due_date) || null, weg_via: r.via === 'hausgeld' ? 'hausgeld' : 'zahlung' });
+    }
   }
   return _srGewMark(c, d);
 }
@@ -1766,7 +1772,7 @@ function _srHvView(c) {
   const tu = tot(U), tn = tot(N), tt = cxR(tu + tn);
   const wDir = d.weg_direction === null || d.weg_direction === undefined ? null : Number(d.weg_direction);
   const wAmt = _srNum(d.weg_amount);
-  const jaDone = _srJaDone(rec, sum), settled = hv.k === 'fertig';
+  const jaDone = _srJaDone(rec, sum), settled = hv.k === 'fertig' || !!(hv.wegSt && hv.wegSt.res && hv.wegSt.k === 'erledigt');   // K2 (50)
   // ── the result (on top)
   const seg = '<div class="mx-seg" role="group" aria-label="Result with the WEG">' + [[-1, 'Nachzahlung', 'p'], [1, 'Guthaben', 'g'], [0, 'balanced', 'z']].map(([v, t, k]) =>
     '<button type="button" class="' + (wDir === v ? 'is-on is-' + k : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>';
