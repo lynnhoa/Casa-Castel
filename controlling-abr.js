@@ -494,7 +494,8 @@ function cxAbrSection(p, y, m, dir) {
     const label = r.legacy ? (r.legacy.item || r.legacy.kind) : r.res.label;
     const flip = d => (d > 0 ? 'Nachzahlung' : 'Guthaben');
     const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) +
-        (r.moved ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements' : ' · without Abrechnung')
+        (r.moved ? (r.moved.dir && r.moved.amount ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements'
+          : ' · the Abrechnung is now balanced') : ' · without Abrechnung')   // K2: was 'a Guthaben of 0,00 € – settle it again in Settlements', where nothing is left to settle
       : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)                        // #1: the payment kept (the extra ones: "booked twice" below)
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
         (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');

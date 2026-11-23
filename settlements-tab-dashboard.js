@@ -69,7 +69,8 @@ function sdRentals(Y) {
       if (r.k === 'sent' && r.st.confirm) s.steps.push({ o: 2, ic: 'check', t: 'Confirm settlement ' + (r.st.res.via === 'miete' ? 'with the rent' : 'via Kaution'), s: 'Rentals · ' + i.c.p.name + ' · ' + stEur(r.st.res.amount), go: { tab: 'rentals', ck: i.c.ck, view: 'settle', tid: String(r.it.r.id), y: Y } });
     }
     const hv = i.hv; if (!hv) continue;
-    if (hv.k === 'ueberfaellig') s.steps.push({ o: 1, ic: 'alert-circle', red: true, t: 'Jahresabrechnung overdue', s: 'Rentals · ' + i.c.p.name, go: { tab: 'rentals', ck: i.c.ck, view: 'hv', y: Y } });
+    if (hv.k === 'ueberfaellig') s.steps.push({ o: 1, ic: 'alert-circle', red: true, t: hv.over ? 'Jahresabrechnung overdue' : 'Jahresabrechnung not in yet', s: 'Rentals · ' + i.c.p.name + (hv.over ? '' : ' · Frist soon'),   // K2 (48)
+      go: { tab: 'rentals', ck: i.c.ck, view: 'hv', y: Y } });
     else if (hv.k === 'erfassen') s.steps.push({ o: 3, ic: 'pencil', t: 'Enter costs', s: 'Rentals · ' + i.c.p.name, go: { tab: 'rentals', ck: i.c.ck, view: 'hv', y: Y } });
     else if (hv.k === 'weg') s.steps.push({ o: 4, ic: 'scale', t: 'Enter the WEG result', s: 'Rentals · ' + i.c.p.name, go: { tab: 'rentals', ck: i.c.ck, view: 'hv', y: Y } });
   }
