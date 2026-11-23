@@ -599,21 +599,27 @@ function _srJaDone(rec, sum) {
 }
 function _srHvState(c, rec, sum) {
   const today = _srToday(), per = _srPer(c, rec);
-  const received = !!(rec && (rec.received_on || rec.hv_date));
   const exp = _srExpected(c);
   const asked = ((rec && rec.asked_on) || []).map(_srD).filter(Boolean).sort();
   const fristSoon = per.frist && per.frist <= _srAdd(today, 60);
   const wegL = c.weg ? _srLine(c, c.weg) : null;
   const wegSt = wegL ? wegL.state : null;
+  // K2 (50): a WEG result typed before this screen existed (old Tracking: no record, or one with only 'asked HV') means the
+  // Jahresabrechnung is in — received on the result's date
+  const recvOn = rec && (rec.received_on || rec.hv_date), oldWeg = !recvOn && !!(wegSt && wegSt.res);
+  const received = !!recvOn || oldWeg;
   if (!received) {
     const over = exp ? today > exp.overdue : false;
     const line2 = exp ? (over ? 'overdue – expected ' + exp.label : 'expected around ' + exp.label) : 'expected – month not set';
     const k = over || fristSoon ? 'ueberfaellig' : 'erwartet';
-    return { k, received, exp, asked, fristSoon, per, wegL, wegSt, todo: k === 'ueberfaellig', wait: k === 'erwartet',
-             pill: fristSoon ? ['diff', 'Frist soon'] : over ? ['diff', 'overdue'] : ['grey', 'expected'],
+    // K2 (48): 'overdue' only once the HV is really late (past its usual month, or the Frist passed) — before, 'Frist soon'
+    // (red, 'ask HV' and the to-do stay the same)
+    const late = over || (!!per.frist && per.frist < today), word = late ? 'overdue' : 'Frist soon';
+    return { k, received, exp, asked, fristSoon, per, wegL, wegSt, todo: k === 'ueberfaellig', wait: k === 'erwartet', word, over: late,
+             pill: k === 'ueberfaellig' ? ['diff', word] : ['grey', 'expected'],
              line2: line2 + (asked.length ? ' · asked ' + stDate(asked[asked.length - 1]) : '') };
   }
-  const recv = 'received ' + stDate(rec.received_on || rec.hv_date);
+  const recv = 'received ' + stDate(oldWeg ? wegSt.res.date : recvOn);
   if (!sum.ok || !_srJaDone(rec, sum)) return { k: 'erfassen', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'to enter'], line2: recv + ' · not complete yet' };
   const wegSet = rec.weg_direction !== null && rec.weg_direction !== undefined;
   if (!wegSet && !(wegSt && wegSt.res)) return { k: 'weg', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'WEG result'], line2: recv + ' · WEG result missing' };
@@ -1393,7 +1399,8 @@ function stRenderRentals() {
 
   // numbers for the year
   const live = infos.filter(i => i.k !== 'before');
-  const hvIn = live.filter(i => i.hv && i.hv.received).length, hvOver = live.filter(i => i.hv && i.hv.k === 'ueberfaellig').length;
+  const hvIn = live.filter(i => i.hv && i.hv.received).length;
+  const hvOver = live.filter(i => i.hv && i.hv.k === 'ueberfaellig' && i.hv.over).length, hvSoon = live.filter(i => i.hv && i.hv.k === 'ueberfaellig' && !i.hv.over).length;   // K2 (48)
   const hvExp = live.filter(i => i.hv && i.hv.k === 'erwartet').length;
   let nOpen = 0, nSent = 0, nSet = 0, nWait = 0; const owe = { toWeg: 0, fromWeg: 0, toTen: 0, fromTen: 0 };
   const S = srSummary(infos);                                   // one net amount per tile (shared with the Dashboard)
@@ -1417,7 +1424,7 @@ function stRenderRentals() {
     '<div class="sc-yr__t"><div class="sc-yr__m">' + SR.year + '</div><div class="sc-yr__s">' + nLive + (nLive === 1 ? ' apartment' : ' apartments') + ' · periods ending in ' + SR.year + '</div></div>' +
     '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
   const prog = stProgress({ done: nSet, sent: nSent, total: nOpen + nSent + nSet + nWait, open: nOpen,
-    first: hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') });
+    first: hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') + (hvSoon ? ' · <b class="rk-red">' + hvSoon + ' Frist soon</b>' : '') });
   // Nov 2026 · Hausgeld first, then Tenants (as in Casa Castel) · the "x of y in" count is in the ring
   const money = '<div class="st-money">' +
     stTile('Jahresabrechnungen', 'receipt', S.hg, '', 'data-sr="sumHg"') +
@@ -1517,13 +1524,14 @@ function _srCard5(info) {
   const hv = info.hv, rec = info.rec, wegSt = hv.wegSt, wRes = wegSt && wegSt.res;
   const bk = wegSt && wegSt.booking, bDate = bk && bk.invoice_date ? ' ' + stDe(bk.invoice_date) : '';
   let jaNet = null, jaD, jaS, jaWarn = false;
-  if (wRes && (hv.k === 'fertig' || hv.k === 'zahlung')) {
+  if (wRes && (hv.k === 'fertig' || hv.k === 'zahlung' || hv.k === 'erfassen')) {   // K2 (50): a stored WEG result shows (also an old one)
     jaNet = (wRes.dir || 0) * (wRes.amount || 0);
-    jaS = hv.k === 'fertig' ? (!jaNet ? 'settled' : (jaNet > 0 ? 'received' : 'paid') + bDate) : (jaNet > 0 ? 'not received yet' : 'not paid yet');
+    const paidW = hv.k === 'fertig' || wegSt.k === 'erledigt';
+    jaS = paidW ? (!jaNet ? 'settled' : (jaNet > 0 ? 'received' : 'paid') + bDate) : (jaNet > 0 ? 'not received yet' : 'not paid yet');
   } else if (hv.k === 'fertig') { jaNet = 0; jaS = 'settled'; }
   else if (hv.k === 'weg') { jaD = 'to enter'; jaS = 'enter the WEG result'; }
   else if (hv.k === 'erfassen') { jaD = 'to enter'; jaS = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDe(rec.received_on || rec.hv_date) : ''); }
-  else if (hv.k === 'ueberfaellig') { jaD = 'not in yet'; jaS = 'overdue · ask HV'; jaWarn = true; }
+  else if (hv.k === 'ueberfaellig') { jaD = 'not in yet'; jaS = hv.word + ' · ask HV'; jaWarn = true; }   // K2 (48): 'Frist soon' until really late
   else { jaD = c.running ? 'running' : 'not in yet'; jaS = c.running ? 'runs until ' + stDe(c.per.to) : (hv.exp ? 'expected ' + hv.exp.label : 'expected'); }
   const hgCost = info.sum && (info.sum.u || info.sum.nu) ? cxR((info.sum.u || 0) + (info.sum.nu || 0)) : null;
   const jaOk = _srJaDone(info.rec, info.sum), nkTot = jaOk ? _srNkCostTotal(info.rec, c.apt) : null;
@@ -1601,8 +1609,14 @@ function _srHistoryView(c) {
     const rec = _srRec(p, per);
     const letters = (SR.letters || []).filter(l => (l.app === 'rentals' || l.app === 'manual') && Number(l.property_id) === p.id && Number(l.year) === cy);
     if (per.to >= cxToday() && !res.length && !letters.length && !(rec && (rec.received_on || rec.hv_date))) return '';   // the running year: only once something exists
-    const wegTxt = weg ? _srWegWords(Number(weg.direction), Number(weg.amount), false).replace('pays you', 'paid you').replace('you pay the', 'you paid the')
-      : rec && (rec.received_on || rec.hv_date) ? 'Jahresabrechnung received ' + stDate(rec.received_on || rec.hv_date) : per.to >= cxToday() ? 'running' : 'no Jahresabrechnung entered';
+    // K2 (47): the WEG money in the words of the card — 'you pay the WEG 120,00 € · not paid yet' until it is paid or settled
+    // (was always in the past tense: 'you paid the WEG 120,00 €' for money still open)
+    let wegTxt;
+    if (weg) {
+      const wx = _srItemsFor(p, per).weg, wst = wx ? _srLine({ p, per, year: Y }, wx).state : null;
+      const wd = Number(weg.direction) || 0, wa = Number(weg.amount) || 0, done = !!(wst && wst.k === 'erledigt');
+      wegTxt = _srWegWords(wd, wa, done) + (done || !wd || !wa ? '' : wd > 0 ? ' · not received yet' : ' · not paid yet');
+    } else wegTxt = rec && (rec.received_on || rec.hv_date) ? 'Jahresabrechnung received ' + stDate(rec.received_on || rec.hv_date) : per.to >= cxToday() ? 'running' : 'no Jahresabrechnung entered';
     return '<div class="srm__card sr5-hy"><div class="sr5-hy__h"><span><b>NK ' + cy + '</b><small>' + stEsc(_srPerText(per.from, per.to)) + '</small></span>' +
       '<button class="cx-link" data-sr="histYear" data-y="' + Y + '">Open this year ›</button></div>' +
       '<div class="sc-li"><span>Jahresabrechnung</span><span class="sr5-hy__v">' + stEsc(wegTxt) + '</span></div>' +
@@ -1663,9 +1677,9 @@ function _srSumSheet(view) {
     if (hv.k === 'fertig') return Object.assign(base, amt, { g: 'done', sub: !w || !w.amount ? 'balanced · settled' : (w.dir > 0 ? 'received' : 'paid') + (bk && bk.invoice_date ? ' ' + stDe(bk.invoice_date) : '') });
     if (hv.k === 'zahlung') return Object.assign(base, amt, { g: 'money', sub: w && w.dir > 0 ? 'Guthaben · not received yet' : 'Nachzahlung · not paid yet' });
     if (hv.k === 'weg' || hv.k === 'erfassen') return Object.assign(base, amt, { g: 'enter', sub: hv.k === 'weg' ? 'costs entered · enter the WEG result' : 'received · enter the costs' });
-    const over = hv.k === 'ueberfaellig';
-    return Object.assign(base, { g: 'wait', sub: over ? 'overdue · ask HV' + (hv.exp ? ' · expected ' + hv.exp.label : '') : x.i.c.running ? 'runs until ' + stDe(x.i.c.per.to) : hv.exp ? 'expected ' + hv.exp.label : 'expected',
-                                 chip: over ? ['red', 'overdue'] : null });
+    const over = hv.k === 'ueberfaellig';                                  // K2 (48): 'Frist soon' until the HV is really late
+    return Object.assign(base, { g: 'wait', sub: over ? hv.word + ' · ask HV' + (hv.exp ? ' · expected ' + hv.exp.label : '') : x.i.c.running ? 'runs until ' + stDe(x.i.c.per.to) : hv.exp ? 'expected ' + hv.exp.label : 'expected',
+                                 chip: over ? ['red', hv.word] : null });
   });
   const nIn = rows.filter(r => r.g !== 'wait').length, nSet = rows.filter(r => r.g === 'done').length;
   return stSumSheet({ title: 'Jahresabrechnungen ' + SR.year, sub: 'Rentals · WEG · periods ending in ' + SR.year, net: S.hg, dots: { done: nSet, total: rows.length },
@@ -1706,10 +1720,28 @@ function _srMakeDraft(c) {
   const d = rec ? JSON.parse(JSON.stringify(rec)) : _srBlankRec(c);
   if (!d.period_from) { d.period_from = c.per.from; d.period_to = c.per.to; }
   d.keys = d.keys || {};
+  const prev = _srPrevRec(c.p, c.per), empty = p => Object.assign({}, p, { id: _srUid(), total: null, amount: null, key: 'direkt', ku: null, kt: null });
   if (!(d.positions || []).length) {
-    const prev = _srPrevRec(c.p, c.per);
-    if (prev && (prev.positions || []).length) d.positions = prev.positions.map(p => Object.assign({}, p, { id: _srUid(), total: null, amount: null, key: 'direkt', ku: null, kt: null }));
+    if (prev && (prev.positions || []).length) d.positions = prev.positions.map(empty);
     else d.positions = SR_STD_U.concat(SR_STD_NU).map(k => _srNewPos(k, d));
+  } else if (!_srJaDone(rec, _srRecSummary(rec, c.apt))) {
+    // K2 (55): not complete yet → last year's rows (or the standard list) are offered again, empty, next to what is saved —
+    // an automatic Grundsteuer row or one amount typed made them disappear · empty rows are never saved
+    const base = prev ? (prev.positions || []).filter(p => !p.auto) : [];
+    const offer = base.length ? base.map(empty) : SR_STD_U.concat(SR_STD_NU).map(k => _srNewPos(k, d));
+    const same = (a, b) => a.kind === b.kind && String(a.label || '') === String(b.label || '') && _srIsNkOnly(a) === _srIsNkOnly(b);
+    d.positions = d.positions.concat(offer.filter(o => !d.positions.some(p => same(p, o))));
+  }
+  // K2 (50): a WEG result typed before this screen existed (old Tracking) and no received date yet → the steps show it:
+  // received on the result's date, the result itself — the first save keeps both, and writes the same result again
+  // (_srWriteWegNow: unchanged)
+  if (!(rec && (rec.received_on || rec.hv_date)) && c.weg) {
+    const r = _srLine(c, c.weg).state.res;
+    if (r) {
+      if (!d.received_on && r.date) d.received_on = r.date;
+      if (d.weg_direction === null || d.weg_direction === undefined)
+        Object.assign(d, { weg_direction: r.dir || 0, weg_amount: r.dir ? r.amount : null, weg_due: _srD(r.db && r.db.due_date) || null, weg_via: r.via === 'hausgeld' ? 'hausgeld' : 'zahlung' });
+    }
   }
   return _srGewMark(c, d);
 }
@@ -1740,7 +1772,7 @@ function _srHvView(c) {
   const tu = tot(U), tn = tot(N), tt = cxR(tu + tn);
   const wDir = d.weg_direction === null || d.weg_direction === undefined ? null : Number(d.weg_direction);
   const wAmt = _srNum(d.weg_amount);
-  const jaDone = _srJaDone(rec, sum), settled = hv.k === 'fertig';
+  const jaDone = _srJaDone(rec, sum), settled = hv.k === 'fertig' || !!(hv.wegSt && hv.wegSt.res && hv.wegSt.k === 'erledigt');   // K2 (50)
   // ── the result (on top)
   const seg = '<div class="mx-seg" role="group" aria-label="Result with the WEG">' + [[-1, 'Nachzahlung', 'p'], [1, 'Guthaben', 'g'], [0, 'balanced', 'z']].map(([v, t, k]) =>
     '<button type="button" class="' + (wDir === v ? 'is-on is-' + k : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>';
@@ -1753,7 +1785,7 @@ function _srHvView(c) {
     settled });                                              // Nov 2026: the result on top, the work in three steps below
   // ── switch rows
   const recvSub = hv.received ? (d.hv_date ? 'statement ' + stDate(d.hv_date) : 'add the statement date below') :
-    (c.running ? 'period runs until ' + stDate(c.per.to) : (hv.k === 'ueberfaellig' ? '<b class="neg">overdue</b> · ' : '') + 'expected ' + (hv.exp ? '~' + stEsc(hv.exp.label) : '–') + (hv.asked.length ? ' · asked ' + hv.asked.map(stDM).join(', ') : ''));
+    (c.running ? 'period runs until ' + stDate(c.per.to) : (hv.k === 'ueberfaellig' ? '<b class="neg">' + stEsc(hv.word) + '</b> · ' : '') + 'expected ' + (hv.exp ? '~' + stEsc(hv.exp.label) : '–') + (hv.asked.length ? ' · asked ' + hv.asked.map(stDM).join(', ') : ''));
   const ask = !hv.received && mail && !c.running ? '<a class="mx-pill" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i>Ask HV</a>' : '';
   const rowRecv = stMRow({ icon: 'inbox', title: 'Jahresabrechnung received', sub: recvSub, on: !!hv.received,
     right: ask + '<input class="mx-date" type="date" data-srf="received_on" aria-label="Received on" value="' + stEsc(_srD(d.received_on) || '') + '"/>',
