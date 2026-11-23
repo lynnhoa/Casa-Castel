@@ -443,7 +443,9 @@ function sdCalcView() {
     '<button type="button" class="sc-tg' + (whole ? ' on' : '') + '" data-sd="whole" aria-pressed="' + whole + '"' + dis + '><span class="sc-tg__t"><b>Lived here the whole period</b><small>' +
       (whole ? stEsc(sdPerLabel(d) && fy ? '01.01.–31.12.' + fy : sdPerLabel(d)) : x.useDays + ' of ' + x.perDays + ' days · costs are split by days') + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>' +
     (whole ? '' : row('Lived', two('<input class="sd-in" type="date" data-sdf="use_from" value="' + stEsc(d.use_from || d.period_from || '') + '"' + dis + '/>', '<input class="sd-in" type="date" data-sdf="use_to" value="' + stEsc(d.use_to || d.period_to || '') + '"' + dis + '/>'))) +
-    scToggleSd('former', d.former, 'Former tenant', 'moved out · the letter says „ehemalige ' + (casa ? 'Zimmer' : 'Wohnung') + '“', !sent) + '</div>';
+    // K2 (44, owner 23.11.2026): no 'Former tenant' switch — it promised „ehemalige Wohnung / Zimmer“, which the letter never
+    // says. A tenant picked from the app who has moved out is known (sdPickTenant): the letter asks for his account for a Guthaben
+    '</div>';
   // 3 · costs
   const used = new Set((d.lines || []).map(l => String(l.label || '').trim().toLowerCase()));
   const qa = sent ? '' : '<div class="sc-qa">' + SD_QUICK.filter(q => !used.has(q.toLowerCase())).map(q => '<button type="button" class="sc-qa__b" data-sd="qa" data-l="' + stEsc(q) + '"><i class="ti ti-plus" aria-hidden="true"></i>' + stEsc(q) + '</button>').join('') +
@@ -556,7 +558,9 @@ function sdInput(e) {
   }
   if (el.dataset.sdf === 'address1') { d.address = el.value.split(/\s*,\s*/).filter(Boolean).join('\n'); SD.dirty = true; return sdTotals(); }
   if (el.dataset.sdf && ['tenant_name', 'address', 'iban', 'title_name', 'letter_date'].includes(el.dataset.sdf)) {
-    const f = el.dataset.sdf; d[f] = el.value; SD.dirty = true;
+    const f = el.dataset.sdf;
+    if (f === 'tenant_name' && d.tenant_ref) SD.leftPick = { d, name: d.tenant_name };   // K2 (44): the app tenant this name was
+    d[f] = el.value; SD.dirty = true;
     if (f === 'tenant_name') d.tenant_ref = '';                     // typed by hand → no longer the app's tenant
     return sdTotals();
   }
@@ -566,7 +570,11 @@ function sdChange(e) {
   const f = el.dataset.sdf;
   if (f === 'tenant_name') {                                       // a known tenant → fill address, days and NK
     const t = sdTenants(d).find(z => [z.first_name, z.last_name].filter(Boolean).join(' ').toLowerCase() === String(el.value).trim().toLowerCase());
+    const left = SD.leftPick && SD.leftPick.d === d ? SD.leftPick : null; SD.leftPick = null;
     if (t) { sdPickTenant(d, t); SD.dirty = true; return sdRenderModal(); }
+    // K2 (44): a tenant picked from the app, replaced by another name typed by hand → his move-out no longer counts (the
+    // letter: 'auf das bekannte Konto', or type the IBAN) · a draft typed by hand keeps what it was saved with
+    if (left && String(left.name || '').trim().toLowerCase() !== String(el.value).trim().toLowerCase()) d.former = false;
     d.tenant_ref = ''; return;
   }
   if (!f || ['address', 'address1', 'iban', 'title_name'].includes(f)) return;
@@ -574,6 +582,7 @@ function sdChange(e) {
   if (f === 'property_id') {
     if (el.value === 'other') { d.property_id = null; d.title_name = d.title_name || ' '; }
     else { d.property_id = el.value ? Number(el.value) : null; d.title_name = ''; }
+    if (d.tenant_ref) d.former = false;                            // K2 (44): the tenant picked from the app is left
     d.unit_label = ''; d.tenant_ref = '';
     if (!d.address) d.address = '';
     return sdRenderModal();
