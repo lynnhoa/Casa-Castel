@@ -558,8 +558,10 @@ function sdInput(e) {
   }
   if (el.dataset.sdf === 'address1') { d.address = el.value.split(/\s*,\s*/).filter(Boolean).join('\n'); SD.dirty = true; return sdTotals(); }
   if (el.dataset.sdf && ['tenant_name', 'address', 'iban', 'title_name', 'letter_date'].includes(el.dataset.sdf)) {
-    const f = el.dataset.sdf; d[f] = el.value; SD.dirty = true;
-    if (f === 'tenant_name') { d.tenant_ref = ''; d.former = false; }   // typed by hand → no longer the app's tenant (K2 44: nor his move-out)
+    const f = el.dataset.sdf;
+    if (f === 'tenant_name' && d.tenant_ref) SD.leftPick = { d, name: d.tenant_name };   // K2 (44): the app tenant this name was
+    d[f] = el.value; SD.dirty = true;
+    if (f === 'tenant_name') d.tenant_ref = '';                     // typed by hand → no longer the app's tenant
     return sdTotals();
   }
 }
@@ -568,15 +570,20 @@ function sdChange(e) {
   const f = el.dataset.sdf;
   if (f === 'tenant_name') {                                       // a known tenant → fill address, days and NK
     const t = sdTenants(d).find(z => [z.first_name, z.last_name].filter(Boolean).join(' ').toLowerCase() === String(el.value).trim().toLowerCase());
+    const left = SD.leftPick && SD.leftPick.d === d ? SD.leftPick : null; SD.leftPick = null;
     if (t) { sdPickTenant(d, t); SD.dirty = true; return sdRenderModal(); }
-    d.tenant_ref = ''; d.former = false; return;
+    // K2 (44): a tenant picked from the app, replaced by another name typed by hand → his move-out no longer counts (the
+    // letter: 'auf das bekannte Konto', or type the IBAN) · a draft typed by hand keeps what it was saved with
+    if (left && String(left.name || '').trim().toLowerCase() !== String(el.value).trim().toLowerCase()) d.former = false;
+    d.tenant_ref = ''; return;
   }
   if (!f || ['address', 'address1', 'iban', 'title_name'].includes(f)) return;
   SD.dirty = true;
   if (f === 'property_id') {
     if (el.value === 'other') { d.property_id = null; d.title_name = d.title_name || ' '; }
     else { d.property_id = el.value ? Number(el.value) : null; d.title_name = ''; }
-    d.unit_label = ''; d.tenant_ref = ''; d.former = false;
+    if (d.tenant_ref) d.former = false;                            // K2 (44): the tenant picked from the app is left
+    d.unit_label = ''; d.tenant_ref = '';
     if (!d.address) d.address = '';
     return sdRenderModal();
   }
