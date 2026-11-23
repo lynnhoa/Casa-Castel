@@ -81,7 +81,8 @@ const _srKind = k => SR_KINDS.find(x => x.k === k) || SR_KINDS.find(x => x.k ===
    Nicht umlagefähig) counts as that cost at once — its sign, Umlagefähig and (Heizkosten, Warmwasser) its consumption split,
    the rule the save maps it with (_srCleanRec, _srHvSave4); was: only the saved copy, the open window kept the row's old ones
    until reopened. A saved row keeps no list name as its label (the save maps it), so saved records compute as before ·
-   an automatic row (Grundsteuer, a receipt marked for the NK, stored as it came) keeps its own kind */
+   an automatic row (Grundsteuer, a receipt marked for the NK) is left out of the name rule: it counts by the kind it is
+   stored with (the sync stores it with its receipt name, a later save may map that name), so no stored record changes */
 const _srByName = l => l ? SR_KINDS.find(x => x.l.toLowerCase() === String(l).toLowerCase()) || null : null;
 const _srNamed = p => p && p.label && !p.auto ? _srByName(p.label) : null;
 const _srKindOf = p => _srNamed(p) || _srKind(p.kind);
