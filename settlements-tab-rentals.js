@@ -902,19 +902,25 @@ function _srQueueTenantSave(rec) {
 
 /* 4 · PDF letter ─────────────────────────────────────────── */
 /* K2 (38): the copy kept of a sent line's letter (nk_letters, newest first — the one History opens), else null. A result made
-   with 'NK-Abrechnung erstellen' opens that letter (manL in _srTenView); a copy for another result is not this letter */
-function _srSentLetter(c, it) {
+   with 'NK-Abrechnung erstellen' opens that letter (manL in _srTenView); a copy for another result is not this letter, nor
+   one made before this letter was marked as sent (ts.as_sent.at) — that copy went out with a letter withdrawn with undo. A
+   letter sent before as_sent.at was kept: a copy only while the line was never undone (else drawn again, as before) */
+function _srSentLetter(c, it, ts) {
   const res = it ? _srLine(c, it).state.res : null;
   if (!res || (res.db && res.db.source === 'manual')) return null;
+  const at = ts && ts.as_sent && Date.parse(ts.as_sent.at), from = _srD(it.r.period_from);
+  if (!at && (window._src.abr || []).some(a => a && a.status === 'storniert' && a.kind === 'nk_tenant' && (!a.app || a.app === 'rentals') &&
+    Number(a.property_id) === Number(c.p.id) && String(a.tenant_id) === String(it.r.tenant_id) && _srD(a.period_from) === from)) return null;
   return (SR.letters || []).find(l => l.app === 'rentals' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') &&
-    _srD(l.period_from) === _srD(it.r.period_from) && (Number(l.direction) || 0) === (Number(res.dir) || 0) && Math.abs((Number(l.amount) || 0) - (Number(res.amount) || 0)) < 0.005) || null;
+    _srD(l.period_from) === from && (Number(l.direction) || 0) === (Number(res.dir) || 0) && Math.abs((Number(l.amount) || 0) - (Number(res.amount) || 0)) < 0.005 &&
+    (!at || Date.parse(l.sent_at) >= at)) || null;
 }
 async function _srPdf(btn) {
   const got = _srCollectTenant(); if (!got) return;
   const { c, it, rec, ts } = got;
   // K2 (38): a sent letter opens its archived copy — the letter that went out, as the History opens it (was: drawn again from
   // the costs as they are now: 1.200 € / 500 € instead of the 1.080 € / 620 € sent). None archived → drawn again, dated as sent
-  const L = _srSentLetter(c, it);
+  const L = _srSentLetter(c, it, ts);
   if (L) { await _srOpenLetter(L.id); return; }
   if (_srKauWait(_srLine(c, it).state, _srTenantOf(it.r))) return;   // S3: the held part is not known yet (no PDF offered)
   if (_srGewDrawnOff(c, rec)) return;
@@ -1091,7 +1097,7 @@ async function _srSendNow(btn, got, key) {
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   // K2 (38): the figures of this letter, saved with the settings below — the sent line keeps showing them (_srAsSent)
-  ts.as_sent = { sum: x.sum, vz: x.vz, src: _srVzSrc(x), lines: x.lines.map(ln => _srLnTxt(x, ln).concat([ln.amt])) };
+  ts.as_sent = { at: new Date().toISOString(), sum: x.sum, vz: x.vz, src: _srVzSrc(x), lines: x.lines.map(ln => _srLnTxt(x, ln).concat([ln.amt])) };
   const l = _srLine(c, it), r = it.r, t = x.t;
   const amount = Math.abs(x.saldo), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0;
   // B20: with a Kaution-Einbehalt the result is settled with the Kaution (Nachzahlung, Guthaben or 0 €) and Controlling
@@ -1499,7 +1505,7 @@ function stRenderRentals() {
   // Nov 2026 · Hausgeld first, then Tenants (as in Casa Castel) · the "x of y in" count is in the ring
   const money = '<div class="st-money">' +
     stTile('Jahresabrechnungen', 'receipt', S.hg, '', 'data-sr="sumHg"') +
-    stTile('NK-Abrechnungen', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
+    stTile('NK-Abrechnungen', 'users', S.ten, S.wait ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
   const next = _srNextSteps(live);
   const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
   cxPaint(el, '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
@@ -1569,6 +1575,8 @@ function srSummary(infos) {
   });
   if (any) S.ten = cxR(tn);
   if (anyHg) S.hg = cxR(hg);
+  // K2 (49): 'waiting' only while a tenant has no amount yet (was: also when every tenant is skipped — the sheet listed them as settled)
+  S.wait = S.ten === null && (!S.tenAll.length || S.tenAll.some(x => x.v === null && !x.r.skipped));
   return S;
 }
 function _srWegWords(dir, amount, done) {
@@ -1625,7 +1633,7 @@ function _srCard5(info) {
   h += '<div class="sr5-bx">' +
     mini('openHv', 'receipt', 'Jahresabrechnung', jaNet, jaD, [[jaS, jaWarn ? 'is-warn' : ''], [hgCost !== null ? 'Hausgeld costs ' + stEur(hgCost) : '', 'sr5-mini__c']]) +
     mini('openNk', 'users', 'NK-Abrechnung', nkNet, nkD, [[nkS, ''], [nkTot !== null ? 'NK costs ' + stEur(nkTot) : '', 'sr5-mini__c']]) + '</div>';
-  const oneTen = T5.length === 1;                               // one tenant: the amount is in the NK box, the line shows who and when
+  const oneTen = T5n.length === 1;                              // one tenant counted (K2 45: a skipped one is not): the amount is in the NK box, the line shows who and when
   for (const r of info.rows) h += _srTenLine(c, r, oneTen);
   return h + '</div>';
 }
@@ -1743,7 +1751,7 @@ function _srSumSheet(view) {
     const action = '';                                       // Nov 2026: each line opens its tenant — a button for the first one was the same way in
     const nSet = rows.filter(r => r.k === 'settled').length, nAll = rows.length;
     return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action, dots: { done: nSet, total: nAll },
-      sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
+      sub2: (S.wait ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back')) + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
       groups: [{ title: 'To send', count: true, rows: rows.filter(r => r.k === 'open') }, { title: 'Waiting for money', count: true, rows: rows.filter(r => r.k === 'sent') },
                { title: 'Not yet', count: true, rows: rows.filter(r => r.k === 'waiting') }, { title: 'Settled', count: true, rows: rows.filter(r => r.k === 'settled') }] }, close);
   }
@@ -2251,7 +2259,7 @@ function _srTenView(c) {
   // K2: sent with 'NK-Abrechnung erstellen' (Dashboard) → that archived letter opens, not one drawn from this calculation
   const manL = sent && ti.st.res.db && ti.st.res.db.source === 'manual' ? (SR.letters || []).find(l => l.app === 'manual' && Number(l.property_id) === Number(c.p.id) && String(l.tenant_id || '') === String(it.r.tenant_id || '') && _srD(l.period_from) === _srD(it.r.period_from)) : null;
   const pdf = manL ? stTpBtn('data-sr="letterOpen" data-id="' + stEsc(manL.id) + '"', 'file-text', 'Open letter (PDF)', false, false)
-    : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing && !_srSentLetter(c, it));   // K2 (38): the copy kept opens (_srPdf)
+    : stTpBtn('data-sr="pdf" data-cc-pdf="1"', 'file-text', 'Open letter (PDF)', false, !!x.missing && !_srSentLetter(c, it, ti.ts));   // K2 (38): the copy kept opens (_srPdf)
   const s1 = { n: 1, state: sent ? 'done' : 'open', title: 'Letter',
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
