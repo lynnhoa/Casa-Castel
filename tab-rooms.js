@@ -2211,7 +2211,10 @@ async function _roomRestoreContractDraft() {
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', jahres:'Jahresvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + room.name,
     ts: d.ts,
     onContinue: () => _roomReopenContractDraft(ccDraftGet(_ROOM_DRAFT_KEY) || d),
-    onDiscard:  () => ccDraftClear(_ROOM_DRAFT_KEY),
+    onDiscard:  () => {
+      ccDraftClear(_ROOM_DRAFT_KEY);
+      if (d.meta.type === 'ueberg' && typeof ccUbForget === 'function') ccUbForget('room-ub', d.meta.roomId + ':' + d.meta.euLabel);   // its photos go too
+    },
   });
 }
 async function _roomReopenContractDraft(d) {
@@ -2275,7 +2278,7 @@ function _contractBodyUeberg(room, isEinzug) {
   </section>
   <section class="cg-sec"><h3 class="cg-h">Notizen &amp; Fotos</h3>
     ${ta('ub-bemerkungen', 'Allgemeine Bemerkungen', 'Sonstige Anmerkungen …')}
-    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('room-ub') : ''}
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('room-ub', room.id + ':' + (isEinzug ? 'Einzug' : 'Auszug')) : ''}
   </section>
   <section class="cg-sec"><h3 class="cg-h">Options</h3>
     ${f('ub-sig', 'Unterzeichnungsdatum', 'type="date" onclick="try{this.showPicker()}catch(e){}"', 'optional — leave empty to sign by hand')}

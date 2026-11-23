@@ -673,7 +673,8 @@ let _ccfDraft = null;     // { body, sig, blob, payload, seen }
 function ccfSig(bodyId) {
   const b = document.getElementById(bodyId);
   if (!b || typeof ccDraftSnapshot !== 'function') return '';
-  try { return JSON.stringify(ccDraftSnapshot(b)); } catch (e) { return ''; }
+  // + the Übergabe photos (cc-ueberg-photos.js: a hidden field without id — never filled in from a draft)
+  try { return JSON.stringify(ccDraftSnapshot(b)) + [...b.querySelectorAll('input.ccub-sig')].map(x => x.value).join(''); } catch (e) { return ''; }
 }
 function ccfDraftBegin(bodyId, read) { _ccfPend = { body: bodyId, read }; ccfFormFlush(); }
 if (typeof window !== 'undefined') {
@@ -783,6 +784,10 @@ function _ccfSrvDel(key) {
   sbL.from('contract_drafts').delete().eq('app', ccfA().app).eq('form_key', key).then(r => { if (r && r.error) _ccfSrvFail(r.error); }, _ccfSrvFail);
 }
 function ccfFormClear(key) { if (!key) return; try { localStorage.removeItem(key); } catch (e) {} _ccfSrvDel(key); }
+/* The Übergabe photos stay with the form until Approve or Cancel too (cc-ueberg-photos.js, memory only) */
+function _ccfForgetPhotos(b) {
+  if (b && typeof ccUbForget === 'function') b.querySelectorAll('[data-ccub]').forEach(x => ccUbForget(x.dataset.ccub));
+}
 
 /* A saved form never breaks the generator: a tenancy that no longer exists and an
    empty rent are left out (the current values stay); derived switches are not replayed */
@@ -889,7 +894,7 @@ if (typeof document !== 'undefined') {
     const t = e.target && e.target.closest ? e.target : null; if (!t) return;
     if (t.closest('#contractCancelBtn, #aptContractCancelBtn, #pkContractCancelBtn')) {
       const g = _ccfOpenGen(); const b = g && document.getElementById(g.body);
-      if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); b._ccfTyped = false; }
+      if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); _ccfForgetPhotos(b); b._ccfTyped = false; }
       _ccfDraft = null;
     } else if (t.closest('#contractClose, #aptContractClose, #pkContractClose')) {
       ccfFormFlush();
@@ -1122,7 +1127,7 @@ async function ccfApproveRun() {
     }
     const who = ccfName(pl.rec);
     ccfSummaryClose();
-    { const g = _ccfOpenGen(); const b = g && document.getElementById(g.body); if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); b._ccfTyped = false; } }
+    { const g = _ccfOpenGen(); const b = g && document.getElementById(g.body); if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); _ccfForgetPhotos(b); b._ccfTyped = false; } }
     _ccfDraft = null;
     ccfA().afterApprove();
     await ccfA().reload();

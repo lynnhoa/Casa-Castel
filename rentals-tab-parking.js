@@ -1009,7 +1009,10 @@ async function _pkRestoreContractDraft() {
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + (pk.name || 'Parking'),
     ts: d.ts,
     onContinue: () => _pkReopenContractDraft(ccDraftGet(_PK_DRAFT_KEY) || d),
-    onDiscard:  () => ccDraftClear(_PK_DRAFT_KEY),
+    onDiscard:  () => {
+      ccDraftClear(_PK_DRAFT_KEY);
+      if (d.meta.type === 'ueberg' && typeof ccUbForget === 'function') ccUbForget('pk-ub', d.meta.pkId + ':' + d.meta.euLabel);   // its photos go too
+    },
   });
 }
 async function _pkReopenContractDraft(d) {
@@ -1336,7 +1339,7 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
       <label>Allgemeine Bemerkungen</label>
       <textarea class="rm-input" id="pk-ub-bemerkungen" rows="2" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
-    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('pk-ub') : ''}
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('pk-ub', spot.id + ':' + (isEinzug ? 'Einzug' : 'Auszug')) : ''}
     <div class="rm-field" style="margin-top:4px">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
       <input class="rm-input" id="pk-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
