@@ -4133,7 +4133,7 @@ function mtSbThumbs() {
   });
   fill();
   const need = imgs.filter(i => !i.getAttribute('src')).flatMap(i => [i.dataset.thumb, i.dataset.path]);
-  if (need.length) mtPrepareLinks(need).then(fill);
+  if (need.length) mtPrepareLinks(need).then(() => { fill(); if (typeof ccUbViewRefresh === 'function') ccUbViewRefresh(); });   // a new photo also in the open large view
 }
 /* Photos: one row each — thumbnail (number in the report) · Beschreibung · in the report yes / no */
 function mtSbPhotosRender() {
@@ -4221,9 +4221,9 @@ function mtSbCamera() {
   mtSbCapsFlush();
   const up = { caseId: c.id, total: 0, done: 0, where: 'sb' };
   const queue = [], thumbs = [];
-  let open = true, running = false, ok = 0;
+  let open = true, running = false, ok = 0, pending = 0;
   const end = () => {                                        // camera closed and every photo stored
-    if (open || running || queue.length || MT.up !== up) return;
+    if (open || running || pending || queue.length || MT.up !== up) return;
     MT.up = null;
     mtSbPhotosRender();
     if (!up.total) return;
@@ -4254,38 +4254,51 @@ function mtSbCamera() {
     mtSbPhotosRender();
     pump();
   };
+  const shot = fn => async (...a) => {                       // "Done" during a shot still waits for that photo
+    pending++;
+    try { await fn(...a); } finally { pending--; end(); }
+  };
   const opened = ccUbCamera({ en: true,
     list: () => thumbs,
     alive: () => !!(MT.sb && String(MT.sb.caseId) === String(c.id) && document.getElementById('mtSbModal')),
-    onShot: async (cv, ts) => {
+    onShot: shot(async (cv, ts) => {
       const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82));
       if (!blob) return;
       const d = new Date(ts), two = n => String(n).padStart(2, '0');
       const name = `Photo ${ccDayOf(d)} ${two(d.getHours())}.${two(d.getMinutes())}.${two(d.getSeconds())}.jpg`;
       add(new File([blob], name, { type: 'image/jpeg', lastModified: ts }), ts, await _ccUbThumb(cv));
-    },
-    onFile: async (file, ts) => {                           // camera blocked: one photo from the iPhone camera
+    }),
+    onFile: shot(async (file, ts) => {                      // camera blocked: one photo from the iPhone camera
       if (!mtIsImage(file)) return;
       const u = URL.createObjectURL(file);
       let t = '';
       try { t = await _ccUbThumb(u); } catch (e) {} finally { URL.revokeObjectURL(u); }
       add(file, ts, t);
-    },
+    }),
     onClose: () => { open = false; end(); },
   });
   if (opened) MT.up = up;                                    // nothing else uploads while the camera is open
 }
-/* Tap on a photo: the large view (cc-ueberg-photos.js) — swipe through the photos of the list, Delete asks in its row */
+/* Tap on a photo: the large view (cc-ueberg-photos.js) — swipe through the photos of the list, Delete asks in its row.
+   It stays on the photo shown when an upload is sorted in; the header has the photo's number in the list.
+   While the PDF is made the list stays as it is (as its ✕). */
 function mtSbView(id) {
   const c = mtSbCase();
-  if (!c || !MT.sb || typeof ccUbView !== 'function') return;
+  if (!c || !MT.sb || MT.sb.busy || typeof ccUbView !== 'function') return;
   mtSbCapsFlush();
   const list = () => (MT.sb && String(MT.sb.caseId) === String(c.id) ? mtSbPhotos(c) : []);
   const src = p => (p ? mtLinkNow(p.file_path) || mtLinkNow(mtThumbPath(p.file_path)) || '' : '');
   ccUbView({ en: true, ask: true,
     n: () => list().length,
+    id: j => { const p = list()[j]; return p ? String(p.id) : null; },
+    title: j => {
+      const ps = list(), p = ps[j]; if (!p) return '';
+      if (p.in_report === false) return 'Not in the report';
+      const on = ps.filter(x => x.in_report !== false), k = on.indexOf(p) + 1;
+      return on.length > 1 ? `Photo ${k} of ${on.length}` : `Photo ${k}`;
+    },
     src: j => src(list()[j]),
-    del: j => { const p = list()[j]; if (p && !MT.sb.busy) mtSbDelPhoto(p.id); },
+    del: (j, pid) => { const p = list().find(x => String(x.id) === pid); if (p && MT.sb && !MT.sb.busy) mtSbDelPhoto(p.id); },
   }, list().findIndex(p => String(p.id) === String(id)));
   mtPrepareLinks(list().map(p => p.file_path)).then(() => { if (typeof ccUbViewRefresh === 'function') ccUbViewRefresh(); });
 }

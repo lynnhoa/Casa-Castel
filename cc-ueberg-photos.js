@@ -197,6 +197,7 @@ function ccUbCamera(o) {
     <input type="file" accept="image/*" capture="environment" hidden/>`;
   document.body.appendChild(el);
   Object.assign(_ccUbCam, { o, el, busy: false });
+  el.addEventListener('pointerdown', _ccUbTapAt, true);
   el.addEventListener('click', e => {
     const b = e.target.closest('[data-cam]'); if (!b) return;
     if (b.dataset.cam === 'snap') _ccUbCamSnap(); else ccUbCamClose();
@@ -319,6 +320,7 @@ function ccUbCamClose() {
   window.removeEventListener('keydown', _ccUbCamKey, true);
   if (_ccUbCam.el) _ccUbCam.el.remove();
   _ccUbCam.el = null;
+  _ccUbGhost();
   try { if (o.onClose) o.onClose(); } catch (e) { console.error('[Kamera]', e); }
 }
 function _ccUbCamKey(e) {
@@ -338,9 +340,11 @@ window.addEventListener('pagehide', () => { if (_ccUbCam.o) _ccUbCamStop(); });
 window.addEventListener('pageshow', () => { if (_ccUbCam.o && document.visibilityState === 'visible') _ccUbCamStart(); });
 
 /* ── LARGE VIEW: swipe or ‹ › · delete (Übergabe + Maintenance) ──
-   o = { en, n(), src(i), cap: { get(i), set(i, v) } | null, del(i), ask }
-   cap: the Beschreibung of the photo shown (Übergabe) · ask: delete asks in its row first (Maintenance) */
-const _ccUbV = { o: null, i: 0, busy: false, ask: false, drag: false };
+   o = { en, n(), src(i), id(i)?, title(i)?, cap: { get(i), set(i, v) } | null, del(i, id), ask }
+   cap: the Beschreibung of the photo shown (Übergabe) · ask: delete asks in its row first (Maintenance)
+   id: the view stays on the photo shown when the list changes under it (Maintenance: an upload sorted in)
+   title: own header (Maintenance: the photo's number in the report, as in the list) */
+const _ccUbV = { o: null, i: 0, id: null, ids: [], busy: false, ask: false, drag: false, stale: false, delAt: 0 };
 
 const _CCUB_CHEV = d => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d < 0 ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'}"/></svg>`;
@@ -354,11 +358,12 @@ function ccUbView(o, i) {
   if (!o || !(i >= 0 && i < o.n())) return;
   ccUbSheetClose();
   _ccUbStyles();
-  Object.assign(_ccUbV, { o, i, busy: false, ask: false, drag: false });
+  Object.assign(_ccUbV, { o, i, id: null, ids: [], busy: false, ask: false, drag: false, stale: false, delAt: 0 });
   const L = _ccUbVL(o.en);
   const ov = document.createElement('div');
   ov.className = 'ccub-ov';
   ov.id = 'ccubSheet';
+  ov.addEventListener('pointerdown', _ccUbTapAt, true);
   ov.addEventListener('click', e => { if (e.target === ov) ccUbSheetClose(); });
   ov.innerHTML = `
     <div class="ccub-sheet" role="dialog" aria-modal="true">
@@ -401,14 +406,37 @@ function ccUbOpenSheet(key, i) {
   }, i);
 }
 
-/* Fill again (Maintenance: once the photo links are ready, an upload arrived) — not under a moving finger */
-function ccUbViewRefresh() { if (_ccUbV.o && !_ccUbV.busy && !_ccUbV.drag) _ccUbFill(); }
+/* Fill again (Maintenance: once the photo links are ready, an upload arrived) — not under a moving finger:
+   then right after it. The photo shown stays on screen, also when the list is sorted anew. */
+function ccUbViewRefresh() {
+  if (!_ccUbV.o) return;
+  if (_ccUbV.busy || _ccUbV.drag) { _ccUbV.stale = true; return; }
+  _ccUbSync();
+  _ccUbFill();
+}
+/* where a photo is in the list now (-1: gone) */
+function _ccUbIdx(id) {
+  const o = _ccUbV.o; if (!o || !o.id || id == null) return -1;
+  for (let j = 0, n = o.n(); j < n; j++) if (o.id(j) === id) return j;
+  return -1;
+}
+/* the list changed: back to the photo shown — if it is gone, the one now in its place (a question asked on it goes) */
+function _ccUbSync() {
+  const o = _ccUbV.o; if (!o || !o.id || _ccUbV.id == null) return;
+  const j = _ccUbIdx(_ccUbV.id);
+  if (j >= 0) _ccUbV.i = j; else _ccUbV.ask = false;
+}
 
 /* the 3 slides = previous · this · next photo; header, arrows, Beschreibung and buttons follow */
 function _ccUbFill() {
   const ov = document.getElementById('ccubSheet'), o = _ccUbV.o; if (!ov || !o) return;
-  const n = o.n(), i = _ccUbV.i, L = _ccUbVL(o.en);
-  if (i >= n) return;
+  const n = o.n();
+  if (!n) { ccUbSheetClose(true); return; }               // no photo left
+  if (_ccUbV.i >= n) _ccUbV.i = n - 1;
+  const i = _ccUbV.i, L = _ccUbVL(o.en);
+  _ccUbV.stale = false;
+  _ccUbV.id = o.id ? o.id(i) : null;                      // the photo on screen and its neighbours
+  _ccUbV.ids = o.id ? [i - 1, i, i + 1].map(j => (j >= 0 && j < n ? o.id(j) : null)) : [];
   const track = ov.querySelector('.ccub-v__track');
   [...track.children].forEach((s, k) => {
     const j = i - 1 + k, img = s.firstElementChild, u = j >= 0 && j < n ? o.src(j) : '';
@@ -417,7 +445,7 @@ function _ccUbFill() {
   });
   track.style.transition = 'none';
   track.style.transform = 'translate3d(-100%,0,0)';
-  const label = L.title(i + 1, n);
+  const label = o.title ? o.title(i) : L.title(i + 1, n);
   ov.querySelector('.ccub-sheet__ttl').textContent = label;
   ov.querySelector('.ccub-sheet').setAttribute('aria-label', label);
   ov.querySelector('.ccub-v__nav--prev').hidden = i === 0;
@@ -438,15 +466,18 @@ function _ccUbFill() {
 /* keep what is typed in the Beschreibung of the photo on screen */
 function _ccUbKeepCap() {
   const o = _ccUbV.o, inp = document.getElementById('ccubSheetCap');
-  if (!o || !o.cap || !inp || _ccUbV.i >= o.n()) return;
+  if (!o || !o.cap || !inp) return;
+  const i = o.id ? _ccUbIdx(_ccUbV.id) : _ccUbV.i;
+  if (!(i >= 0 && i < o.n())) return;
   const v = inp.value.trim();
-  if (v !== o.cap.get(_ccUbV.i)) o.cap.set(_ccUbV.i, v);
+  if (v !== o.cap.get(i)) o.cap.set(i, v);
 }
 
 /* ‹ › and swipe: one photo back / on (stops at the first / last — no jump round) */
 function ccUbSheetStep(d) {
   const ov = document.getElementById('ccubSheet'), o = _ccUbV.o; if (!ov || !o || _ccUbV.busy) return;
-  const to = _ccUbV.i + d;
+  if (_ccUbV.stale) { _ccUbKeepCap(); _ccUbSync(); _ccUbFill(); if (!_ccUbV.o) return; }   // the list changed under the finger
+  const to = _ccUbV.i + d, toId = o.id ? _ccUbV.ids[d > 0 ? 2 : 0] : null;   // the photo that slides in
   const track = ov.querySelector('.ccub-v__track');
   if (to < 0 || to >= o.n()) {                            // the end: spring back
     track.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
@@ -463,6 +494,7 @@ function ccUbSheetStep(d) {
     // move the slide that is now on screen into the middle (no reload, no flash)
     if (d > 0) track.appendChild(track.firstElementChild); else track.insertBefore(track.lastElementChild, track.firstElementChild);
     _ccUbV.i = to;
+    const j = _ccUbIdx(toId); if (j >= 0) _ccUbV.i = j;   // the list changed during the slide
     _ccUbFill();
   };
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
@@ -493,10 +525,11 @@ function _ccUbSwipe(box) {
   }, { passive: false });
   const up = () => {
     _ccUbV.drag = false;
-    if (dir !== 'x') { dir = null; return; }
+    if (dir !== 'x') { dir = null; if (_ccUbV.stale) ccUbViewRefresh(); return; }
     dir = null;
     const fast = Math.abs(dx) > 20 && Date.now() - t0 < 250;
     if (Math.abs(dx) > 50 || fast) ccUbSheetStep(dx < 0 ? 1 : -1);
+    else if (_ccUbV.stale) ccUbViewRefresh();
     else { track.style.transition = 'transform .2s ease-out'; track.style.transform = 'translate3d(-100%,0,0)'; }
   };
   box.addEventListener('touchend', up);
@@ -504,14 +537,17 @@ function _ccUbSwipe(box) {
 }
 
 /* Delete: this photo goes, the view stays open on the next one (the one before after the last; closes when none is left).
-   Maintenance asks in the button row first (Delete / Keep), as in its list. */
+   Maintenance asks in the button row first (Delete / Keep), as in its list. A quick double tap deletes one photo. */
 function ccUbSheetDelete() {
-  const o = _ccUbV.o; if (!o || _ccUbV.busy) return;
+  const o = _ccUbV.o; if (!o || _ccUbV.busy || Date.now() - _ccUbV.delAt < 450) return;
   if (o.ask && !_ccUbV.ask) { _ccUbV.ask = true; _ccUbFill(); return; }
   _ccUbV.ask = false;
-  o.del(_ccUbV.i);
+  _ccUbV.delAt = Date.now();
+  o.del(_ccUbV.i, _ccUbV.id);                             // the photo on screen
+  if (!_ccUbV.o) return;
   const n = o.n();
   if (!n) { ccUbSheetClose(true); return; }
+  _ccUbSync();
   _ccUbV.i = Math.min(_ccUbV.i, n - 1);
   _ccUbFill();
 }
@@ -520,9 +556,24 @@ function ccUbSheetKeep() { _ccUbV.ask = false; _ccUbFill(); }
 /* ✕, a tap outside, Fertig, Escape: closes — the Beschreibung typed is kept */
 function ccUbSheetClose(skipKeep) {
   if (!skipKeep) _ccUbKeepCap();
-  document.getElementById('ccubSheet')?.remove();
+  const ov = document.getElementById('ccubSheet');
+  if (ov) { ov.remove(); _ccUbGhost(); }
   window.removeEventListener('keydown', _ccUbViewKey, true);
-  Object.assign(_ccUbV, { o: null, busy: false, ask: false, drag: false });
+  Object.assign(_ccUbV, { o: null, id: null, ids: [], busy: false, ask: false, drag: false, stale: false });
+}
+/* The camera or the view just closed by a tap: a quick second tap on the same spot (a double tap on "Foto löschen"
+   or "Fertig") must not reach the form under it — its Cancel, Draft PDF or ✕ sit right there. Taps elsewhere go through. */
+let _ccUbTap = null;
+const _ccUbTapAt = e => { _ccUbTap = { x: e.clientX, y: e.clientY, t: Date.now() }; };
+function _ccUbGhost() {
+  const p = _ccUbTap; _ccUbTap = null;
+  if (!p || Date.now() - p.t > 1000) return;              // closed without a tap (Escape, the form went)
+  const t = Date.now(), off = () => window.removeEventListener('click', eat, true), eat = e => {
+    if (Date.now() - t < 350 && Math.abs(e.clientX - p.x) < 44 && Math.abs(e.clientY - p.y) < 44) { e.preventDefault(); e.stopImmediatePropagation(); }
+    off();                                                // only the one tap right after
+  };
+  window.addEventListener('click', eat, true);
+  setTimeout(off, 350);
 }
 function _ccUbViewKey(e) {
   if (!_ccUbV.o) return;
