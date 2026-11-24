@@ -50,6 +50,8 @@
                  Schadensbild; form = Zimmer · Mieter · Ort · Dringend · Fotos
                · D7: Anlagen fill themselves — photos + everything in Documents; "Document"
                  also takes videos (≤ 50 MB, with their length) and e-mails (PDF / screenshot)
+               · Nov 2026: Bericht photos — "Camera" stays open (each photo is uploaded as it is taken,
+                 in order); a tap on a photo → large view (swipe, Delete asks first) — cc-ueberg-photos.js
                · the row's photos / PDFs are documents linked to the row (cost_id)
                · D8: before a receipt / return is booked, Controlling is checked for a line
                  you typed by hand (same property + amount, ±7 days) → "Link to it" (that
@@ -2734,8 +2736,16 @@ function mtWire() {
     else if (a === 'soTeil') mtSoTeil(b);
     else if (a === 'more') { if (MT.sel) { MT.sel.more = !MT.sel.more; mtRenderPanel(); } }
 
-    else if (a === 'sbFotos') { const f = MT.sb; if (f && !f.busy) { mtSbCapsFlush(); f.photosOn = b.dataset.v === '1'; mtSbPhotosRender(); } }
+    else if (a === 'sbFotos') {
+      const f = MT.sb, c = mtSbCase();
+      if (f && !f.busy) {
+        mtSbCapsFlush(); f.photosOn = b.dataset.v === '1'; mtSbPhotosRender();
+        if (f.photosOn && c && !mtSbPhotos(c).length && typeof ccUbCanLive === 'function' && ccUbCanLive()) mtSbCamera();   // no photos yet → the camera at once
+      }
+    }
     else if (a === 'sbAddPhoto') mtSbAddPhoto();
+    else if (a === 'sbCamera') mtSbCamera();
+    else if (a === 'sbView') mtSbView(b.dataset.id);
     else if (a === 'sbMake') mtSbMake();
   });
   document.addEventListener('change', e => {
@@ -3127,6 +3137,7 @@ function mtSbPhotosHTML(c, f) {
   const rb = c.kind === 'renovierung';
   const photos = mtSbPhotos(c);
   const u = mtUpFor(c), up = u && u.where === 'sb' ? u : null;
+  const cam = typeof ccUbCanLive === 'function' && ccUbCanLive();   // the camera that stays open (cc-ueberg-photos.js)
   let n = 0;
   const rows = !f.photosOn ? '' : photos.map(p => {
     const on = p.in_report !== false, id = mtEsc(p.id), ask = f.askDel === String(p.id);
@@ -3137,7 +3148,7 @@ function mtSbPhotosHTML(c, f) {
       : vn + `<label class="mt-pr__sw"><span>${on ? 'In the report' : 'Not in the report'}</span><input type="checkbox" data-inrep="${id}"${on ? ' checked' : ''}/><span class="mt-swi" aria-hidden="true"></span></label>`;
     return `<div class="mt-pr${on ? '' : ' is-off'}${ask ? ' is-ask' : ''}">
         <div class="mt-pr__t">
-          <div class="mt-pr__th"><img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>${on ? `<span class="mt-pr__no">${++n}</span>` : ''}${ask ? '' : `<button type="button" class="mt-pr__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>`}</div>
+          <div class="mt-pr__th" data-mt="sbView" data-id="${id}"><img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>${on ? `<span class="mt-pr__no">${++n}</span>` : ''}${ask ? '' : `<button type="button" class="mt-pr__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>`}</div>
           <div class="mt-pr__tx"><label class="mt-k" for="mtCap-${id}">Beschreibung</label>
             <textarea class="mt-in mt-ta mt-pr__cap" id="mtCap-${id}" rows="3" maxlength="200" data-cap="${id}" placeholder="Beschreibung (optional)">${mtEsc(p.caption || '')}</textarea></div>
         </div>
@@ -3146,7 +3157,7 @@ function mtSbPhotosHTML(c, f) {
   }).join('');
   return `<div class="mt-f mt-f--full" id="mtSb-photos">
       <div class="mt-pr__hd"><span class="mt-k">Photos${photos.length ? ' · ' + photos.length : ''}</span>
-        ${up ? '' : '<button type="button" class="mt-link mt-pr__add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i>Add photo</button>'}</div>
+        ${up ? '' : `<span style="display:inline-flex;gap:16px">${cam ? '<button type="button" class="mt-link mt-pr__add" data-mt="sbCamera"><i class="ti ti-camera" aria-hidden="true"></i>Camera</button>' : ''}<button type="button" class="mt-link mt-pr__add" data-mt="sbAddPhoto"><i class="ti ${cam ? 'ti-photo' : 'ti-camera'}" aria-hidden="true"></i>Add photo</button></span>`}</div>
       <div class="mt-seg" role="group" aria-label="Photos in the report">
         <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Without photos</button>
         <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">With photos</button>
@@ -4122,7 +4133,7 @@ function mtSbThumbs() {
   });
   fill();
   const need = imgs.filter(i => !i.getAttribute('src')).flatMap(i => [i.dataset.thumb, i.dataset.path]);
-  if (need.length) mtPrepareLinks(need).then(fill);
+  if (need.length) mtPrepareLinks(need).then(() => { fill(); if (typeof ccUbViewRefresh === 'function') ccUbViewRefresh(); });   // a new photo also in the open large view
 }
 /* Photos: one row each — thumbnail (number in the report) · Beschreibung · in the report yes / no */
 function mtSbPhotosRender() {
@@ -4144,6 +4155,7 @@ function mtSbPhotosRender() {
   mtSbThumbs();
   const u = mtUpFor(c), mk = document.getElementById('mtSb-make');
   if (mk && !f.busy) { mk.disabled = !!(u && u.where === 'sb'); mk.textContent = mk.disabled ? 'Uploading photos' : 'Create PDF'; }
+  if (typeof ccUbViewRefresh === 'function') ccUbViewRefresh();   // the large view follows the list
 }
 async function mtSbInRep(id, on) {
   const d = MT.docs.find(x => String(x.id) === String(id)); if (!d) return;
@@ -4199,6 +4211,96 @@ function mtSbAddPhoto() {
     if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) { const a = mtAnchor(); mtRenderPanel(); mtRestore(a); }
     if (ok < imgs.length) mtSay(`${ok} of ${imgs.length} photos saved. Add the others again.`);
   });
+}
+/* "Camera": the camera that stays open (cc-ueberg-photos.js). Each photo is stored the moment it is taken,
+   one after the other in the order taken (the same upload as "Add photo", its "Uploading x of n" line) — a photo is
+   never lost when the app goes to the background or closes. Taken at = the shutter. "Done" only closes the camera. */
+function mtSbCamera() {
+  const c = mtSbCase(), f = MT.sb;
+  if (!c || !f || f.busy || MT.up || typeof ccUbCamera !== 'function') return;
+  mtSbCapsFlush();
+  const up = { caseId: c.id, total: 0, done: 0, where: 'sb' };
+  const queue = [], thumbs = [];
+  let open = true, running = false, ok = 0, pending = 0;
+  const end = () => {                                        // camera closed and every photo stored
+    if (open || running || pending || queue.length || MT.up !== up) return;
+    MT.up = null;
+    mtSbPhotosRender();
+    if (!up.total) return;
+    if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) { const a = mtAnchor(); mtRenderPanel(); mtRestore(a); }
+    if (ok < up.total) mtSay(`${ok} of ${up.total} photos saved. Add the others again.`);
+  };
+  const pump = async () => {
+    if (running) return;
+    running = true;
+    while (queue.length) {
+      const x = queue.shift();
+      try {
+        const extra = await mtPhotoExtra(x.file);          // the iPhone camera's own date (fallback), else the shutter
+        if (MT.d5 && !extra.taken_at) extra.taken_at = new Date(x.ts).toISOString();
+        if (await mtUploadOne(c, x.file, { type: 'photo', amount: null, date: mtFileDay(x.file) }, extra)) ok++;
+      } catch (e) { console.error('[maintenance] camera photo:', e); }
+      up.done++;
+      mtSbPhotosRender();
+    }
+    running = false;
+    end();
+  };
+  const add = (file, ts, thumb) => {
+    thumbs.push(thumb);
+    queue.push({ file, ts });
+    up.total++;
+    if (MT.sb && String(MT.sb.caseId) === String(c.id)) MT.sb.photosOn = true;   // D20: a new photo turns on "With photos"
+    mtSbPhotosRender();
+    pump();
+  };
+  const shot = fn => async (...a) => {                       // "Done" during a shot still waits for that photo
+    pending++;
+    try { await fn(...a); } finally { pending--; end(); }
+  };
+  const opened = ccUbCamera({ en: true,
+    list: () => thumbs,
+    alive: () => !!(MT.sb && String(MT.sb.caseId) === String(c.id) && document.getElementById('mtSbModal')),
+    onShot: shot(async (cv, ts) => {
+      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82));
+      if (!blob) return;
+      const d = new Date(ts), two = n => String(n).padStart(2, '0');
+      const name = `Photo ${ccDayOf(d)} ${two(d.getHours())}.${two(d.getMinutes())}.${two(d.getSeconds())}.jpg`;
+      add(new File([blob], name, { type: 'image/jpeg', lastModified: ts }), ts, await _ccUbThumb(cv));
+    }),
+    onFile: shot(async (file, ts) => {                      // camera blocked: one photo from the iPhone camera
+      if (!mtIsImage(file)) return;
+      const u = URL.createObjectURL(file);
+      let t = '';
+      try { t = await _ccUbThumb(u); } catch (e) {} finally { URL.revokeObjectURL(u); }
+      add(file, ts, t);
+    }),
+    onClose: () => { open = false; end(); },
+  });
+  if (opened) MT.up = up;                                    // nothing else uploads while the camera is open
+}
+/* Tap on a photo: the large view (cc-ueberg-photos.js) — swipe through the photos of the list, Delete asks in its row.
+   It stays on the photo shown when an upload is sorted in; the header has the photo's number in the list.
+   While the PDF is made the list stays as it is (as its ✕). */
+function mtSbView(id) {
+  const c = mtSbCase();
+  if (!c || !MT.sb || MT.sb.busy || typeof ccUbView !== 'function') return;
+  mtSbCapsFlush();
+  const list = () => (MT.sb && String(MT.sb.caseId) === String(c.id) ? mtSbPhotos(c) : []);
+  const src = p => (p ? mtLinkNow(p.file_path) || mtLinkNow(mtThumbPath(p.file_path)) || '' : '');
+  ccUbView({ en: true, ask: true,
+    n: () => list().length,
+    id: j => { const p = list()[j]; return p ? String(p.id) : null; },
+    title: j => {
+      const ps = list(), p = ps[j]; if (!p) return '';
+      if (p.in_report === false) return 'Not in the report';
+      const on = ps.filter(x => x.in_report !== false), k = on.indexOf(p) + 1;
+      return on.length > 1 ? `Photo ${k} of ${on.length}` : `Photo ${k}`;
+    },
+    src: j => src(list()[j]),
+    del: (j, pid) => { const p = list().find(x => String(x.id) === pid); if (p && MT.sb && !MT.sb.busy) mtSbDelPhoto(p.id); },
+  }, list().findIndex(p => String(p.id) === String(id)));
+  mtPrepareLinks(list().map(p => p.file_path)).then(() => { if (typeof ccUbViewRefresh === 'function') ccUbViewRefresh(); });
 }
 /* Below the divider of every entry (closed and open): Kostenübersicht · Schadensbericht (Schäden) */
 
