@@ -100,6 +100,10 @@ document.getElementById('tab-apartments').innerHTML = `
   </div>
 `;
 
+/* The generator lives on the page itself, not inside the Apartments tab: opened from Tenants
+   (Übergabe, Renew) it appears right over Tenants — the Apartments page never shows first (as Casa) */
+{ const el = document.getElementById('aptContractOverlay'); if (el) document.body.appendChild(el); }
+
 
 /* ── STYLES ──────────────────────────────────────────────── */
 (function() {

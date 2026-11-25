@@ -60,6 +60,10 @@ document.getElementById('tab-parking').innerHTML = `
   </div>
 `;
 
+/* The generator lives on the page itself, not inside the Parking tab: opened from Tenants (Übergabe)
+   it appears right over Tenants — the Parking page never shows first (as Casa) */
+{ const el = document.getElementById('pkContractOverlay'); if (el) document.body.appendChild(el); }
+
 
 /* ── STYLES ──────────────────────────────────────────────── */
 (function() {
