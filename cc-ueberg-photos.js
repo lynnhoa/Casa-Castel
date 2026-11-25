@@ -5,18 +5,19 @@
      Apartments  (rentals-tab-apartments.js + rentals-ueberg-pdf.js)          key 'apt-ub' (also Gewerbe)
      Parking     (rentals-tab-parking.js    + rentals-parking-ueberg-pdf.js)  key 'pk-ub'
      Casa Castel (tab-rooms.js)                                               key 'room-ub'
-   and by the Berichte in Maintenance (maintenance.js): the camera, the large view,
-   _ccUbExifTime, _ccUbLoadImage and the photo pages (maint-schaden-pdf.js passes its own
-   subtitle as meta.sub).
+   and by Maintenance (maintenance.js): the Berichte (the camera, the large view, _ccUbExifTime,
+   _ccUbLoadImage and the photo pages — maint-schaden-pdf.js passes its own subtitle as meta.sub)
+   and the receipts (the camera, the large view and the tiles of this form, Nov 2026).
 
    Form:  Auswahl "Ohne Fotos | Mit Fotos" (app standard cc-seg, cc-controls.js).
           "Kamera"    = the camera inside the app. It stays open: one tap = one photo, straight
-                        into the protocol (strip, n / 24). "Fertig" closes it, every photo stays.
+                        into the protocol (strip, n / 24). × on a picture of the strip takes that
+                        photo off at once. "Fertig" closes it, every photo stays.
           "Mediathek" = the phone's own menu (Fotomediathek, several at once).
           No live camera possible (no https, older phone): one "Foto" tile with the phone's menu.
           "Mit Fotos" with no photos yet opens the camera at once (else the phone's menu).
           Camera blocked: the same screen, each tap opens the iPhone camera for 1 photo.
-          Upright thumbnails, 4 per row (small copies — the view and the PDF use the big photo).
+          Upright thumbnails, 4 per row, each with its × (small copies — the view and the PDF use the big photo).
    View:  tap a photo → "Foto 3 von 12": swipe or ‹ › (← → on a keyboard), the Beschreibung of
           the photo shown (kept on every way out), Foto löschen (stays open on the next photo).
    Kept:  the photos stay with that protocol (unit + Einzug/Auszug) while the app is open —
@@ -125,6 +126,13 @@ function ccUbRemove(key, i) {
   st.photos.splice(i, 1);
   _ccUbRenderGrid(key);
 }
+/* × on a thumbnail of the form: at once — the next photo moves under the finger, so a quick double tap removes one */
+let _ccUbRmAt = 0;
+function ccUbRemoveTap(key, i) {
+  if (Date.now() - _ccUbRmAt < 450) return;
+  _ccUbRmAt = Date.now();
+  ccUbRemove(key, i);
+}
 
 /* Tiles: Kamera (stays open) + Mediathek — or the one "Foto" tile where no live camera is possible */
 function _ccUbGridHTML(key) {
@@ -143,7 +151,7 @@ function _ccUbGridHTML(key) {
           <span class="ccub-no">${i + 1}</span>
           ${p.caption ? '<span class="ccub-cap-dot" aria-hidden="true"><i class="ti ti-align-left"></i></span>' : ''}
         </button>
-        <button type="button" class="ccub-rm" aria-label="Foto ${i + 1} entfernen" onclick="ccUbRemove('${key}', ${i})"><i class="ti ti-x"></i></button>
+        <button type="button" class="ccub-rm" aria-label="Foto ${i + 1} entfernen" onclick="ccUbRemoveTap('${key}', ${i})"><i class="ti ti-x"></i></button>
       </div>`).join('');
 }
 
@@ -169,10 +177,12 @@ function _ccUbRenderGrid(key) {
 
 /* ── CAMERA THAT STAYS OPEN (Übergabe + Maintenance) ─────────
    Live picture · shutter (short white flash) · strip of the photos · counter · one exit "Fertig".
-   No ✕ per photo and no Cancel: a bad photo is deleted afterwards (large view or grid).
+   No Cancel: a bad photo goes with the × on its picture in the strip — at once, or later in the grid or the large view
+   (the Bericht in Maintenance stores each photo at once: no × there, it is deleted in its list or view, which ask).
    Escape, the app going to the background and back, or the form closing never lose a photo.
-   o = { en, max, list() → strip pictures, onShot(canvas, ts), onFile(file, ts), alive(), onClose() } → true when it opened */
-const _ccUbCam = { o: null, el: null, stream: null, busy: false, gen: 0, timer: 0 };
+   o = { en, max, px, list() → strip pictures, onShot(canvas, ts), onFile(file, ts), del(i), alive(), onClose() } → true when it opened
+   px: long side of a shot (receipts take more, the text must stay readable) · del: an × on each picture of the strip */
+const _ccUbCam = { o: null, el: null, stream: null, busy: false, gen: 0, timer: 0, rmAt: 0 };
 
 function ccUbCanLive() {
   return !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -200,7 +210,9 @@ function ccUbCamera(o) {
   el.addEventListener('pointerdown', _ccUbTapAt, true);
   el.addEventListener('click', e => {
     const b = e.target.closest('[data-cam]'); if (!b) return;
-    if (b.dataset.cam === 'snap') _ccUbCamSnap(); else ccUbCamClose();
+    if (b.dataset.cam === 'snap') _ccUbCamSnap();
+    else if (b.dataset.cam === 'rm') _ccUbCamRm(Number(b.dataset.i));
+    else if (b.dataset.cam === 'done') ccUbCamClose();
   });
   el.querySelector('input[type=file]').addEventListener('change', e => _ccUbCamFile(e.target));
   window.addEventListener('keydown', _ccUbCamKey, true);
@@ -231,6 +243,7 @@ function ccUbCamOpen(key) {
         ts: taken ? taken.ts : ts, when: taken ? taken.text : '', taken: true, caption: '' });
       _ccUbRenderGrid(key);
     },
+    del: i => ccUbRemove(key, i),                         // × on the strip: the photo leaves the protocol
     onClose: () => _ccUbRenderGrid(key),
   });
 }
@@ -240,8 +253,9 @@ async function _ccUbCamStart() {
   if (!ccUbCanLive()) { _ccUbCamPhone(); return; }
   const gen = ++_ccUbCam.gen;
   try {
+    const hi = (_ccUbCam.o && _ccUbCam.o.px || 0) > CC_UB_PX;   // receipts: more pixels, the text stays readable
     const s = await navigator.mediaDevices.getUserMedia({ audio: false,
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: hi ? 2560 : 1920 }, height: { ideal: hi ? 1920 : 1440 } } });
     if (gen !== _ccUbCam.gen || !_ccUbCam.o || document.visibilityState === 'hidden') { s.getTracks().forEach(t => t.stop()); return; }
     _ccUbCam.stream = s;
     const v = el.querySelector('video');
@@ -280,7 +294,7 @@ async function _ccUbCamSnap() {
   const ts = Date.now();
   const c = document.createElement('canvas');
   try {
-    const k = Math.min(1, CC_UB_PX / Math.max(v.videoWidth, v.videoHeight));
+    const k = Math.min(1, (o.px || CC_UB_PX) / Math.max(v.videoWidth, v.videoHeight));
     c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
     c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
     const fl = el.querySelector('.ccub-cam__flash');
@@ -301,14 +315,24 @@ async function _ccUbCamFile(input) {
   _ccUbCamDraw();
 }
 
-function _ccUbCamDraw() {
+function _ccUbCamDraw(keep) {
   const o = _ccUbCam.o, el = _ccUbCam.el; if (!o || !el) return;
   const pics = o.list(), n = pics.length;
-  const strip = el.querySelector('.ccub-cam__strip');
-  strip.innerHTML = pics.map((src, i) => `<div class="ccub-cam__th" style="background-image:url('${src}')"><b>${i + 1}</b></div>`).join('');
-  strip.scrollLeft = strip.scrollWidth;                   // the newest is in view
+  const strip = el.querySelector('.ccub-cam__strip'), x0 = strip.scrollLeft;
+  const rm = o.en ? 'Remove photo' : 'Foto entfernen';
+  strip.innerHTML = pics.map((src, i) => `<div class="ccub-cam__th" style="background-image:url('${src}')"><b>${i + 1}</b>${o.del
+    ? `<button type="button" class="ccub-cam__rm" data-cam="rm" data-i="${i}" aria-label="${rm} ${i + 1}"><i class="ti ti-x"></i></button>` : ''}</div>`).join('');
+  strip.scrollLeft = keep ? x0 : strip.scrollWidth;       // the newest is in view (after an × the strip stays where it was)
   el.querySelector('.ccub-cam__n').textContent = o.max ? `${n} / ${o.max}` : String(n);
   el.querySelector('.ccub-cam__shut').disabled = !!(o.max && n >= o.max);
+}
+
+/* × on a picture of the strip: that photo goes at once (a quick double tap removes one) */
+function _ccUbCamRm(i) {
+  const o = _ccUbCam.o; if (!o || !o.del || !(i >= 0) || Date.now() - _ccUbCam.rmAt < 450) return;
+  _ccUbCam.rmAt = Date.now();
+  try { o.del(i); } catch (e) { console.error('[Kamera]', e); }
+  _ccUbCamDraw(true);
 }
 
 /* "Fertig" / Escape / the form went: camera off, every photo stays */
@@ -803,6 +827,9 @@ function _ccUbStyles() {
 .ccub-cam__strip { display:flex; gap:8px; overflow-x:auto; padding:10px 16px 0; min-height:84px; box-sizing:border-box; -webkit-overflow-scrolling:touch; }
 .ccub-cam__th { position:relative; flex:0 0 auto; width:56px; height:74px; border-radius:6px; overflow:hidden; background:#2A2521 center/cover no-repeat; }
 .ccub-cam__th b { position:absolute; left:4px; bottom:3px; font-size:10px; font-weight:600; text-shadow:0 1px 2px #000; }
+.ccub-cam__rm { position:absolute; top:0; right:0; width:32px; height:32px; padding:0; border:none; background:none; color:#fff; cursor:pointer;
+  display:flex; align-items:flex-start; justify-content:flex-end; -webkit-tap-highlight-color:transparent; }
+.ccub-cam__rm i { margin:3px 3px 0 0; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; font-size:12px; }
 .ccub-cam__bar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; padding:12px 20px calc(16px + env(safe-area-inset-bottom, 0px)); }
 .ccub-cam__n { justify-self:start; font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; color:rgba(255,255,255,.85); }
 .ccub-cam__shut { width:74px; height:74px; border-radius:50%; border:4px solid #fff; background:none; padding:5px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
