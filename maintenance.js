@@ -1566,11 +1566,6 @@ function mtCostFormHTML(f) {
   const ret = !!f.return_of, parent = ret ? mtCostById(f.return_of) : null;
   const cs = MT.sel ? mtCase(MT.sel.id) : null, caseOff = !!cs && cs.book_ctrl === false;
   const amt = f.amount === null || f.amount === undefined || f.amount === '' ? '' : String(f.amount);
-  const chips = f.files.map((x, i) => `
-      <span class="mt-chip${x.file ? ' is-new' : ''}">
-        ${x.id ? `<button type="button" class="mt-chip__n" data-mt="openDoc" data-id="${mtEsc(x.id)}">` : '<span class="mt-chip__n">'}<i class="ti ${x.img ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i>${mtEsc(x.name)}${x.id ? '</button>' : '</span>'}
-        <button type="button" class="mt-chip__x" data-mt="costFileDel" data-i="${i}" aria-label="Remove ${mtEsc(x.name)}"><i class="ti ti-x" aria-hidden="true"></i></button>
-      </span>`).join('');
   const top = ret
     ? `<p class="mt-ret-t"><i class="ti ti-corner-down-right" aria-hidden="true"></i>Return for ${parent && parent.receipt_no ? 'Receipt ' + mtEsc(parent.receipt_no) : 'this receipt'}${parent && parent.brand ? ' · ' + mtEsc(parent.brand) : ''}</p>`
     : `<div class="mt-seg" role="group" aria-label="Type">
@@ -1594,11 +1589,7 @@ function mtCostFormHTML(f) {
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt / order no.'} <span class="mt-opt">optional</span></label>
           <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
         <div class="mt-f mt-f--full"><span class="mt-k">Receipt</span>
-          <div class="mt-chips">${chips}
-            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-upload" aria-hidden="true"></i> Photo / PDF</button>
-            ${f.files.some(x => x.file && x.img) ? `<button type="button" class="mt-chip mt-chip--add mt-chip--next" data-mt="costCam"><i class="ti ti-plus" aria-hidden="true"></i> Next part</button>` : ''}
-          </div>${f.files.filter(x => x.file && x.img).length > 1 ? '<p class="mt-hint">The photos go onto one page, top to bottom, when you save.</p>'
-            : f.files.some(x => x.file && x.img) ? '<p class="mt-hint">Long receipt? “Next part” adds the next photo — all parts go onto one page.</p>' : ''}</div>
+          ${mtCostGridHTML(f)}${mtCostImgs(f).length > 1 ? '<p class="mt-hint">The photos go onto one page, top to bottom, when you save.</p>' : ''}</div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk mt-sw"><span>Book in Controlling</span><input type="checkbox" role="switch" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/></label>`}</div>`}
@@ -1711,160 +1702,129 @@ function mtCostPickFiles() {
     if (ok.length < files.length) mtSay(`Only photos and PDFs up to ${MT_MAX_MB} MB.`);
     mtCostCapture();
     ok.forEach(x => g.files.push({ id: null, file: x, name: x.name || (mtIsImage(x) ? 'Photo.jpg' : 'Document.pdf'), img: mtIsImage(x) }));
-    mtRenderPanel();
+    mtRenderPanel();                                          // the thumbnails follow (mtCostThumbs)
   });
 }
-/* ── D33 (Nov 2026) · Camera for receipts: several photos in a row, the camera stays open ──
-   A long receipt in 2–3 parts: snap, snap, snap → Done. The parts are added to the receipt in the
-   order taken (× on a thumbnail takes one off). When the live camera isn't possible (no permission,
-   older phone) the same screen uses the phone's own camera, one photo per tap, and stays open. */
-const MT_CAM = { open: false, stream: null, shots: [], base: 0 };   // base = photos already in the receipt (part numbers go on)
-function mtCamCss() {
-  if (document.getElementById('mt-cam-css')) return;
-  const st = document.createElement('style'); st.id = 'mt-cam-css';
-  st.textContent = `
-.mt-cam { position:fixed; inset:0; z-index:900; display:flex; flex-direction:column; background:#14110F; color:#fff; }
-.mt-cam__top { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; }
-.mt-cam__ttl { font-size:13px; font-weight:500; letter-spacing:.02em; }
-.mt-cam__x { width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; font-size:16px; display:flex; align-items:center; justify-content:center; }
-.mt-cam__view { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
-.mt-cam__view video { width:100%; height:100%; object-fit:contain; display:block; }
-.mt-cam__alt { padding:24px; text-align:center; font-size:14px; line-height:1.5; color:rgba(255,255,255,.8); }
-.mt-cam__flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; }
-.mt-cam__flash.on { opacity:.7; transition:none; }
-.mt-cam__strip { display:flex; gap:8px; overflow-x:auto; padding:10px 16px 0; min-height:84px; -webkit-overflow-scrolling:touch; }
-.mt-cam__th { position:relative; flex:0 0 auto; width:58px; height:74px; border-radius:6px; overflow:hidden; background:#2A2521; }
-.mt-cam__th img { width:100%; height:100%; object-fit:cover; display:block; }
-.mt-cam__th b { position:absolute; left:4px; bottom:3px; font-size:10px; font-weight:600; text-shadow:0 1px 2px #000; }
-.mt-cam__th button { position:absolute; top:2px; right:2px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; }
-.mt-cam__hint { margin:0; padding:6px 16px 0; font-size:11.5px; color:rgba(255,255,255,.6); min-height:16px; }
-.mt-cam__bar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; padding:12px 20px calc(16px + env(safe-area-inset-bottom, 0px)); }
-.mt-cam__shut { width:74px; height:74px; border-radius:50%; border:4px solid #fff; background:none; padding:5px; -webkit-tap-highlight-color:transparent; }
-.mt-cam__shut span { display:block; width:100%; height:100%; border-radius:50%; background:#fff; }
-.mt-cam__shut:active span { transform:scale(.9); }
-.mt-cam__done { justify-self:end; height:48px; min-width:110px; padding:0 18px; border-radius:24px; border:none; background:#fff; color:#14110F; font:inherit; font-size:15px; font-weight:600; }
-.mt-cam__done:disabled { opacity:.35; }
-.mt-cam__cancel { justify-self:start; height:44px; padding:0 14px; border-radius:22px; border:.5px solid rgba(255,255,255,.35); background:none; color:#fff; font:inherit; font-size:14px; }`;
-  document.head.appendChild(st);
-}
-async function mtCamOpen() {
-  const f = MT.sel && MT.sel.cost;
-  if (!f || MT_CAM.open) return;
-  mtCostCapture();
-  mtCamCss();
-  MT_CAM.open = true; MT_CAM.shots = []; MT_CAM.base = f.files.filter(x => x.file && x.img).length;
-  MT_CAM.back = document.activeElement;                    // D39: the focus comes back here when it closes ("Next part")
-  const el = document.createElement('div');
-  el.className = 'mt-cam'; el.id = 'mtCam'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Receipt camera');
-  el.innerHTML = `<div class="mt-cam__top"><span class="mt-cam__ttl">Receipt · next parts</span>
-      <button type="button" class="mt-cam__x" data-cam="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
-    <div class="mt-cam__view"><video playsinline webkit-playsinline muted autoplay></video><div class="mt-cam__flash"></div></div>
-    <div class="mt-cam__strip" aria-label="Photos taken"></div>
-    <p class="mt-cam__hint">A long receipt: photograph it in parts, top to bottom.</p>
-    <div class="mt-cam__bar">
-      <button type="button" class="mt-cam__cancel" data-cam="cancel">Cancel</button>
-      <button type="button" class="mt-cam__shut" data-cam="snap" aria-label="Take photo"><span></span></button>
-      <button type="button" class="mt-cam__done" data-cam="done" disabled>Done</button>
-    </div>`;
-  document.body.appendChild(el);
-  mtLockSync();                                           // D39: the page behind stays where it is
-  if (mtFine()) try { el.querySelector('[data-cam="snap"]').focus({ preventScroll: true }); } catch (e) {}   // D39 fix 2: the keys start in the camera
-  el.addEventListener('click', e => {
-    const b = e.target.closest('[data-cam]'); if (!b) return;
-    const a = b.dataset.cam;
-    if (a === 'snap') mtCamSnap();
-    else if (a === 'done') mtCamClose(true);
-    else if (a === 'cancel') mtCamClose(false);
-    else if (a === 'del') { MT_CAM.shots.splice(Number(b.dataset.i), 1); mtCamDraw(); }
-  });
-  const v = el.querySelector('video');
-  try {
-    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) throw new Error('no camera api');
-    MT_CAM.stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
-    if (!MT_CAM.open) { mtCamStop(); return; }
-    v.srcObject = MT_CAM.stream;
-    const pl = v.play(); if (pl && pl.catch) pl.catch(() => {});
-  } catch (e) {
-    MT_CAM.stream = null;                                 // the phone's own camera, one photo per tap — this screen stays open
-    el.querySelector('.mt-cam__view').innerHTML = '<p class="mt-cam__alt">Tap the white button for each part of the receipt.<br>Your phone\'s camera opens for one photo and comes back here.</p>';
-  }
-  mtCamDraw();
-}
-function mtCamStop() { try { if (MT_CAM.stream) MT_CAM.stream.getTracks().forEach(t => t.stop()); } catch (e) {} MT_CAM.stream = null; }
-async function mtCamSnap() {
-  const el = document.getElementById('mtCam'); if (!el) return;
-  const v = el.querySelector('video');
-  if (!MT_CAM.stream || !v || !v.videoWidth) {          // fallback: the phone's own camera
-    let inp = document.getElementById('mtCamInput');
-    if (!inp) {
-      inp = document.createElement('input');
-      inp.type = 'file'; inp.id = 'mtCamInput'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
-      inp.style.display = 'none'; inp.setAttribute('aria-hidden', 'true');
-      inp.addEventListener('change', () => { const x = inp.files && inp.files[0]; inp.value = ''; if (x && MT_CAM.open) { MT_CAM.shots.push(x); mtCamDraw(); } });
-      document.body.appendChild(inp);
+/* ── Receipt photos (Nov 2026) · as in the Übergabeprotokoll ──────────────────────────────────
+   "Camera" opens the camera that stays open from the first photo (cc-ueberg-photos.js): snap, snap, snap → Done.
+   Each photo goes into the receipt the moment it is taken; × on the strip, on its thumbnail or "Delete photo"
+   in the large view takes it off at once. "Photo / PDF" adds photos from the library or a PDF. The photos of a
+   receipt go onto one page, top to bottom, when you save (D33). Without a live camera: one "Photo / PDF" tile. */
+const mtCamOn = () => typeof _ccUbCam !== 'undefined' && !!_ccUbCam.o;
+const mtCostImgs = f => (f ? f.files.filter(x => x.file && x.img) : []);
+function mtCostGridHTML(f) {
+  if (typeof _ccUbStyles === 'function') _ccUbStyles();
+  const live = typeof ccUbCamera === 'function' && typeof ccUbCanLive === 'function' && ccUbCanLive();
+  const tile = (a, icon, label) => `<button type="button" class="ccub-add" data-mt="${a}"><i class="ti ${icon}" aria-hidden="true"></i><span>${label}</span></button>`;
+  let n = 0, wait = false;
+  const items = f.files.map((x, i) => {
+    if (x.file && x.img) {
+      n++;
+      if (!x.thumb && !x.noThumb) wait = true;
+      return `<div class="ccub-item">
+          <button type="button" class="ccub-thumb" data-mt="costView" data-i="${i}" style="background-image:url('${x.thumb || ''}')" aria-label="Photo ${n}"><span class="ccub-no">${n}</span></button>
+          <button type="button" class="ccub-rm" data-mt="costFileDel" data-i="${i}" aria-label="Remove photo ${n}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`;
     }
-    inp.value = ''; inp.click();
-    return;
-  }
-  const max = 2000, k = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
-  const cv = document.createElement('canvas'); cv.width = Math.round(v.videoWidth * k); cv.height = Math.round(v.videoHeight * k);
-  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
-  const fl = el.querySelector('.mt-cam__flash'); if (fl) { fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60); }
-  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.88));
-  if (!blob || !MT_CAM.open) return;
-  MT_CAM.shots.push(new File([blob], 'Teil ' + (MT_CAM.base + MT_CAM.shots.length + 1) + '.jpg', { type: 'image/jpeg' }));
-  mtCamDraw();
+    const tag = x.id ? `button type="button" data-mt="openDoc" data-id="${mtEsc(x.id)}"` : 'div';
+    return `<div class="ccub-item">
+        <${tag} class="ccub-thumb mt-rcf"><i class="ti ${x.img ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i><span>${mtEsc(x.name)}</span></${x.id ? 'button' : 'div'}>
+        <button type="button" class="ccub-rm" data-mt="costFileDel" data-i="${i}" aria-label="Remove ${mtEsc(x.name)}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`;
+  }).join('');
+  if (wait) setTimeout(mtCostThumbs, 0);                      // photos from the library, a draft or a failed upload: their thumbnails
+  return `<div class="ccub-grid mt-rcg">${live ? tile('costCam', 'ti-camera', 'Camera') + tile('costFile', 'ti-photo', 'Photo / PDF')
+    : tile('costFile', 'ti-camera', 'Photo / PDF')}${items}</div>`;
 }
-function mtCamDraw() {
-  const el = document.getElementById('mtCam'); if (!el) return;
-  const strip = el.querySelector('.mt-cam__strip');
-  (strip._urls || []).forEach(u => URL.revokeObjectURL(u));
-  strip._urls = MT_CAM.shots.map(x => URL.createObjectURL(x));
-  const b0 = MT_CAM.base;
-  strip.innerHTML = MT_CAM.shots.map((x, i) => `<div class="mt-cam__th"><img src="${strip._urls[i]}" alt="Part ${b0 + i + 1}"/><b>${b0 + i + 1}</b>
-      <button type="button" data-cam="del" data-i="${i}" aria-label="Remove part ${b0 + i + 1}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`).join('');
-  strip.scrollLeft = strip.scrollWidth;
-  const n = MT_CAM.shots.length, done = el.querySelector('[data-cam="done"]');
-  done.disabled = !n; done.textContent = n ? 'Done · ' + n : 'Done';
-  const tot = b0 + n;
-  el.querySelector('.mt-cam__hint').textContent = n ? 'Part ' + tot + ' taken — the next part, or Done. All parts go onto one page, top to bottom.'
-    : 'Photograph part ' + (b0 + 1) + ' — the camera stays open for more.';
+/* Thumbnails the grid has no picture for yet — made one after the other, put in place without a redraw */
+let mtThumbRun = null;
+function mtCostThumbs() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || mtThumbRun === f || typeof _ccUbThumb !== 'function') return;
+  const todo = mtCostImgs(f).filter(x => !x.thumb && !x.noThumb);
+  if (!todo.length) return;
+  mtThumbRun = f;
+  (async () => {
+    for (const x of todo) {
+      const u = URL.createObjectURL(x.file);
+      try { x.thumb = await _ccUbThumb(u); } catch (e) { x.noThumb = true; } finally { URL.revokeObjectURL(u); }
+      const m = document.getElementById('mtCostModal'), k = f.files.indexOf(x);
+      const el = k >= 0 && m && MT.sel && MT.sel.cost === f ? m.querySelector(`[data-mt="costView"][data-i="${k}"]`) : null;
+      if (el && x.thumb) el.style.backgroundImage = `url('${x.thumb}')`;
+    }
+    if (mtThumbRun === f) mtThumbRun = null;
+    if (MT.sel && MT.sel.cost === f && mtCostImgs(f).some(x => !x.thumb && !x.noThumb)) mtCostThumbs();   // added meanwhile
+  })();
 }
-function mtCamClose(keep) {
-  const el = document.getElementById('mtCam');
-  const shots = MT_CAM.shots.slice();
-  MT_CAM.open = false; MT_CAM.shots = [];
-  mtCamStop();
-  if (el) { (el.querySelector('.mt-cam__strip')._urls || []).forEach(u => URL.revokeObjectURL(u)); el.remove(); }
-  mtLockSync();                                           // D39: the receipt pop-up below still holds the page
-  const g = MT.sel && MT.sel.cost;
-  if (keep && g && shots.length) {
-    shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
-    mtRenderPanel();
-  }
-  // D39: the keys go on where they were before the camera ("Next part"; redrawn: the new one, else Save)
-  const back = MT_CAM.back; MT_CAM.back = null;
-  if (!mtFine()) return;
-  const m = document.getElementById('mtCostModal');
-  const to = [back, m && m.querySelector('[data-mt="costCam"]'), m && m.querySelector('[data-mt="costSave"]')]
-    .find(x => x && x.isConnected && x !== document.body && !x.closest('[inert]') && !x.disabled);
-  if (to) try { to.focus({ preventScroll: true }); } catch (e) {}
+function mtCostCamera() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || MT.costHold === f || MT.who || mtCamOn() || typeof ccUbCamera !== 'function') return;
+  mtCostCapture();
+  const mine = () => !!(MT.sel && MT.sel.cost === f);
+  const add = (file, thumb) => { if (!mine()) return; f.files.push({ id: null, file, name: file.name, img: true, thumb: thumb || '' }); mtDraftSoon(); };
+  const opened = ccUbCamera({ en: true, px: 2000,           // the receipt's text stays readable (as the receipt camera before)
+    list: () => mtCostImgs(f).map(x => x.thumb || ''),
+    alive: () => mine() && !!document.getElementById('mtCostModal'),
+    onShot: async (cv, ts) => {
+      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.88));
+      if (!blob) return;
+      add(new File([blob], 'Beleg.jpg', { type: 'image/jpeg', lastModified: ts }), await _ccUbThumb(cv).catch(() => ''));
+    },
+    onFile: async file => {                                 // camera blocked: one photo from the iPhone camera
+      if (!mtIsImage(file) || file.size > MT_MAX_MB * 1024 * 1024) return;
+      const u = URL.createObjectURL(file);
+      let t = '';
+      try { t = await _ccUbThumb(u); } catch (e) {} finally { URL.revokeObjectURL(u); }
+      add(file, t);
+    },
+    del: i => { const x = mtCostImgs(f)[i]; if (x && mine()) mtCostFileDrop(f, f.files.indexOf(x)); },
+    onClose: () => {
+      mtLockSync();
+      if (!mine()) return;
+      mtRenderPanel();
+      if (mtFine()) {                                       // D39: the keys go on at the Camera tile (else Save)
+        const m = document.getElementById('mtCostModal'), b = m && (m.querySelector('[data-mt="costCam"]') || m.querySelector('[data-mt="costSave"]'));
+        if (b) try { b.focus({ preventScroll: true }); } catch (e) {}
+      }
+    },
+  });
+  if (opened) mtLockSync();                                   // D39: the receipt pop-up below waits
+}
+/* Tap on a photo of the receipt: the large view — swipe, "Delete photo" (at once, it is not stored yet) */
+function mtCostView(i) {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || !f.files[i] || typeof ccUbView !== 'function') return;
+  mtCostCapture();
+  const imgs = () => (MT.sel && MT.sel.cost === f ? mtCostImgs(f) : []);
+  const j = imgs().indexOf(f.files[i]);
+  if (j < 0) return;
+  ccUbView({ en: true, cap: null,
+    n: () => imgs().length,
+    src: k => { const x = imgs()[k]; if (!x) return ''; if (!x.url) x.url = URL.createObjectURL(x.file); return x.url; },
+    del: k => { const x = imgs()[k]; if (x) { mtCostFileDrop(f, f.files.indexOf(x)); mtRenderPanel(); } },
+  }, j);
+}
+/* A file leaves the receipt (a stored one only when you save — Cancel keeps it) */
+function mtCostFileDrop(f, i) {
+  if (!f || !f.files[i]) return;
+  const [x] = f.files.splice(i, 1);
+  if (x.url) { try { URL.revokeObjectURL(x.url); } catch (e) {} }
+  if (x.id && !x.adopt) f.delIds.push(x.id);                 // a moved document stays a document when taken off
+  mtDraftSoon();
 }
 
-function mtCostFileDel(i) {
+let mtFileDelAt = 0;
+function mtCostFileDel(i) {                                  // × on a tile — the next one moves under the finger: a double tap takes one
   const f = MT.sel && MT.sel.cost;
-  if (!f || !f.files[i]) return;
+  if (!f || !f.files[i] || Date.now() - mtFileDelAt < 450) return;
+  mtFileDelAt = Date.now();
   mtCostCapture();
-  const [x] = f.files.splice(i, 1);
-  if (x.id && !x.adopt) f.delIds.push(x.id);                 // a moved document stays a document when taken off
+  mtCostFileDrop(f, i);
   mtRenderPanel();
 }
 /* D39 (bugs 6/18) · ×, a tap beside the pop-up, Escape and Cancel ask before typed data (and photos) go — like Edit.
    "Keep editing" leaves the form and its device draft alone. */
 async function mtCostCancel() {
   const f = MT.sel && MT.sel.cost;
-  if (!f || MT.costHold === f || MT.who || MT_CAM.open) return;   // being saved ("Save + next") · D39: Who pays / the camera is open on top
+  if (!f || MT.costHold === f || MT.who || mtCamOn()) return;   // being saved ("Save + next") · D39: Who pays / the camera is open on top
   if (document.querySelector('#mtCostModal .mt-askv')) return;   // it is asking already (a second tap beside it)
   if (mtCostChanged()) {
     const ok = await mtConfirm({
@@ -1936,7 +1896,7 @@ function mtDupOf(no, selfId) {
    sheet (no close, no new slide-in, full height kept); its photos upload in the background. */
 async function mtCostSaveNext() {
   const f = MT.sel && MT.sel.cost, c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who || MT_CAM.open) return;   // D39: not while Who pays / the camera is open on top
+  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who || mtCamOn()) return;   // D39: not while Who pays / the camera is open on top
   mtCostCapture();
   const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl };
   await mtCostSave({ next: () => {
@@ -1969,13 +1929,13 @@ let mtLockChk = null, mtLockNext = false;                     // D39 fix 2: the 
    pop-up once the row is stored. Returns true when the row is stored. */
 async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
+  if (!f || !c || MT.costHold || MT.who || mtCamOn()) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
   if (MT.d39 && !f.return_of && mtIsCasa(c.property_id) && mtWhoLockOld()) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
     if (mtLockChk === f) { mtBusySay(); return false; }      // tapped again meanwhile: say why nothing happens
     mtLockChk = f; mtLockNext = !!(opts && opts.next); mtCostHoldShow();   // it shows it is saving · at most 2.5 s (then the locks known)
     try { await Promise.race([mtWhoLockLoad(), new Promise(r => setTimeout(r, 2500))]); } finally { if (mtLockChk === f) mtLockChk = null; mtCostHoldShow(); }
-    if (MT.sel !== s || s.cost !== f || MT.costHold || MT.who || MT_CAM.open) return false;
+    if (MT.sel !== s || s.cost !== f || MT.costHold || MT.who || mtCamOn()) return false;
     if (MT.busy) { mtBusySay(); return false; }
   }
   mtCostCapture();
@@ -2160,7 +2120,7 @@ async function mtCostSave(opts) {
     try { pdf = imgs.length > 1 ? await mtPhotoStackPdf(imgs) : await mtPhotoOrigPdf(imgs); }   // D33: parts of one receipt = one page
     catch (e) { console.warn('[maintenance] photo PDF not possible, A4 one instead:', e); }
     if (!pdf) pdf = await mtPhotosToPdf(imgs);
-    const nm = ('Beleg ' + (String(row.receipt_no || '').trim() || mtDate(row.cost_date) || mtDate(ccTodayISO())) + '.pdf').replace(/[\\/:*?"<>|]/g, '-');
+    const nm = mtCostFileBase(row) + '.pdf';                   // Nov 2026: the name follows the receipt (mtCostNameFiles)
     if (pdf) { const pf = new File([pdf], nm, { type: 'application/pdf' }); src.set(pf, pImgs); uploads = [pf].concat(uploads); }
     else { pImgs.forEach(x => src.set(x.file, [x])); uploads = imgs.concat(uploads); }   // PDF not possible → the photos as before
   }
@@ -2177,6 +2137,7 @@ async function mtCostSave(opts) {
     mtRefreshBg(c.id);
   }
   MT.up = null;
+  await mtCostNameFiles(row);                                 // Nov 2026: every file of the receipt is named after it
   // D27/D29/D32 · the receipt's files as A4 pages with the band (new, moved-in and earlier ones)
   let st = null;
   const own = mtFrameKey(id);
@@ -2200,6 +2161,28 @@ async function mtCostSave(opts) {
 }
 /* D39 (bug 14) · photos / PDFs whose upload failed stay with the receipt: it opens again with them when nothing else is
    open (Save = try again), else they wait until you open that receipt */
+/* Nov 2026 · the files of a receipt are named after it: "Beleg <Receipt no.> <Shop> <What> <Date>", a return
+   "Rückgabe …" (the automatic No. is not in the name — it moves when an older receipt is added; the band has it).
+   Made on every save from what the receipt says now (a change follows, an older receipt gets it when saved again);
+   more files: "(2)", "(3)" in the order stored. Only the name changes, never the file. */
+function mtCostFileBase(row) {
+  const ret = !!row.return_of, par = ret ? mtCostById(row.return_of) : null;
+  const clean = v => String(v || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const base = [ret ? 'Rückgabe' : 'Beleg', row.receipt_no, ret ? par && par.brand : row.brand, row.description, mtDate(row.cost_date)]
+    .map(clean).filter(Boolean).join(' ');
+  return base.length > 120 ? base.slice(0, 120).trim() : base;
+}
+async function mtCostNameFiles(row) {
+  const base = mtCostFileBase(row);
+  const ext = d => { const m = /\.([a-z0-9]{2,4})$/i.exec(String(d.file_name || '')) || /\.([a-z0-9]{2,4})$/i.exec(String(d.orig_path || d.file_path || '')); return m ? '.' + m[1].toLowerCase() : '.pdf'; };
+  const files = mtCostFiles(row.id).slice().sort((a, b) => mtEnteredKey(a).localeCompare(mtEnteredKey(b)));
+  for (let k = 0; k < files.length; k++) {
+    const d = files[k], want = base + (k ? ` (${k + 1})` : '') + ext(d);
+    if (d.file_name === want) continue;
+    const r = await mtTry(() => _ctlSupa.from('maint_docs').update({ file_name: want }).eq('id', d.id));
+    if (!r.error) d.file_name = want;                        // not saved (connection): the next save tries again
+  }
+}
 function mtCostLost(c, id, lost) {
   MT.lost[id] = (MT.lost[id] || []).concat(lost.map(x => ({ id: null, file: x.file, name: x.name, img: !!x.img })));
   const p = MT.sel;
@@ -2701,7 +2684,8 @@ function mtWire() {
     else if (a === 'costEdit') mtCostEdit(b.dataset.id);
     else if (a === 'costKind') mtCostKind(b.dataset.k);
     else if (a === 'costFile') mtCostPickFiles();
-    else if (a === 'costCam') mtCamOpen();
+    else if (a === 'costCam') mtCostCamera();
+    else if (a === 'costView') mtCostView(Number(b.dataset.i));
     else if (a === 'costFileDel') mtCostFileDel(Number(b.dataset.i));
     else if (a === 'costCancel') mtCostCancel();
     else if (a === 'costSave') mtCostSave();
@@ -2773,7 +2757,7 @@ function mtWire() {
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const cal = document.getElementById('ccCal'), cf = document.getElementById('mtConfirm'), pdf = document.getElementById('ccPdfSheet');
-    if (document.getElementById('mtCam')) { if (!cal) mtCamClose(false); return; }           // D39: the camera on top closes first
+    if (document.getElementById('ccubCam')) return;                                          // D39: the camera on top closes first (its own key)
     if (document.getElementById('mtWhoModal')) { if (!cal && !cf) mtWhoClose(); return; }     // D39: Who pays? on top — only that sheet
     if (MT.sel && MT.sel.cost && document.getElementById('mtCostModal') && !document.querySelector('.mt-askv') && !cal) { mtCostCancel(); return; }
     if (MT.sb && !cf && !cal && !pdf) { mtSbClose(); return; }
@@ -3271,13 +3255,13 @@ function mtLockStick() {
   });
 }
 function mtLockSync(force) {
-  const want = !!(force || document.querySelector('.mt-modal, #mtCam'));
+  const want = !!(force || document.querySelector('.mt-modal, #ccubCam'));
   const html = document.documentElement, bd = document.body, shell = document.getElementById('appShell');
   // Nov 2026 (D39 fix): pop-ups stacked on another (Who pays over the receipt) → only the top one takes the focus and
   // the keys; the one below waits, as the page behind does (no Tab into a Save you can't see)
   const ms = [...document.querySelectorAll('.mt-modal')], zOf = x => Number(getComputedStyle(x).zIndex) || 0;
   const top = ms.reduce((a, x) => (!a || zOf(x) >= zOf(a) ? x : a), null);
-  const over = !!document.querySelector('#mtCam, #mtConfirm');   // D39 fix 2: the camera / a question is above them all
+  const over = !!document.querySelector('#ccubCam, #mtConfirm');   // D39 fix 2: the camera / a question is above them all
   ms.forEach(x => { const v = over || x !== top; if (x.inert !== v) x.inert = v; });
   if (want && !MT_LOCK.on) {
     const y = window.scrollY;

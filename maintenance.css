@@ -552,9 +552,6 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 }
 .mt-modal .mt-resume { border-color:var(--cc-gold) !important; box-shadow:0 0 0 2px var(--cc-gold) !important; }
 
-/* D35 · "+ Next part": the camera that stays open, after the first photo of a receipt */
-.mt-chip--next { border-style:solid !important; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500; }
-
 /* D36 · "Save + next" in a new receipt: between Cancel and Save, outlined */
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next { flex:0 0 auto; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500 !important; }
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next:disabled { opacity:.55; }
@@ -820,3 +817,11 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-rp__x i { font-size:13px; }
 .mt-acts .mt-rp__x { width:32px; height:32px; }
 
+
+/* Nov 2026 · receipt photos as in the Übergabeprotokoll: Camera · Photo / PDF · thumbnails with × (maintenance.js mtCostGridHTML) */
+.ccub-grid.mt-rcg { grid-template-columns:repeat(4, minmax(0, 104px)); margin-top:6px; }
+.mt-rcg .mt-rcf { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:8px 6px; text-align:center; cursor:default; }
+.mt-rcg button.mt-rcf { cursor:pointer; }
+.mt-rcg .mt-rcf i { font-size:22px; color:#B8956A; }
+.mt-rcg .mt-rcf span { font-size:10px; line-height:1.25; color:var(--cc-charcoal, #3A3530); max-width:100%; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; word-break:break-word; }
