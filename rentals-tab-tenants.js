@@ -769,29 +769,11 @@ function _rntUebergHTML(type, unit) {
   </div>
 </div>`;
 }
-/* A generator started in Tenants (Übergabe, Renew) lives in the Apartments / Parking tab: that tab
-   shows while it is open, and window._rntUbReturn (the tab to go back to) comes back as soon as it
-   closes — ✕, Cancel, a tap outside or Approve all remove 'open'. */
-function _rntReturnOnClose(ov) {
-  if (!ov || ov._rntBack) return;
-  ov._rntBack = true;
-  new MutationObserver(() => {
-    if (!ov.classList.contains('open') && window._rntUbReturn) {
-      const t = window._rntUbReturn; window._rntUbReturn = null;
-      if (typeof switchTab === 'function') switchTab(t);
-    }
-  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
-}
+/* Übergabe from Tenants: the generator opens right over Tenants (it lives on the page, not inside
+   the Apartments / Parking tab) — no jump to that tab first, nothing to jump back from */
 function _rntUbOpen(pre, unitId) {
-  const isApt = pre === 'apt';
-  const ov = document.getElementById(isApt ? 'aptContractOverlay' : 'pkContractOverlay');
-  _rntReturnOnClose(ov);
-  if (typeof switchTab === 'function') switchTab(isApt ? 'apartments' : 'parking');
-  setTimeout(async () => {
-    window._rntUbReturn = 'tenants';
-    try { if (isApt) await _aptOpenContract('ueberg', unitId); else await _pkOpenContract('ueberg', unitId); }
-    finally { if (!ov || !ov.classList.contains('open')) window._rntUbReturn = null; }   // did not open → no jump later
-  }, 80);
+  if (pre === 'apt') { if (typeof _aptOpenContract === 'function') _aptOpenContract('ueberg', unitId); }
+  else if (typeof _pkOpenContract === 'function') _pkOpenContract('ueberg', unitId);
 }
 /* Former tenants — one row that opens the same list (Show older · Add former tenant · Archived) */
 const _rntMoreOpen = {};
