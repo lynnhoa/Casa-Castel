@@ -1,0 +1,658 @@
+{
+ "maps": [
+  {
+   "items": [
+    {
+     "no": 22,
+     "id": "rentals-calc-3",
+     "problem_plain": "If you change a tenant's period in the NK (Period ✎ → Save), the tenant is billed for the new period, but the 'Who carries it' list still works out the empty days from the old move-in and move-out dates. Example: at Studio One the tenant is extended to 01.01.2025 and pays 365 of 365 days, yet the list says 'Leerstand 01.01.–14.03.2025 · on you 170,00 €'. If you shorten a tenant, the empty month is left out. On older records with a 'Verbrauch' Heizung, the heating split uses the old days too.",
+     "fix_plain": "The empty days and the consumption split use the same period the tenant is billed for, which is the period printed in his letter.",
+     "ux": "Rentals › apartment › NK-Abrechnung window › 'Who carries it'. After you extend a tenant to the period start, the Leerstand line and 'Not covered by tenants · on you' disappear (0 €). After you shorten a tenant, the Leerstand line shows the real empty days, e.g. '01.08.–15.09.2025 · 46 days'. Nothing new to tap.",
+     "technical": "_srStays: `const e = it.r` instead of `it.e || it.r`. _srVacancies: occupancy is taken from `it.r.period_from/period_to` instead of `(it.e || it.r)`. _srCalc already bills it.r, so _srStays, _srVacancies, _srOnYou, _srSpanShare and _srConsSplit now follow the billed (period_custom) row. Nothing else changes.",
+     "files": "settlements-tab-rentals.js (_srStays, _srVacancies)",
+     "k1_overlap": "None. K1 changes the Vorauszahlungen window in _srCalc (rf/rt → this Abrechnung's own from/to) but leaves _srStays and _srVacancies alone. The two lines apply unchanged on top of K1.",
+     "tests": "Repros with REPO=<K2 tree>. sb/rentals-flow/h/p10-extend.js: no Leerstand row and no 'Not covered … on you'. sb/rentals-calc/h/rc3c-perfix-direkt.js: stays 01.01–31.12 = 365 days, leer [], onYou 0. rc3-perfix.js: heizung 1000. rc3b-shorten.js and sv/b1/v7b-shorten-direkt.js: Leerstand 01.08.–15.09.2025 (46 days), r7 Heizung 639,45. The prototype gives exactly these results. Must stay identical (and did in the prototype): rc10-meter, rc11-overlap, p3-change, p1-custom-period, p0-letter, rc8-letter, y-checks.",
+     "hours": 0.5,
+     "risk": "low: display-only figures, two lines, the same source of dates as the billing"
+    },
+    {
+     "no": 23,
+     "id": "rentals-calc-7",
+     "problem_plain": "When you type Heizkosten per tenant after a Zwischenablesung, the empty days between two tenants get a share worked out simply by days, and the screen calls it 'measured'. Example WHG 516 2025: Heizkosten 1.000 €, typed 700 € + 280 €. The Leerstand line says 'consumption 41,10 € (measured) · 72,66 € on you'. Only 20,00 € is actually left over, so 51,56 € on you is right. Letters are not affected.",
+     "fix_plain": "Once every tenant's amount is typed, the empty days carry exactly what is left over. If there are several empty spans or Pauschal stays, they share it by days. The word '(measured)' only appears for such a remainder or a meter split. While one amount is still missing, the estimate by days is labelled '(by days)'.",
+     "ux": "NK window › Who carries it › Leerstand line: '… · fixed 31,56 € · consumption 20,00 € (measured) | 51,56 € on you'. While a tenant's per-tenant amount is still empty, it reads '… consumption 41,10 € (by days)'. No new elements.",
+     "technical": "New helper _srMieterRest(c, rec, pos, unit) = unit − Σ of the typed amounts rec.tenants[tid].direct[pos.id] (signed with K1's _srSgn) over every Kalt+NK stay (tenant_id set, note ≠ 'Pauschal'). It returns null while one amount is missing. In _srSpanShare, branch pos.split === 'mieter': if rest !== null, cons += rest × days / freeDays, where freeDays = days of the Pauschal stays (_srStays with note 'Pauschal') + all vacancy days. If rest === null, cons += unit × days/perDays and byDays = true. In the Verbrauch branch, byDays = true when sp.how !== 'meter' and a consumption share is added. Return { …, byDays }. The _srNkTens Leerstand line prints '(by days)' when o.byDays, else '(measured)'.",
+     "files": "settlements-tab-rentals.js (_srSpanShare, new _srMieterRest, _srNkTens)",
+     "k1_overlap": "Uses K1's _srSgn(pos, v) for the typed amounts, the same sign rule as the letter (K1 rentals-calc-1). K1 does not touch _srSpanShare or _srNkTens. Build after the K1 merge. If item 24 is applied, _srSgn already uses _srKindOf.",
+     "tests": "sb/rentals-calc/h/rc7-measured.js: leer {days 15, fixed 31.56, cons 20.00}, row '… consumption 20,00 € (measured) | 51,56 € | on you'. The prototype gives exactly this. Variant: clear r8's typed 280 → '(by days)' 41,10. Must stay identical: rc10-meter (meter split stays '(measured)'), rc11-overlap, p3-change, and all tenant letters (p0-letter, rc8-letter, y-checks). These were identical in the prototype.",
+     "hours": 1.25,
+     "risk": "low: only the 'Who carries it' info line changes; no letter or Controlling figure"
+    },
+    {
+     "no": 24,
+     "id": "rentals-calc-5",
+     "problem_plain": "When you add a cost and pick its name from the suggestion list, the app saves it correctly, but the open window keeps calculating with the unconverted row until you close and reopen it. This always happens for the CO₂ landlord share. WHG 507: after adding 'CO₂-Kosten – Anteil Vermieter' 50 €, the window says total 1.130,00 € and '570,00 € gets back', while the letter says 1.030,00 € and 670,00 €. A 'Heizkosten' row typed under Nicht umlagefähig stays counted as not umlagefähig on screen, although it is saved and charged as umlagefähig.",
+     "fix_plain": "A cost named like a cost from the list counts as that cost on the screen right away. This is the same rule the save already uses.",
+     "ux": "NK window and Jahresabrechnung window. Pick 'CO₂-Kosten – Anteil Vermieter' and type 50: 'Total for the NK 1.030,00 €' and Lena '670,00 € gets back' appear at once, as in the letter. Heizkosten typed under Nicht umlagefähig: the totals show Umlagefähig 900,00 € / Nicht umlagefähig 350,00 € at once, and the row moves to Umlagefähig at the next redraw. Typing is never interrupted (no redraw while you type).",
+     "technical": "Two helpers next to _srKind: `_srNamed = p => p && p.label ? SR_KINDS.find(x => x.l.toLowerCase() === String(p.label).toLowerCase()) || null : null` and `_srKindOf = p => _srNamed(p) || _srKind(p.kind)`. Use _srKindOf for the sign in K1's _srSgn and in _srSigned. _srU becomes `!!(_srNamed(p) ? _srNamed(p).u : p.u) || (gewerbe rule with _srKindOf(p).k === 'verwaltung')`. _srCleanRec and _srHvSave4 map label → kind/u through _srNamed (one rule). Stored rows have label null after the mapping, so saved records, letters and Controlling compute exactly as before; only the unsaved draft changes.",
+     "files": "settlements-tab-rentals.js (new _srNamed/_srKindOf, _srSgn, _srSigned, _srU, _srCleanRec, _srHvSave4)",
+     "k1_overlap": "K1 adds `_srSgn` (keeps the minus of credits) and edits the hgDef line in _srCleanRec and _srHvSave4. K2 only replaces `_srKind(pos.kind)` with `_srKindOf(pos)` inside _srSgn, plus the mapping line next to the hgDef line. Compatible; apply on top of K1. Items 23 and 62 reuse _srKindOf, so build this one first.",
+     "tests": "rc5-draft-kind.js: nkWindowTotal '1.030,00 €', tenant '670,00 € gets back'. rc5b-hv-group.js: screenU 900,00 € / screenN 350,00 €. sv/b1/v9-co2-ja.js: Umlagefähig 650,00 €. All three are met in the prototype. Must stay identical (and did): r2-ja-autosave, a10-nkauto-stale, a7-rec-stale, rc1-refund, rc1b-negative, p0-letter, rc8-letter. Re-run K1's rentals-calc-1 repros after the merge.",
+     "hours": 1,
+     "risk": "low-medium: touches the shared sign and umlagefähig helpers. Stored data is unaffected, because a saved row never keeps a list name as its label, and the regression runs were identical"
+    },
+    {
+     "no": 36,
+     "id": "rentals-flow-2",
+     "problem_plain": "The letter date is saved the first time you touch anything in the tenant window, e.g. typing the Vorauszahlungen, choosing 'Settle by' or opening the PDF. If you mark the letter sent on a later day, it keeps that old date and due date. Example: you edit Lena's Vorauszahlungen on 20.12.2026 and tap Mark as sent on 05.01.2027. The letter and Controlling say 20.12.2026, due 19.01.2027, and the 'Frist passed' warning for her 180 € Nachzahlung never shows. The address and Anlage are frozen the same way and stop following the data.",
+     "fix_plain": "The letter date, address, Anlage, 'pay within' days and tenant IBAN are only kept when you type something different from what the app suggests. Otherwise the letter date is the day you mark it as sent, and the address and Anlage follow the data. A date you type stays. There is no hidden freezing any more, not even when you open the PDF.",
+     "ux": "Tenant window › Letter details shows today's date until you type another one; changes elsewhere (Vorauszahlungen etc.) no longer fix it. On 05.01.2027 the Letter step shows 'not sent yet · Frist 31.12.2026 · Frist passed' for Lena's 180 € Nachzahlung. Mark as sent gives a letter dated 05.01.2027, due 04.02.2027. Nothing new on screen. Values the old behaviour already stored stay as they are; they are visible in the Letter details line and can be changed there.",
+     "technical": "_srCollectTenant: date → `ts.date = v && _srD(v) !== cxToday() ? _srD(v) : null`. days → null when 30. addr → null when equal to _srDefaultAddr(c, it, { t, apt }) (t = _srTenantOf(it.r), apt = _srAptOf(c, t)). anlagen → null when equal to _srDefaultAnlagen(rec). iban → null when blank. _srLetterData, _srSendNow and _srTenView already use 'ts.x ?? default'. For a sent line the letter date comes from the stored result (see item 38).",
+     "files": "settlements-tab-rentals.js (_srCollectTenant)",
+     "k1_overlap": "K1 removes the 'Settle by' buttons and the 'via' handler (one of the triggers) and changes when the IBAN field shows (also when the held Kaution part is bigger than the Nachzahlung). Neither touches _srCollectTenant; the blank-IBAN → null rule fits K1's field. Compatible.",
+     "tests": "sb/rentals-flow/h/p8-date-freeze.js. On 20.12. the stored ts has date/addr/anlagen/days/iban all null. On 05.01.2027 the panel shows 'Frist passed', and Mark as sent writes ['2027-01-05','2027-02-04',180,1]. The prototype gives exactly this. Must stay identical (and did): p4-send, z-plain-send, r5-reload-send, r6-send-other, r1-send-redraw, p0-letter. a1-rentals-send differs only in the toasts of item 61.",
+     "hours": 0.75,
+     "risk": "low"
+    },
+    {
+     "no": 38,
+     "id": "rentals-flow-3",
+     "problem_plain": "After you mark a tenant's NK letter as sent, the Jahresabrechnung costs can still be changed, and the tenant window then mixes old and new figures. Example: Lena's sent letter says costs 1.080 € and 620 € back. After Wasser is corrected from 400 to 520 €, the top still says 'gets back 620 €', but the bars and the calculation say costs 1.200 € and '= gets back 500 €'. 'Open letter (PDF)' then makes a new letter with the original date but 1.200 € / 500 €, which is not the letter she received. History opens the real copy.",
+     "fix_plain": "Once a letter is sent, the tenant window shows the figures of that letter, and 'Open letter (PDF)' opens the copy that went out, the same one History opens. A later cost correction stays visible in the Jahresabrechnung. To send a corrected letter, you use 'undo' on the Letter step as today.",
+     "ux": "Tenant window, sent line: top '620,00 €', bars Costs 1.080 / Paid 1.700. Calculation: 'Costs · as sent 1.080,00 € · − Vorauszahlungen 1.700,00 € · = Lena gets back 620,00 €'. The list of single costs folds away only when the costs changed since sending; otherwise it stays as today. 'Open letter (PDF)' opens the archived letter. For a result without an archived copy (older ones), the button rebuilds the letter dated the day it was sent. No new buttons or messages.",
+     "technical": "(1) _srSendNow: `ts.sent = { sum: x.sum, vz: x.vz }` before the existing tenants save. No SQL; it lives in the tenants JSON. (2) _srTenView: `const y = sent ? { sum: ts.sent ? ts.sent.sum : cxR(x.vz + v), vz: ts.sent ? ts.sent.vz : x.vz, saldo: v } : x;`. Use y for the hero bars, the VZ row, the '=' row and the 'Kaution held back' row (y.saldo). For the Costs row: if |y.sum − x.sum| ≥ 0.005, show a plain row 'Costs · as sent' without the fold of live lines; else the fold as today. (3) Click handler 'pdf': if the line has a result, find the newest SR.letters row with app 'rentals', the same property_id, tenant_id and period_from as it.r, and call _srOpenLetter(id). The button keeps data-cc-pdf, so the iPhone tab opens at the tap. Otherwise call _srPdf. (4) _srLetterData: date = sentRes.date || ts.date || today, so a rebuilt sent letter keeps its date.",
+     "files": "settlements-tab-rentals.js (_srSendNow, _srTenView, click handler 'pdf', _srLetterData)",
+     "k1_overlap": "High. K1 rewrites the Money step in _srTenView (kau, T = v − held part, payBox, button direction), adds `sentRes` and `per` to _srLetterData, and changes the via in _srSendNow. K2 leaves K1's Money step as it is; only the hero bars, the Calculation rows and the 'Kaution held back' row read y. In _srLetterData, move K1's `sentRes` above `date` and reuse it. Keep the same rule as casa-flow-9 in the Casa group (a rebuilt sent letter keeps the sent date).",
+     "tests": "sb/rentals-flow/h/p7-sent-pdf.js and sv/b2/s/v13-sent-edit-ui.js: panel 'Costs · as sent 1.080,00 € … = Lena gets back 620,00 €', and the PDF button builds no new letter. New check /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/h/k2-38-pdf.js: with an archived copy it opens 'NK-Abrechnung_01.01.2025_31.12.2025_…_Wolf.pdf'; without one it rebuilds the letter dated 2026-11-09. All passed in the prototype. Must stay identical: a1-rentals-send, r1-send-redraw, r5-reload-send, r6-send-other, r7-undo-other, z-plain-send, c5-bookall-hist, c7-hist-save-back (all identical), plus K1's Kaution money-step repros (k1/build-r/repros.sh) after the merge.",
+     "hours": 2,
+     "risk": "medium: the screen of a sent line, merged into K1's new Money step. No data is written except the two stored figures"
+    },
+    {
+     "no": 39,
+     "id": "rentals-flow-11",
+     "problem_plain": "Kostheim's NK year runs 01.07.–30.06. A tenant who lived there only part of the period gets a letter saying '62 von 365 Tagen · Abrechnungsjahr 2026', although he never lived there in 2026. The real billing period 01.07.2025–30.06.2026 is not printed anywhere in the letter.",
+     "fix_plain": "When the billing period is not a calendar year, the letter names it: '62 von 365 Tagen · Abrechnungszeitraum 01.07.2025–30.06.2026'. Calendar years keep 'Abrechnungsjahr 2025'.",
+     "ux": "Only the letter (PDF) changes: the Zeitraum box for part-period tenants of a non-calendar period (Kostheim, or a period changed in Settings). Nothing changes on the screens.",
+     "technical": "srLetterHtml, facts1 'Zeitraum', small text. If d.perFrom ends with '-01-01' and d.perTo with '-12-31', print 'Abrechnungsjahr ' + year; else print 'Abrechnungszeitraum ' + dt(d.perFrom) + '–' + dt(d.perTo).",
+     "files": "settlements-tab-rentals.js (srLetterHtml)",
+     "k1_overlap": "K1 makes d.perFrom/perTo this Abrechnung's own period (rentals-calc-2), so with K2 a part-period tenant in a Rumpfjahr also gets its real Abrechnungszeitraum. No shared lines. Use the same wording as Casa item casa-calc-6.",
+     "tests": "sb/rentals-flow/h/p16-julyperiod.js and sv/b6/p16b.js: '62 von 365 Tagen · Abrechnungszeitraum 01.07.2025–30.06.2026' (met in the prototype). Must stay identical (and did): p0-letter, rc8-letter, rc2-custom-period, p3-change (calendar-year letters unchanged).",
+     "hours": 0.25,
+     "risk": "very low"
+    },
+    {
+     "no": 41,
+     "id": "rentals-flow-7",
+     "problem_plain": "In the year you bought an apartment that already had a tenant, the letter's Vorauszahlungen table shows the purchase month twice with day fractions. Example Studio One, bought 15.03.2025, NK 100 € a month: 'März 2025 14/31 Tage 45,16 €' and 'März 2025 17/31 Tage 54,84 €' instead of one row 'März 2025 100,00 €'. The total and the result are right.",
+     "fix_plain": "The purchase month is one row with the full monthly amount.",
+     "ux": "Letter, Vorauszahlungen table: 'März 2025 100,00 €' once. The total (1.100 €) and the result do not change. The tenant window keeps its hint 'Before the purchase … check with the seller'.",
+     "technical": "_srVzMonths: merge consecutive entries with the same y/m first. Amounts and days are summed; part '' when days = N. The existing rounding and 'Korrektur' logic runs after that.",
+     "files": "settlements-tab-rentals.js (_srVzMonths)",
+     "k1_overlap": "K1 limits the months to this Abrechnung's own period in _srCalc (rf/rt); _srVzMonths is untouched. Compatible.",
+     "tests": "sb/rentals-flow/h/p2-purchase.js: VZ table 'Januar 2025 100 | Februar 2025 100 | März 2025 100 | April 2025 0 | …'; sum 850 / vz 1.100 / saldo −250 unchanged (met in the prototype). Must stay identical (and did): rc6-gs-purchase, p0-letter, rc8-letter, p3-change.",
+     "hours": 0.25,
+     "risk": "very low"
+    },
+    {
+     "no": 45,
+     "id": "rentals-flow-4",
+     "problem_plain": "When you skip a tenant's NK-Abrechnung, the apartment card's 'NK-Abrechnung' tile still counts that tenant's amount. Example WHG 507: Lena Wolf is 'skipped', yet the card says 'you pay back 620,00 € · 1 tenant'. The top tile and the Dashboard leave her out.",
+     "fix_plain": "A skipped NK is not counted on the card. If every tenant is skipped, the tile shows no amount, as the top tile and the Dashboard do.",
+     "ux": "Card WHG 507 › NK-Abrechnung tile: 'no NK · — · skipped' (the NK costs line stays). Lena's line shows only the period and the 'skipped' chip, with no amount. With two tenants and one skipped, the tile shows only the other tenant's amount and '1 tenant'.",
+     "technical": "_srCard5: T5n = T5.filter(r => !r.skipped) for vals, nkNet and nkD. Sub text: 'skipped' when every tenant is skipped; the counts come from T5n. The header chip and oneTen keep using T5. _srTenLine: for a skipped row, v = null and no amount text.",
+     "files": "settlements-tab-rentals.js (_srCard5, _srTenLine)",
+     "k1_overlap": "None.",
+     "tests": "sb/rentals-flow/h/p5-skip-card.js: card 'NK-Abrechnung | no NK | — | skipped', top tile 'you get 120,00 €', Dashboard unchanged (met in the prototype). Also tracking-dash t8-rentals-skip-tile.js. Must stay identical (and did): a8-normal (card lines), a5-rentals-skip-per, r9-skip-once, a6-dash.",
+     "hours": 0.5,
+     "risk": "low"
+    },
+    {
+     "no": 47,
+     "id": "rentals-flow-5",
+     "problem_plain": "An apartment's History always words the WEG result in the past tense, even when it has not been paid yet. Example WHG 507: History says 'you paid the WEG 120,00 €', while the card says 'You pay 120,00 € · not paid yet'. Kaiser-W-R 17 shows 'you paid the WEG 300,00 €' for an open result.",
+     "fix_plain": "History shows the real state, with the same words as the card: 'you pay the WEG 120,00 € · not paid yet' until it is paid or settled, then 'you paid the WEG 120,00 €'.",
+     "ux": "Apartment card › History › NK 2025: 'Jahresabrechnung · you pay the WEG 120,00 € · not paid yet' (or '· not received yet' for a Guthaben). The booked 2024 row still reads 'the WEG paid you 95,00 €'.",
+     "technical": "_srHistoryView: for a year with a WEG result, get the line state with _srLine({ p, per, year: Y }, _srItemsFor(p, per).weg).state, and set done = (k === 'erledigt'). Text = _srWegWords(dir, amount, done) + (done or balanced ? '' : dir > 0 ? ' · not received yet' : ' · not paid yet'). Drop the `.replace()` past-tense trick.",
+     "files": "settlements-tab-rentals.js (_srHistoryView)",
+     "k1_overlap": "None. K1's C4 (an older 'with the Hausgeld' result keeps 'zahlung' once booked) feeds the same line state the History now reads.",
+     "tests": "sb/rentals-flow/h/p6-history.js: History 4 'you pay the WEG 120,00 € · not paid yet', History 1 'you pay the WEG 300,00 € · not paid yet', 2024 'the WEG paid you 95,00 €' (met in the prototype). Must stay identical (and did): c5-bookall-hist, c7-hist-save-back; also run c1-hist-double and c8-hist-add-redraw.",
+     "hours": 0.5,
+     "risk": "low"
+    },
+    {
+     "no": 48,
+     "id": "rentals-flow-10",
+     "problem_plain": "If a Jahresabrechnung has not arrived and the tenant Frist is less than 60 days away, the app calls it 'overdue'. This shows on the card, in the Jahresabrechnungen list, in the ring ('7 overdue'), in the window and on the Dashboard, even when the Hausverwaltung is not late. Example: Rheinblick 3, HV usually sends in December, today 09.11.2026. The window says 'overdue · expected ~Dezember 2026', while by the app's own rule it is only overdue after 15.01.2027. Asking the HV is right; only the word is wrong.",
+     "fix_plain": "There is one status word everywhere. 'overdue' is used only once the HV is really late (15 days after the month it usually sends, as today). Before that it says 'Frist soon'. It stays red, and 'ask HV' stays.",
+     "ux": "Card: 'Jahresabrechnung · not in yet · Frist soon · ask HV'. Jahresabrechnungen list: 'Frist soon · ask HV · expected Dezember 2026' with a red 'Frist soon' chip. Ring: '1 of 8 Jahresabrechnungen in · 7 Frist soon', or e.g. '· 2 overdue · 5 Frist soon' when both apply. Window step 1: 'Frist soon · expected ~Dezember 2026'. Dashboard 'Needs you': 'Jahresabrechnung not in yet · Rentals · Rheinblick 3 · Frist soon'. After 15.01.2027 all of them say 'overdue'.",
+     "technical": "_srHvState, not-received branch: word = over ? 'overdue' : 'Frist soon'; return { …, word, over }; pill ['diff', word] for k 'ueberfaellig'. k stays the same, so the red colour, to-do and ask HV are unchanged. Use hv.word in _srCard5 (jaS = hv.word + ' · ask HV'), _srSumSheet (sub and chip) and _srHvView recvSub. stRenderRentals ring: hvOver = k 'ueberfaellig' && over, hvSoon = k 'ueberfaellig' && !over; each is printed only when > 0. settlements-tab-dashboard.js sdRentals step: t = hv.over ? 'Jahresabrechnung overdue' : 'Jahresabrechnung not in yet'; s gets ' · Frist soon' when not over.",
+     "files": "settlements-tab-rentals.js (_srHvState, stRenderRentals, _srCard5, _srSumSheet, _srHvView); settlements-tab-dashboard.js (sdRentals, one line; tell the dash group)",
+     "k1_overlap": "None. K1 changes other lines of settlements-tab-dashboard.js (SD_VIA/sdVia, sdSplitFollow), not the 'overdue' step.",
+     "tests": "sb/rentals-flow/h/p12-overdue.js: card 'Frist soon · ask HV', window 'Frist soon · expected ~Dezember 2026', ring '… · 6 Frist soon' (7 without item 50). All met in the prototype. The only expected regression differences are this ring text in s0-smoke, a8-normal and a1-rentals-send; everything else stayed identical.",
+     "hours": 0.75,
+     "risk": "low: wording only"
+    },
+    {
+     "no": 49,
+     "id": "rentals-flow-8",
+     "problem_plain": "Tapping the NK-Abrechnungen tile opens a list of tenants that leaves out everyone still waiting for the Jahresabrechnung, so its 'Not yet' group never appears. In the 2025 example the sheet says '1 pays you · 1 gets back · 1 of 2 settled', while the ring on the same tab says 1/9 and 7 tenants are waiting.",
+     "fix_plain": "The sheet lists every Kalt+NK tenant of the year: waiting tenants under 'Not yet', skipped ones under 'Settled'. The count matches the ring.",
+     "ux": "Tap the NK-Abrechnungen tile: '1 pays you · 1 gets back · 1 of 9 settled'. Groups: To send 1 · Not yet 7 (each with a grey 'waiting' chip; tapping one opens it) · Settled 1. The tile amount does not change.",
+     "technical": "srSummary: also push every 'ten' row into a new list S.tenAll {i, r, v, idx}, with v null for waiting or skipped rows. tenRows, ten, nIn and nOut stay unchanged, so the Dashboard is not touched. _srSumSheet builds its rows from S.tenAll. Chip: skipped → ['grey','skipped'], v null → ['grey','waiting'], 0 € → ['grey','balanced']. Drop the dead ' · skipped' suffix.",
+     "files": "settlements-tab-rentals.js (srSummary, _srSumSheet)",
+     "k1_overlap": "None.",
+     "tests": "sb/rentals-flow/h/p9-sumsheet.js: '1 of 9 settled', Not yet 7 (Max Stern, Eva Stern, Mia Muster, Max Berg, Eva Wolf, Ida Stern, Tom Muster). Met in the prototype. Must stay identical (and did): a6-dash (the Dashboard reads tenRows), and the top tiles in all suites.",
+     "hours": 0.5,
+     "risk": "low"
+    },
+    {
+     "no": 50,
+     "id": "rentals-flow-16",
+     "problem_plain": "Some years have a WEG result that was typed in the old way, before the current Jahresabrechnung screen (example Kaiser-W-R 17, Nachzahlung 300 € for 2025). For these, the card still says 'Jahresabrechnung not in yet · overdue · ask HV' and offers the ask-HV mail. At the same time the Jahresabrechnungen tile already counts the 300 € (420 € to pay), and History says 'you paid the WEG 300,00 €'.",
+     "fix_plain": "A WEG result that exists means the Jahresabrechnung is in. The card shows 'you pay 300,00 € · not paid yet' with no 'ask HV'. The Jahresabrechnung window shows that result in step 2, and its next step is entering the costs, which the tenants' NK needs.",
+     "ux": "Card Kaiser-W-R 17: Jahresabrechnung 'you pay 300,00 € · not paid yet', no 'ask HV' chip or mail. The ring counts it as in ('2 of 8 … in'). Jahresabrechnungen list: 'To enter · received · enter the costs · 300,00 €'. Window: hero 'You pay the WEG 300,00 €', step 1 done, step 2 'add: costs · statement date'. History (item 47): 'you pay the WEG 300,00 € · not paid yet'.",
+     "technical": "_srHvState: `received` is also true when wegSt.res exists; the received date falls back to wegSt.res.date, so there is no crash without a record. _srCard5: show the WEG amount whenever wRes exists; the paid/received text follows wegSt.k === 'erledigt', not hv.k. _srMakeDraft: with no stored record and a stored WEG result, prefill draft weg_direction/weg_amount/weg_due/weg_via from it. Step 2 then shows it, and a later save writes it back unchanged (_srWriteWegNow sees no change).",
+     "files": "settlements-tab-rentals.js (_srHvState, _srCard5, _srMakeDraft)",
+     "k1_overlap": "K1's C4 (_srWriteWegNow keeps 'zahlung' once booked, _srWegViaPaid) works with the prefilled weg_via. No shared lines.",
+     "tests": "sv/b7/v45-legacy.js: hvK 'erfassen', card 'Jahresabrechnung | you pay | 300,00 € | not paid yet', HV pop-up 'You pay the WEG 300,00 €'. sb/rentals-flow/h/p9-sumsheet.js: KWR under 'To enter' with 300 €. All met in the prototype. Expected regression difference: ring '2 of 8 … in' in s0-smoke, a8-normal, a1-rentals-send. Must stay identical (and did): r3-weg-close, r8-weg-edit, a4-ja-pay, a4b-ja-mut, a9-ja-year.",
+     "hours": 1,
+     "risk": "low-medium: only periods with an old WEG result and no record change state"
+    },
+    {
+     "no": 55,
+     "id": "rentals-flow-6",
+     "problem_plain": "The first time you open a new Jahresabrechnung, it offers last year's cost rows. If you only note the 'Received on' date and close, those rows are gone when you come back, and both lists say 'No rows yet'. This happens because the automatic Grundsteuer line already counts as 'has costs'. If you type one amount (Wasser), only Wasser is left. You then have to add every cost again by hand.",
+     "fix_plain": "Until the Jahresabrechnung is complete, last year's cost rows (or the standard list) are always offered empty next to what you already typed. Empty rows are never saved.",
+     "ux": "Jahresabrechnung › Show all costs. After noting only 'Received on' and coming back, all 6 rows are there again. After typing Wasser 430: Wasser 430 plus the other 5 empty rows. Once the Jahresabrechnung is complete, only the saved rows show, as today.",
+     "technical": "_srMakeDraft: replace `if (!(d.positions || []).length)` with `if (!_srJaDone(rec, _srRecSummary(rec, c.apt)))`. offer = last year's rows without auto rows (_srPrevRec(...).positions.filter(p => !p.auto), amounts cleared as today), else SR_STD_U + SR_STD_NU. Append the offered rows whose kind + label (+ NK-only flag) is not in the draft yet. _srCleanRec and _srHvSave4 already drop empty rows.",
+     "files": "settlements-tab-rentals.js (_srMakeDraft)",
+     "k1_overlap": "None.",
+     "tests": "sb/rentals-flow/h/p11-vorjahr.js and sv/b2/s/v16-vorjahr-ui.js: [A] the 6 rows again, [B] Wasser + 5 empty rows, [C] unchanged. All met in the prototype. Must stay identical (and did): r2-ja-autosave, a7-rec-stale, a10-nkauto-stale, a4-ja-pay, a9-ja-year.",
+     "hours": 0.5,
+     "risk": "low"
+    },
+    {
+     "no": 60,
+     "id": "rentals-flow-13",
+     "problem_plain": "In the tenant window, the yellow 'needs: …' chip on the Letter details line points to old screen names: 'tenant's address → Edit letter' and 'amounts per tenant → Breakdown'. Those sections are now called 'Letter details' (Address field) and 'Costs'.",
+     "fix_plain": "The chip names today's sections.",
+     "ux": "Tenant window › Letter details chip: 'needs: … · tenant’s address → Letter details · amounts per tenant → Costs'.",
+     "technical": "_srChecks: change the two strings: '→ Edit letter' becomes '→ Letter details', '→ Breakdown' becomes '→ Costs'.",
+     "files": "settlements-tab-rentals.js (_srChecks)",
+     "k1_overlap": "None. K1 redefines _srViaOf, which _srChecks calls; the strings are separate lines.",
+     "tests": "sb/rentals-flow/h/p15-checkchip.js: '… tenant’s address → Letter details · amounts per tenant → Costs' (met in the prototype).",
+     "hours": 0.1,
+     "risk": "none"
+    },
+    {
+     "no": 61,
+     "id": "rentals-flow-14",
+     "problem_plain": "In the English Rentals screens, undoing a sent letter (the undo next to the letter, or unticking a tenant on the card) asks 'Back to open', and the message afterwards says 'Zurück auf Offen'. When a save fails, Rentals shows German messages too ('Speichern fehlgeschlagen — …', 'Fehlgeschlagen — …', 'Bitte zuerst das Settlements-SQL …').",
+     "fix_plain": "All of these messages are in English, with the words the rest of Rentals uses: 'Back to open', 'Could not save — …', 'Please run the Settlements SQL in Supabase first'.",
+     "ux": "After the letter undo, the toast says 'Back to open'. Failed saves say 'Could not save — …'. No new messages.",
+     "technical": "settlements-tab-tracking.js: in _stReopen, 'Fehlgeschlagen — ' becomes 'Could not save — ' and 'Zurück auf Offen' becomes 'Back to open'. In _stNotDone, 'Fehlgeschlagen — ' becomes 'Could not save — '. Only Rentals calls these two; the Tracking tab is now just the boot-error page. settlements-tab-rentals.js: _srQueueTenantSave and the four toasts in _srSendNow become 'Could not save — …' / 'Please run the Settlements SQL in Supabase first'.",
+     "files": "settlements-tab-tracking.js (_stReopen, _stNotDone); settlements-tab-rentals.js (_srQueueTenantSave, _srSendNow)",
+     "k1_overlap": "K1 edits other parts of settlements-tab-tracking.js (_stState, _stFormHtml, _stSave, _stSyncStatus) and the via line of _srSendNow. These are different lines; compatible.",
+     "tests": "sb/rentals-flow/h/p4-send.js toasts ['Marked sent','Settled','Back to open','Back to open','Skipped','Back to open'] (met in the prototype); tracking-dash t4-reopen-toast.js. The only expected regression difference is the failure toasts of a1-rentals-send ('Could not save — simulated failure …').",
+     "hours": 0.25,
+     "risk": "none"
+    },
+    {
+     "no": 62,
+     "id": "rentals-flow-15",
+     "problem_plain": "If you add a cost under 'NK only' in the NK window and name it 'Grundsteuer' (e.g. 410 €), it shows as 'Grundsteuer from Rentals' when you reopen the window, and its name can no longer be edited, although you typed it yourself. There is also a second slip: while the window is still open, the automatic Grundsteuer (380 €) and yours (410 €) both count, so the screen, or a letter opened right then, says 1.490 € instead of 1.110 €, until the window is closed.",
+     "fix_plain": "A Grundsteuer you typed is a normal editable row, without 'from Rentals'. It replaces the automatic Grundsteuer at once, not only after you close the window. Replacing the automatic line is intended and stays.",
+     "ux": "NK window › NK only: the row shows the name field 'Grundsteuer' and 410 €. The totals, the tenant figures and any letter say 1.110 € right away. The automatic line disappears from the list at the next redraw, as today.",
+     "technical": "_srNkView xRows: always render non-auto rows with the name input; drop the `named` / '<small>from Rentals</small>' branch. Remove the dead 'nkGs' handler and the `void hasGs, void gsQ` remains of the removed 'Grundsteuer from Rentals' button. _srInNk: an auto 'gs' row is not in the NK while the record has a non-auto NK-only row whose _srKindOf(q).k is 'grundsteuer'. This is the same rule _srNkAutoNext applies when it syncs.",
+     "files": "settlements-tab-rentals.js (_srNkView xRows, click handler nkAdd/nkGs, _srInNk)",
+     "k1_overlap": "K1 passes rec into _srNkAutoNext and _srAutoNkItems; the manualGs rule is unchanged. Uses item 24's _srKindOf. No shared lines.",
+     "tests": "sb/rentals-flow/h/p17-gs-label.js: the reopened row has a name field and no 'from Rentals'. sv/b6/p17b.js: the letter while the window is open shows 'Grundsteuer 410,00 € | Summe Kosten 1.110,00 €'. Both met in the prototype. Must stay identical (and did): a10-nkauto-stale, rc6-gs-purchase, p0-letter, rc8-letter; also run p-nkauto.",
+     "hours": 0.5,
+     "risk": "low"
+    }
+   ],
+   "notes": "All 16 'rentals' items are confirmed on main 511dbef and have a tested fix design. Estimated time is about 11 hours of build plus about 1.5 hours to port onto K1 and run the full regression, so about 12.5 hours for this group.\n\n**Prototype.** I built every fix as a prototype on a copy of main (before K1) and re-ran every repro:\n- Patch script: /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/patch.py (run `python3 -I patch.py <tree>`).\n- Patched tree: /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/proto\n- Repro outputs on main and on the prototype: /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/out-main and /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/out-proto\n- New check for item 38: /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/h/k2-38-pdf.js\n\nEvery repro now gives the correct result. The patch is written against main, so lines that K1 changes (_srSgn, _srTenView's Money step, `sentRes` in _srLetterData) must be re-applied by hand on top of K1, as each k1_overlap says.\n\n**Regression.** I ran 37 existing Rentals scripts on main and on the prototype (outputs in /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/rentals/reg). The scripts are sb/rentals-flow/h s0, a1, a4, a4b, a5, a6, a7, a8, a9, a10, c5, c7, d1, p0, p1, p3, r1–r9, x1, y-checks and z-plain-send, plus sb/rentals-calc/h rc1, rc1b, rc2, rc4, rc6, rc8, rc9, rc10 and rc11. All were identical except three intended differences:\n- the ring wording '2 of 8 … in · 6 Frist soon' (items 48 and 50) in s0-smoke, a8-normal and a1-rentals-send;\n- the English failure toasts in a1-rentals-send (item 61).\n\nNo letter, abr_results row, Controlling booking or Dashboard figure changed. The harness sometimes fails with 'clock.pauseAt: Cannot fast-forward to the past'; that is a timing flake in run3.js, and a re-run passes. After the K1 merge, also run K1's reg-r suites (reg-st, reg-ctl, owner-day sims, fuzz) and k1/build-r/repros.sh, and compare head against base.\n\n**Build order.** Build on top of K1, item 24 first, because items 23 and 62 use its _srKindOf helper and K1's _srSgn. Item 38 has the biggest K1 overlap: K1 rewrote the Money step in _srTenView and _srLetterData. K2 only changes the hero bars and Calculation rows for sent lines and reuses K1's `sentRes` for the letter date. Items 36 and 38 interact: once the letter date is no longer frozen (36), a rebuilt sent letter must take its date from the stored result (38 part 4).\n\n**Owner rules.** No new toasts, warnings or hints anywhere. One hidden behaviour is removed: the letter date no longer freezes when you edit or open the PDF. One leftover is removed: the 'from Rentals' label and the dead 'nkGs' code. Status words reuse existing app wording: 'Frist soon', 'overdue', 'not paid yet', 'waiting', 'skipped', 'Back to open', 'Could not save'. No SQL is needed: item 38 keeps its two sent figures in the existing tenants JSON.\n\n**Overlap with other groups.**\n- Item 48 changes one line in settlements-tab-dashboard.js (sdRentals 'Jahresabrechnung overdue'); coordinate with the dash group.\n- Item 38 should use the same rule as casa-flow-9 in the Casa group (a sent letter opens its archived copy; a rebuild keeps the sent date).\n- Item 39 should use the same wording ('Abrechnungszeitraum dd.mm.yyyy–dd.mm.yyyy') as casa-calc-6."
+  },
+  {
+   "items": [
+    {
+     "no": 32,
+     "id": "casa-calc-5",
+     "problem_plain": "In every Casa NK letter without Teil B, the Belegliste page says its invoices went into the cost table 'auf Seite 2'. The cost table is on page 1, and page 2 is the Belegliste itself.",
+     "fix_plain": "The Belegliste always says 'auf Seite 1'. Since the one-page layout, the cost table is on page 1 in every letter, with or without Teil B.",
+     "ux": "Nothing to tap. The Belegliste page of the letter ('Open letter (PDF)', and the copy archived at 'Mark as sent') now reads 'Die Einzelrechnungen, die auf Seite 1 in die Aufstellung eingeflossen sind – …'. Teil B letters already said Seite 1 and stay the same.",
+     "technical": "settlements-tab-casa.js scLetterData, D.extra.intro: replace 'auf Seite ' + ((t.teilB || []).length ? 1 : 2) with the fixed text 'auf Seite 1'. The Hausgeld variant of the intro has no page number and is unchanged.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "None. K1 does not touch scLetterData or the Belegliste text, and the hunk applies cleanly on the K1 head.",
+     "tests": "Repro: sb/casa-calc/r6-letter-text.js (belegIntro now 'auf Seite 1' for Finn Lopez and Anna Novak); also sb/casa-flow p3.js and p11.js. Intended changes in the K1 repro set: cc-r6-letter-text, cc-p1-letter, cf-p3, cf-p11. Must stay SAME: cc-c1-teilb (Teil B letter), regress-st t-letter.",
+     "hours": 0.25,
+     "risk": "Very low. A text change only, and the cost table cannot leave page 1 (it sits about 600 px into the 917 px page)."
+    },
+    {
+     "no": 33,
+     "id": "casa-calc-6",
+     "problem_plain": "Example: Finn Lopez lived in London only 01.11.–31.12.2025. His letter names only those two months, but shows the house total (13.968 €) and '2 von 92 bewohnten Monaten'. It never says which billing year these figures belong to, so the house cost looks as if it fell in his two months.",
+     "fix_plain": "For a tenant who lived only part of the year, the 'Zeitraum' box also names the billing year, as the Rentals letter already does: '2 Monate · Abrechnungsjahr 2025'. A period that runs over two years reads 'Abrechnungsjahr 2024/25'. Whole-year letters stay as they are.",
+     "ux": "Nothing to tap. In the letter header, the ZEITRAUM box reads '01.11.2025 – 31.12.2025' with '2 Monate · Abrechnungsjahr 2025' under it. It still fits on one line (measured with the real fonts: the facts row stays 61 px), so the page layout does not change.",
+     "technical": "settlements-tab-casa.js scLetterLayout, facts1 'Zeitraum' sub text: append perTxt when o.partial. perTxt = ' · Abrechnungsjahr ' + (y0 === y1 ? y1 : y0 + '/' + y1.slice(2)), with y0 and y1 the years of M.R.period.from and .to. This is the same wording as the Rentals letter (settlements-tab-rentals.js:861). Not used: full dates in the box (they wrap to a second line, +12 px on page 1) and a 4th facts column.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "None. K1 does not touch scLetterLayout.",
+     "tests": "Repro: sb/casa-calc/r6-letter-text.js. Finn's facts1 Zeitraum sub reads '2 Monate · Abrechnungsjahr 2025'. The script's mentionsPeriod check looks for '01.01.2025' and must also accept 'Abrechnungsjahr 2025'. Anna Novak's facts are unchanged. Width check: rt/k2/casa/h/m2.js. Intended diffs: cc-p1-letter, cf-p1, b4-v28-reg. Must stay SAME: whole-year letters (cf-p14 facts lines), cc-c1-teilb.",
+     "hours": 0.25,
+     "risk": "Low. Only part-year letters change, and the line fits on one line."
+    },
+    {
+     "no": 34,
+     "id": "casa-flow-8",
+     "problem_plain": "A tenant who lived exactly one whole month (e.g. move-in 01.12.2025) gets '1 Monate' in the letter and 'Lived here … 1 months' on the sheet. Other screens use '(s)' instead of a proper plural: '3 month(s) per contract' and '… month(s) from the contract'. A one-day gap reads '1 days'.",
+     "fix_plain": "Use the singular where the number is 1 and a proper plural otherwise: '1 Monat', '1 month', '1 day', '1 month per contract' / '3 months per contract'.",
+     "ux": "Letter, ZEITRAUM box: '1 Monat'. Tenant sheet › Calculation: 'Lived here … 1 month'. The '− Vorauszahlungen' line reads '1 month per contract' or '3 months per contract'. A room card gap reads 'empty … · 1 day'. The house-costs preview reads '… lived here 1 day'.",
+     "technical": "settlements-tab-casa.js. (1) scLetterLayout facts1 Zeitraum: mo + (mo === '1' ? ' Monat' : ' Monate'), and the old day-exact branch t.days === 1 ? ' Tag' : ' Tage'. (2) scTenView 'Lived here' value: scMo(t.months) === '1' ? ' month' : ' months', and t.days === 1 ? ' day' : ' days'. (3) vzSrc and scVzEditor: t.vzContract + (=== 1 ? ' month' : ' months') + ' per contract' / ' from the contract'. (4) Gap line in the room card (:709) and the noData hero: '1 day'. scMo returns the rounded display value ('1'), so a part month such as 0,97 keeps its plural. 'von 92 bewohnten Monaten' stays as it is (correct German).",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "No shared lines. The 'Lived here' and vzSrc lines sit just above K1's new 'Kaution held back' row in scTenView. The patch applies with a line offset only (verified on K1 head + wt-k1t).",
+     "tests": "Repros: sb/casa-flow/p4.js (added tenant: letter '1 Monat', sheet '1 month') and sv/b4/v28-reg.js (regular tenant London, move-in 01.12.2025). Intended diffs: cf-p4, b4-v28-reg; a snapshot that shows 'month(s)' changes to 'months'. Everything else SAME (regress-st 4/4 SAME on the prototype).",
+     "hours": 0.5,
+     "risk": "Very low. Text only."
+    },
+    {
+     "no": 35,
+     "id": "casa-flow-1",
+     "problem_plain": "A whole-year Casa letter with the Belegliste only just fits page 1 (914 of 917 px). As soon as part of the Kaution is held for the NK, which is the normal move-out case after K1, the extra Kaution sentence pushes the end over. Either the 'Anlage' line stands alone on page 2, or the greeting and signature are split across pages 1 and 2. The Belegliste then lands on page 3, but the letter still says 'Seite 2' twice.",
+     "fix_plain": "Three small changes. (1) The letter names the Belegliste once, in the Anlage line; the duplicate line 'Die Einzelrechnungen stehen in der Belegliste auf Seite 2.' goes. (2) 'Die Nachzahlung wird mit … Mietkaution verrechnet.' and the rest to be paid back stand in one paragraph instead of two. With these, all three Kaution cases fit page 1 again (measured 914/917). (3) As a safety net for longer letters, e.g. a 3–4 line address abroad: the hints, greeting, signature and Anlage line always move together, and every 'Belegliste (Seite n)' names the page it really lands on.",
+     "ux": "Nothing to tap. 'Open letter (PDF)' and the archived copy: a Kaution letter is again 2 pages (letter + Belegliste) instead of 3. There is one hint line fewer, and the Kaution text is one paragraph. A very long letter shows the closing block (hints, Viele Grüße, signature, 'Anlage: Belegliste (Seite 3)') together on page 2, with the Belegliste on Seite 3. There is never a lone line and the signature is never split.",
+     "technical": "(a) settlements-tab-casa.js scLetterLayout: D.hints drops the third entry ('Die Einzelrechnungen stehen in der Belegliste auf Seite ' + pBeleg). pBeleg stays for D.anlagen. (b) nk-letter.js: back(what, pre) takes an optional lead sentence in the same <p>. In payFor's rest > 0 branch, back(…, head) replaces the separate <p>head</p>. (c) nk-letter.js page1: wrap hints + .greet + .greet__name + .anl in one plain <div>. ccFlowPages moves a child as a whole, so they move together. The div has no styles, so margins collapse and a letter that fits renders pixel-identical. (d) nk-letter.js: pgB() wraps 'Belegliste (Seite n)' with data-pgref='beleg' whenever d.extra has rows (was: Teil B only), and the Belegliste title always carries data-pg='beleg'. nkLetterPdf already rewrites [data-pgref] after the flow. Also bump the nk-letter.js ?v in settlements.html, landlord.html and rentals-index.html.",
+     "files": "nk-letter.js, settlements-tab-casa.js (+ ?v bumps in settlements.html, landlord.html, rentals-index.html)",
+     "k1_overlap": "K1 changes neither nk-letter.js nor scLetterLayout. K1's C8 makes 'via Kaution' automatic whenever a part is held, so these overflowing letters become the normal move-out letter; this fix is what keeps them on one page. Verified on K1 head + this patch (rt/k2/casa/combo): Seite 1 914/917 in all three Kaution cases, the Belegliste on Seite 2, and the 4-line-address case on 3 pages with 'Belegliste (Seite 3)'.",
+     "tests": "Repros: sb/casa-flow/p15.js (Oslo, 300 € held). (a) Nachzahlung 621,91, (b) 98,11 with IBAN, (c) Guthaben: all three now Seite 1 914/917, Seite 2 Belegliste. Also p12.js (Lima 200 €), p14.js (no Kaution, still 2 pages), p11/p13. rt/k2/casa/h/m1.js: 4-line address → 3 pages, refs correct. Shared-letter check rt/k2/casa/h/m3.js: Rentals letters (flat 4, flat 5 with 300 € held) give identical text and line positions on main and the prototype. Intended diffs: cf-p11..p15, cc-p1-letter, cc-r6, plus the one-paragraph text in b4-v25-full, ks-r6-flows, sf-sf123-casa, sf-sf5-einbehalt-blocked and, in Rentals, rf-p14-kaution and sf-sf4-rentals-iban. Must stay SAME: cc-c1-teilb (Teil B), regress-st t-letter / t-returns / t-fixes / smoke (all SAME on the prototype).",
+     "hours": 1.5,
+     "risk": "Low–medium. nk-letter.js is shared with the Rentals and own-NK letters. The wrapper is layout-neutral when the letter fits (verified identical for Rentals). The paragraph merge changes the Rentals 'Nachzahlung < held part' letter from two paragraphs to one; the words stay the same. Page 1 is still tight (3 px), but any further growth now flows cleanly to page 2 with correct page numbers."
+    },
+    {
+     "no": 37,
+     "id": "casa-flow-9",
+     "problem_plain": "If a sent letter could not be archived (upload error, or the archive list did not load), 'Open letter (PDF)' draws it again with today's date. Example: Oslo was sent on 09.11.2026, due 09.12.2026. Opened on 30.11.2026, the copy shows 'Datum 30.11.2026' and 'bis zum 30.12.2026', so it differs from the letter the tenant got.",
+     "fix_plain": "A letter that was already sent is always drawn with the date it was sent and the due date stored with its result. The redrawn copy then is the letter the tenant got.",
+     "ux": "Tenant sheet › Letter (sent) › 'Open letter (PDF)': same button as before, but the PDF shows Datum 09.11.2026 and 'bis zum 09.12.2026', the same as the result in Controlling. Letters not sent yet keep today's date as before.",
+     "technical": "settlements-tab-casa.js scLetterData: sr = t.st && t.st.res. date = (sr && sr.date) || set.date || cxToday(). due = sr && sr.db && sr.db.due_date ? scD(sr.db.due_date) : NkCasa.addDays(date, days). D.due = due. Hand-added tenants: res.date = sent.date, due = date + days. _scSendNow is unchanged: the letter is drawn before the result exists, so it keeps today's date / set.date. The 'PDF (recreated)' → 'Open letter (PDF)' relabel stays, because the copy now matches the sent letter.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "None. K1 does not touch scLetterData and keeps the relabel line. K1's scVia (a sent letter keeps res.via) agrees with this.",
+     "tests": "Repro: sb/casa-flow/p6.js (upload fails once; opened 30.11.2026 → Datum 2026-11-09, due 2026-12-09, 'bis zum 09.12.2026'). Verified on main+K2 and K1+K2. Intended diff: cf-p6. Must stay SAME: every letter of an open tenant (regress-st t-letter SAME).",
+     "hours": 0.5,
+     "risk": "Low. Only letters with a stored result are affected."
+    },
+    {
+     "no": 42,
+     "id": "casa-calc-7",
+     "problem_plain": "A tenant who still lives in the house but changes from Kalt + NK to Pauschal during the year is treated as 'moved out'. Example: Anna Novak, Paris, Pauschal from 01.07.2025. The NK for 01.01.–30.06. shows 'moved out', the letter address starts empty ('needs: address'), and the letter is set up for a former tenant. In the opposite direction (Pauschal first), the Pauschal row wrongly says 'moved out'.",
+     "fix_plain": "A part of the year that ends only because the rent type changes is not a move-out: the same tenant goes on the next day. Only a real move-out counts: no next part, or a Mietende before today.",
+     "ux": "Anna's sheet head reads 'Paris · NK 01.01.2025–31.12.2025' without 'moved out'. Her room line reads 'pays you 332,65 € · 01.01.2025–30.06.2025 · to send'. Letter details shows the green 'complete' chip with the house address (Alsenstraße 60, 55252 Mainz-Kastel), and the field is simply 'Address'. Real former tenants keep 'moved out', their former-tenant address and 'Address · new address after moving out'.",
+     "technical": "settlements-tab-casa.js scModel: goesOn = !src.extra && input.tenancies.some(x => !x.extra && String(x.tenantId) === String(t.tenantId) && x.from === NkCasa.addDays(t.to, 1)). movedOut = (t.to < input.period.to && !goesOn) || (tr.mietende < today). Everything that reads t.movedOut follows automatically: sheet head, room line (:720), scAddrDefault, the Address label.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "K1 rewrites the two lines just above in scModel (the Kaution st and einbehalt). Change only the movedOut line and keep K1's lines. The patch applies on the K1 head with fuzz 1; verified on K1+K2.",
+     "tests": "Repros: sb/casa-calc/r4-movedout.js (movedOut false, letterAddr = house, chip 'complete'), sb/casa-flow/p10.js (Oslo Kalt + NK → Pauschal), sv/b3/v22c.js (Pauschal → Kalt + NK: no 'moved out' on the Pauschal row), p9.js. Intended diffs: cc-r4-movedout, cf-p10, cf-p9, b3-v22c. Must stay SAME: real move-outs, e.g. Finn Lopez / Finn Novak London in td-a8-normal ('moved out' kept), cc-p0, b3-v22b.",
+     "hours": 0.5,
+     "risk": "Low. Only a stretch followed by the same tenant on the very next day changes."
+    },
+    {
+     "no": 43,
+     "id": "casa-flow-7",
+     "problem_plain": "Letter details has a 'Former tenant' switch that says the letter will then say 'das ehemalige Zimmer'. The letter is word for word the same with the switch on or off, so the switch does nothing and its screen text is wrong.",
+     "fix_plain": "Remove the switch. Since the one-page letter there is no place for that wording, and for Casa it changes neither the text nor the bank box. One confusing control less.",
+     "ux": "Tenant sheet › Letter details shows Address, the tenant's IBAN (only when money goes back), 'Pay within (days)' and Belegliste on/off. The 'Former tenant' switch is gone. The letter stays exactly as before.",
+     "technical": "settlements-tab-casa.js scTenView: delete the scToggle('former', …) line and the now unused scToggle(). Optional dead-code cleanup in scLetterData: the two 'ehemalige ' introHtml strings are always overwritten by scLetterLayout. D.former may stay (= t.movedOut) or go; nk-letter.js gives Casa ('du') the same text and the tenant's bank box either way. Stored set.former values are simply ignored; no SQL.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "None on these lines. K1 removes the 'Settle by' choice from the Letter step of the same sheet; together the sheet loses two controls that did nothing useful.",
+     "tests": "Repro: sb/casa-flow/p2.js (the switch is no longer on screen; the script taps it and must be updated to expect 'switch on screen: none'), r4-movedout (formerToggle null). Intended diffs: cf-p2, td-a8-normal (one 'tg' button fewer), cc-r4-movedout. Letter texts SAME.",
+     "hours": 0.25,
+     "risk": "Very low."
+    },
+    {
+     "no": 52,
+     "id": "casa-calc-3",
+     "problem_plain": "Example: a tenant is Pauschal 01.02.–30.06.2025 and Kalt + NK from 01.07.2025. The tenant card labels the open NK '01.02.2025–31.12.2025', which wrongly includes the Pauschal months. 'Skip' then lands on the Pauschal part: the card says 'skipped', while Settlements still lists the Kalt + NK NK 01.07.–31.12.2025 as open.",
+     "fix_plain": "The tenant card uses the Kalt + NK part of the year, the same line Settlements has. The label shows 01.07.2025–31.12.2025, and Skip and 'Skip all' mark exactly that line.",
+     "ux": "Casa app › Tenants › tenant › NK-Abrechnungen: 'NK 01.07.2025–31.12.2025 · open · Not made yet · Frist …', then 'Skip'. After Skip the card says 'skipped', and Settlements shows the same line skipped (chip 'skipped'). Card and Settlements now agree. Tenants with one rent type all year see no change.",
+     "technical": "tab-tenants.js: new _tnKaltNKSpan(rec, from, to) → { from, to } of the tenant's first Kalt + NK stretch in the span, or null if Pauschal only. It reads the same rent history as _tnHasKaltNKBetween (ccRpFor / ccRpAt, legacy mode before the first row). _tnNkDue passes it to ccNksDue. cc-nk-settle.js ccNksDue: when the callback returns an object, spanFrom / spanTo are that stretch; a boolean keeps today's behaviour, so Rentals' ccNksDueFor is unchanged. The pending label, _ccNksInsertSkip and _ccNksSkipAll already use spanFrom / spanTo and follow. Settlements matches the stored row by tenant + period_from, so it lands on the Kalt + NK line. Bump ?v for tab-tenants.js and cc-nk-settle.js in landlord.html, and cc-nk-settle.js in rentals-index.html.",
+     "files": "tab-tenants.js, cc-nk-settle.js (+ ?v bumps in landlord.html, rentals-index.html)",
+     "k1_overlap": "None. K1 does not touch cc-nk-settle.js. K1's tab-tenants.js hunks (wt-k1t: Kaution summary from line 1420 on) are separate from _tnNkDue (line 1408); the patch applies cleanly on wt-k1t.",
+     "tests": "The original sb/casa-calc/r5-card-skip.js re-implements the old rule inside the script, so use rt/k2/casa/h/r5k2.js, which loads the real _tnNkDue / _tnKaltNKSpan from the tree. Results: Pauschal → Kalt + NK: card due 2025-07-01–2025-12-31, saved period_from 2025-07-01, Settlements 'nk … k=done (skipped)'. Kalt + NK → Pauschal: 2025-02-01–2025-06-30. Also do a manual check in landlord.html on the tenant card. Must stay SAME: cc-r5-card-skip (old rule), Rentals card (boolean path), NK docs (still _tnHasKaltNKBetween).",
+     "hours": 1,
+     "risk": "Low–medium. The shared ccNksDue contract is extended. Only tenants with a rent-type change see a different span; Rentals is unchanged."
+    },
+    {
+     "no": 54,
+     "id": "casa-flow-5",
+     "problem_plain": "For a tenant you added by hand to an NK (example: Lea Brandt, Bern, Nachzahlung 50,19 €), the 'undo' next to 'paid you 50,19 €' does nothing: no question appears and the line stays settled. If you tapped 'Received' too early, there is no way back.",
+     "fix_plain": "'undo' works for added tenants exactly as for regular ones. It asks 'Back to open?', and the line goes back to 'sent · waiting for the money'.",
+     "ux": "Tenant sheet › Money › 'undo' → dialog 'Back to open?' with the button 'Back to open'. The Money step is then open again ('Lea pays you 50,19 € · bank transfer' with 'Received'), and the room card chip reads 'sent 09.11.'. The wording is the same as for regular tenants.",
+     "technical": "settlements-tab-casa.js scSetUndo: add a branch before 'if (!t || !t.line) return;'. If t.extra && t.set.sent && t.set.sent.settled: stConfirm({ title: 'Back to open?', ok: 'Back to open' }), then delete scSet(t.key).sent.settled, then scSaveRec(scRecEnsure(y)); on error stSay('Could not undo — …'). Then stSay('Back to open') and scSaveEnd(y, key, m0). Added tenants never book in Controlling, so there is nothing to remove there.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "K1 edits the inside of scSetUndo (C6: the way is no longer rewritten). The new branch sits before the t.line check and touches none of K1's lines; verified on K1+K2.",
+     "tests": "Repro: sb/casa-flow/p4.js (confirm shown true; after undo sent.settled is gone, k = sent, Money step shows 'Received' again). Intended diff: cf-p4. Must stay SAME: regular-tenant undo (sf-sf123-casa Money undo lines, regress-st t-fixes), td-a3-casa-extra, td-c1-extra-double.",
+     "hours": 0.25,
+     "risk": "Low."
+    },
+    {
+     "no": 53,
+     "id": "casa-calc-4",
+     "problem_plain": "After you lock the house costs, a tenant you added by hand still shows 'Remove this tenant from this NK'. You confirm 'Remove', but he stays: Otto Extra still shows 'pays you 291,09 € · to send', and his months still count. So the button looks broken.",
+     "fix_plain": "In a locked year the button is not shown, the same rule as 'Add a tenant to this NK', which is already hidden there. A locked year keeps its figures. To change who is in the NK, unlock the house costs, remove the tenant, then lock again; Remove then really removes him.",
+     "ux": "Locked year: the hand-added tenant's sheet has no 'Remove …' button, just as the room card has no 'Add a tenant to this NK'. Unlocked year (House costs › Unlock): 'Remove this tenant from this NK' → confirm 'Remove' → he is gone from the list, the months and sending. No new message.",
+     "technical": "settlements-tab-casa.js scTenView: xDel gets '&& !M.locked' (t.extra && t.k === 'open' && !M.locked), and the noData view's 'Remove this tenant' gets the same. extraDel is unchanged. Not chosen: removing him from rec.snapshot.input as well, because that would silently change every other tenant's locked share (95 → 92 months) while the year stays locked.",
+     "files": "settlements-tab-casa.js",
+     "k1_overlap": "None. K1 does not touch the xDel / extraDel lines.",
+     "tests": "Repro: sb/casa-calc/r3-extra-del-locked.js (locked: button offered null; Otto stays with 95 months, as frozen). Unlocked flows must stay SAME: td-a3-casa-extra, td-c1-extra-double, td-a14-extra-sendfail, sf-vx-extra (all in the K1 repro set). Intended diff: cc-r3-extra-del-locked.",
+     "hours": 0.25,
+     "risk": "Low."
+    },
+    {
+     "no": 56,
+     "id": "casa-flow-10",
+     "problem_plain": "For a tenant who starts the year on Pauschal and switches to Kalt + NK (e.g. Oslo from 01.07.2025), 'Open NK-Abrechnung' / 'Make it in Settlements' on the tenant card opens the Pauschal part ('Finn pays Pauschal · no NK letter'). You then have to close it and look for the Kalt + NK part yourself.",
+     "fix_plain": "The link opens the exact NK line it belongs to: the Kalt + NK part with the letter to make or send.",
+     "ux": "Tenant card › NK-Abrechnungen › 'Open NK-Abrechnung' (or 'Make it in Settlements') opens Settlements › Casa Castel directly on Finn's Kalt + NK sheet ('Finn pays you 374,51 €', Letter / Money steps). Old links without the new part still open the first part that has an NK letter.",
+     "technical": "cc-nk-settle.js _ccNksLink: add '&f=' + period_from for Casa; pending items use spanFrom, which is the Kalt + NK start after item 52. settlements-ui.js stOpenLink (Casa): mine = M.ten.filter(same tenantId); t = mine.find(x => q.f && x.from === q.f) || mine.find(x => x.k !== 'none') || mine[0]. Update the stReadLink comment to '#tab=casa&y=2025&t=12&f=2025-07-01'. Bump ?v of settlements-ui.js in settlements.html and of cc-nk-settle.js in landlord.html.",
+     "files": "cc-nk-settle.js, settlements-ui.js (+ ?v bumps)",
+     "k1_overlap": "None. K1 touches neither file.",
+     "tests": "Repro: sb/casa-flow/p9.js, and rt/k2/casa/h/p9k2.js with and without f: both open '…|2025-07-01' (the Kalt + NK sheet). Verified on main+K2 and K1+K2. Intended diff: cf-p9. Must stay SAME: Rentals links (&p=), and the Jahresabrechnung link (v=ja).",
+     "hours": 0.5,
+     "risk": "Low."
+    }
+   ],
+   "notes": "How long: about 6.5 h for all 11 Casa items: 5.75 h for the items, plus about 1 h for ?v bumps, a full re-run on K1+K2 and review. A working prototype already exists, so building it on top of the merged K1 is mostly porting and re-testing, likely 3–4 h. Suggested order: 32 → 33 → 34 → 35 (letter), 37, 42 → 43, 53, 54, 52 → 56. Item 56's '&f=' uses the start date that item 52 fixes; without 52 the fallback (first line with an NK letter) still opens the right part.\n\nNo new UI, warnings, toasts or hints anywhere. Two controls go away: the 'Former tenant' switch (43), and the Remove button in a locked year (53, same rule as Add). One redundant letter line goes ('Die Einzelrechnungen stehen in der Belegliste auf Seite 2.', 35). No SQL needed; old stored values (set.former) are ignored.\n\nStatuses defined:\n- 'moved out' only for a real move-out: no next part on the following day, or a Mietende before today (42).\n- A skip from the tenant card lands on the Kalt + NK line, shown 'skipped' on both the card and in Settlements (52).\n- An added tenant's undo returns the line to 'sent · waiting', same wording as regular tenants: 'Back to open?' / 'Back to open', room chip 'sent DD.MM.' (54).\n\nPrototype (no repo or worktree edited), all under /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/casa/:\n- Patch against main 511dbef: k2-casa-prototype.patch (278 lines; settlements-tab-casa.js, nk-letter.js, cc-nk-settle.js, settlements-ui.js, tab-tenants.js). Patched tree: tree/.\n- K1 compatibility: the patch applies on K1 (wt-k1k head + wt-k1t's tab-tenants.js) with offsets and one fuzz-1 hunk at the movedOut line (42). The combined tree combo/ passes every item repro, and page 1 of the Kaution letters is 914/917 px.\n- Test scripts in h/: m1.js (page measurements incl. 4-line address), m2.js (facts width), m3.js (Rentals letters identical text and line positions), r5k2.js (card skip using the real _tnNkDue), p9k2.js (deep link with and without f).\n\nRegression of the prototype against main:\n- K1 repro set (rt/k1/reg-k/rep/jobs.txt): 147/172 SAME, 25 DIFF, no page errors (reg/summary.txt). Every DIFF is an intended item output, listed per item in 'tests'.\n- regress-st t-fixes / t-letter / t-returns / smoke: 4/4 SAME (reg/regress-st-summary.txt).\n- The c3 and c5 suites were not re-run; run them on the final K1+K2 build.\n\nRepro scripts that need updating for the new behaviour:\n- casa-flow/p2.js taps the removed switch.\n- casa-calc/r5-card-skip.js re-implements the old card rule; use h/r5k2.js instead.\n- casa-calc/r6-letter-text.js checks mentionsPeriod with /01\\.01\\.2025/; it must also accept 'Abrechnungsjahr 2025'.\n\nShared-code notes:\n- nk-letter.js is also used by the Rentals and own-NK letters. Its closing wrapper is layout-neutral (identical positions verified). The paragraph merge changes only the 'Nachzahlung < held Kaution part' text into one paragraph, in both apps.\n- ccNksDue keeps the boolean path for Rentals. Rentals tenants who change rent type mid-year may have the same card-span issue as 52; that is not in this group and not changed here.\n\nNot found in this group: a Casa Mieterhöhung, or anything that contradicts CLAUDE.md."
+  },
+  {
+   "items": [
+    {
+     "no": 29,
+     "id": "tracking-dash-5",
+     "problem_plain": "You make your own NK-Abrechnung (Dashboard › NK-Abrechnung erstellen) for a tenant who moved in or out during the year, for example Eva Wolf (16.09.–31.12.2025), and tap Mark as sent. The letter is right, but the app saves it for the whole year 01.01.–31.12.2025. Controlling then shows 'NK 01.01.2025–31.12.2025 · Eva Wolf', and Rentals still lists Eva's NK for 16.09.–31.12.2025 as 'to send', so it invites you to make and book it a second time.",
+     "fix_plain": "Mark as sent saves the same Zeitraum the letter shows: the tenant's own days (16.09.–31.12.2025).",
+     "ux": "Nothing new to tap. After Mark as sent, Controlling shows 'NK 16.09.2025–31.12.2025 · Eva Wolf · Guthaben to tenant'. In Rentals, Eva's line goes from 'to send' to 'sent' (waiting for the money), so it no longer invites a second letter. The extra out-of-date line disappears from the data check. The tenant card shows the same period. A whole-year own NK saves exactly what it saves today.",
+     "technical": "settlements-tab-dashboard.js sdSend: x = sdCalc(d) is already computed. Use x.uf / x.ut (use_from||period_from, use_to||period_to) instead of d.period_from / d.period_to in four places: the nk_letters row, the abr_results row (_stWriteResult), the ctrl_settlements line, and the two lookups that match by period_from (the result 'res' and the existing line 'old'). year / covers_year stay the NK year (the period_to year). No SQL. Letters already sent stay as stored.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "K1 (wt-k1k, C8) edits the same three sdSend statements (settle_via → sdVia(d)). This item changes only the period fields of those statements, so build on K1's lines; the logic is independent. K1's tracking-dash-1 (positions follow the lived days) makes the amounts right; this item makes the stored period right.",
+     "tests": "Repro sb/tracking-dash t7-manual-send-partial.js. Prototype result: abr_results, ctrl_settlements and nk_letters all 2025-09-16…2025-12-31; Controlling label 'NK 16.09.2025–31.12.2025 · Eva Wolf · Guthaben to tenant'; the Rentals line is the stored line with state verschickt / 'sent'; no stale line. Must stay identical: the K1 repro set rt/k1/reg-k/rep/jobs.txt (whole-year own NKs: d1-manual-save, d2-send-other, z-plain-send, t3b-manual-year), regress-st (st-t-fixes, t-letter, t-returns, st-smoke). Prototype run: all identical apart from the intended repro outputs.",
+     "hours": 0.5,
+     "risk": "Low. Only own NKs for a part-year tenant change; whole-period ones write the same as today. Part-year own NKs sent before the fix keep their 01.01.–31.12. rows. For such a tenant Rentals keeps showing the NK as 'to send', so don't send it a second time. There is no repair SQL."
+    },
+    {
+     "no": 30,
+     "id": "tracking-dash-4",
+     "problem_plain": "You mark a tenant's NK money as received in Settlements. Later you clear that amount in Controlling because the money did not come. Settlements and Controlling then correctly say the 50 € is still waiting, but the tenant card still says 'paid · Lena paid you 50,00 € · paid 09.11.2026', and the 'NK open' marker disappears, so the missing money can be forgotten.",
+     "fix_plain": "Clearing the amount in Controlling also sets the NK back to 'waiting for the money', exactly what Undo in Settlements does. The tenant card shows it as open again.",
+     "ux": "Same action as today: Controlling › Income (or Expenses) › Abrechnungen, clear the Ist, Enter. Afterwards the tenant card reads 'sent · Lena pays you 50,00 €' with the 'NK 2025 open' pill, and Settlements still says 'sent'. No message.",
+     "technical": "controlling-abr.js: new ctlSettleUnpaid(res). For every stored Settlements line of the result (ctlAbrSettleLines; virtual lines skipped) that is erledigt/bezahlt or has a paid_date, it updates ctrl_settlements to {status:'verschickt', paid_date:null} and refreshes window._src.settle. _cxAbrBook, amount === null branch: after _stUndoBooking(b), call await ctlSettleUnpaid(r). Settlements' own Undo already writes verschickt + paid_date null (_stUpsertSettlement adds paid_date:null for 'verschickt'), so nothing changes there. The other Controlling paths need nothing: the One-off tab never lists Abrechnung bookings, and 'cancel' already uses ctlSettleOpen.",
+     "files": "controlling-abr.js",
+     "k1_overlap": "K1 (wt-k1r, C7) changes _ctlAbrRows in the same file. An old 'kaution' result that was confirmed and has no booking stays an information row; K1's _cxAbrKauDone decides this from the line's status and paid_date. Without this fix, under K1, clearing the Ist of a Kaution result leaves the line 'erledigt', and the result turns into a grey 'settled with Kaution – no payment' row that counts 0 €. With the fix it becomes an open Soll again, the same as K1's Undo (C6). This is a separate function with no textual conflict. I checked K1's Undo: paid_date is already null afterwards (k2-k1undo.js), so K1 needs no change.",
+     "tests": "Repros t5-clear-ist.js and b5-t5-card.js. Prototype: ctrl_settlements ['verschickt', null]; tenant card 'NK 01.01.2025–31.12.2025 | sent | Lena pays you 50,00 €', hasOpen true, pill 'NK 2025 open'. Must stay identical: the C3 Controlling Abrechnungen suites (fix-C5m/suites/c3: fix1, fix2, fix3, v-book, v-book2, adv; they type and clear the Ist; all SAME), the K1 repro set incl. km/verify-settle-flow and km/verify-settle-via, K1's k1r-money.js (Kaution money step + undo; identical).",
+     "hours": 0.5,
+     "risk": "Low. It runs only when the Ist of an app-booked result is cleared, and it writes the same thing Settlements' Undo writes."
+    },
+    {
+     "no": 31,
+     "id": "tracking-dash-3",
+     "problem_plain": "You pay a WEG Nachzahlung of 120 €, then correct the WEG result to a Guthaben of 120 € and confirm 'Change it'. Settlements then says 'The WEG paid you · settled · received 09.11.2026', although 120 € went out that day and nothing came in. Controlling correctly shows the 120 € Guthaben as open and tells you to settle it again in Settlements, where everything looks done.",
+     "fix_plain": "Settlements uses the same rule as Controlling: money that went the other way is not the payment of the corrected result. The Jahresabrechnung shows 'open' with its money step. One tap on 'Received' turns the old booking around, so there is one booking of +120 €, and Settlements and Controlling agree.",
+     "ux": "Rentals › property › Jahresabrechnung. After 'Change it' the card reads 'you get 120,00 € · not received yet'. The pop-up reads 'The WEG pays you 120,00 € · due 30.06.2026', and step 3 is 'Money received' with the date and 120,00 € filled in and the Received button. Tap Received: the pop-up reads 'The WEG paid you · settled'; Controlling › Income shows the 120 € as paid; the flagged row under Expenses is gone. The misleading 'settled' simply disappears; there are no new buttons or messages. Tenant NKs in Rentals and Casa follow the same rule.",
+     "technical": "settlements-tab-tracking.js _stState: b0 = ctlAbrBooking(res) (for 'zahlung' and K1's 'kaution'). booking = b0 only when _cxAbrDir(b0) === res.dir. Otherwise the line stays 'verschickt' and carries stale: b0. _stSyncStatus: only a booking in the result's direction sets erledigt. Money step: _srSetAmount (settlements-tab-rentals.js) and scSetAmount (settlements-tab-casa.js) take b = st.booking || st.stale, so the existing branch that turns a booking around updates the old booking (direction, item, amount, date). Without this, the money step would try a second line, which the unique index ctrl_ot_abr_once refuses. The Rentals Skip also removes a stale booking (booking || stale). Casa scModel: K1's 'const bk = st.booking || ctlAbrBooking(st.res)' becomes 'st.booking', because _stState already reads Kaution bookings and the fallback brings the bug back.",
+     "files": "settlements-tab-tracking.js, settlements-tab-rentals.js, settlements-tab-casa.js",
+     "k1_overlap": "K1 (wt-k1r, C7) rewrites exactly these _stState lines (adds 'kaution' to the booking read; Confirm only for miete/hausgeld) and the _stSyncStatus line. Build on K1's text and add only the direction check and 'stale'. K1 (wt-k1k) adds 'st.booking || ctlAbrBooking(st.res)' for Casa Kaution results; change it to st.booking, as described above. K1's Kaution bookings always go in the result's direction (_srKauBook clamps with Math.max(0, …)), so they still count as paid. K1's money-step lines in _srSetAmount / scSetAmount stay; only 'b' gets the stale fallback.",
+     "tests": "Repros t6-weg-flip.js, b5-t6-real.js and b5-t6-hv.js. Prototype after 'Change it': hv 'zahlung', pill ['diff','open'], wegK verschickt, the Received button is shown. New repro dash/h/k2-t6-money.js: Received turns the booking to +120 'Hausgeld 01.01.2025–31.12.2025 · Guthaben from WEG' (still one booking), the HV says 'The WEG paid you · settled', Controlling Income shows ist 120, and the 'moved' Expenses row is gone. Must stay identical: K1 repro set incl. sb/tracking-dash r3-weg-close, r8-weg-edit, a4-ja-pay, a4b-ja-mut, c5-ja-pay-double, r7-undo-other; km/verify-settle-flow; k1r-money.js (all identical in the prototype run).",
+     "hours": 1,
+     "risk": "Low to medium. The change is in the shared status function, but only results whose booking points the other way change state. Every booking in the result's direction (all normal payments, K1 Kaution bookings) behaves as before; 156 of the 172 K1 repros are identical, and every one of the 16 that differ is an intended change from this group's items."
+    },
+    {
+     "no": 40,
+     "id": "tracking-dash-8",
+     "problem_plain": "Your own NK letter for a tenant who lived there only part of the year lists every month of the year in the Vorauszahlungen table. Example: Eva Wolf's letter 'Betriebskostenabrechnung 16.09.2025 – 31.12.2025' lists Januar to August 2025 at 0,00 €, then September to Dezember at 170,00 €. The Rentals letter lists only the months lived.",
+     "fix_plain": "The letter lists only the months the tenant lived there and marks a part month (e.g. 'September 2025 · 15/30 Tage'), the same as the Rentals letter. The 'Paid' total counts exactly the months shown in the form.",
+     "ux": "Nothing to tap. In the letter, the Vorauszahlungen table reads 'September 2025 15/30 Tage 170,00 € · Oktober · November · Dezember · Summe 680,00 €'. In the form, the 'NK paid' grid already showed only these months; now 'Paid' and the result count exactly the months in that grid. A whole-year letter keeps all 12 months without markers.",
+     "technical": "settlements-tab-dashboard.js sdCalc: months = sdUseMonths(d) instead of sdMonths(d), so the VZ total is the lived months, the same months the NK-paid grid shows. A VZ typed for a month outside the lived span no longer counts unseen. sdLetterData builds D.vzMonths from x.months. For each month it counts the tenant's days in that month (clamped to x.uf…x.ut, n) against the month's days (N) and adds part = 'n/N Tage' when n < N, as _srVzMonths does in Rentals. nk-letter.js already prints v.part.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "No shared lines. It builds on K1's tracking-dash-1 in the same file (sdSplitFollow / sdAfterPeriod / sdPickTenant: positions split by days for a part-year tenant). With K1 the cost shares are right; this item makes the VZ table match.",
+     "tests": "Repro t3-manual-days.js: the VZ table is September–Dezember only. New repro dash/h/k2-t3-vzpart.js: 'September 2025 170 (15/30 Tage)', Oktober to Dezember without a marker, totals 680 / 351,78 / −328,22. With 'whole period' on: 12 months, 2.040 €, no markers. Must stay identical: t3b-manual-year, d1-manual-save, z-plain-send, regress-st t-letter (all identical).",
+     "hours": 0.5,
+     "risk": "Low. Whole-period letters are unchanged. A draft whose VZ was typed per month before the lived dates were changed now shows a smaller 'Paid' total; that is the correct amount, because those months were not shown and not lived."
+    },
+    {
+     "no": 44,
+     "id": "tracking-dash-10",
+     "problem_plain": "In 'NK-Abrechnung erstellen', the 'Former tenant' switch says 'the letter says „ehemalige Wohnung“' (for Casa Castel „ehemalige Zimmer“). The finished letter never says that. The only thing the switch changes is the payment text for a Guthaben.",
+     "fix_plain": "Remove the switch. For a tenant picked from the app who has moved out, the app already knows it and asks in the letter for the account for the money back, as the Rentals letters do. For anyone else, the IBAN field under 'Settle' is right there.",
+     "ux": "NK-Abrechnung erstellen › Who & when: one switch less, because 'Former tenant' is gone. Picking a moved-out tenant from the app works as today: the new address is filled in, and for a Guthaben the letter asks for the bank account. For a Guthaben you can still type the tenant's IBAN under Settle. The letter text does not change. This matches the casa group's decision to remove the Casa tab's 'Former tenant' switch (item 43, casa-flow-7).",
+     "technical": "settlements-tab-dashboard.js sdCalcView: drop the scToggleSd('former', …) row. d.former stays as data: sdPickTenant still sets it from mietende, sdRow still saves it, and nk-letter.js still uses it for the bank box. The unused 'objekt' text and the first introHtml in sdLetterData can be deleted as a later cleanup; this fix does not need it.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "None; K1 does not touch this row. It matches K2 casa item 43 (casa-flow-7), which removes the Casa tab's switch the same way.",
+     "tests": "Repro t9-manual-former.js: the switch is gone, and the letter text is byte-identical to before. Must stay identical: sb/tracking-dash d1-manual-save, d2-send-other, z-plain-send; regress-st t-letter.",
+     "hours": 0.25,
+     "risk": "Very low. An old draft saved with the switch on keeps it, so its letter is unchanged."
+    },
+    {
+     "no": 46,
+     "id": "tracking-dash-6",
+     "problem_plain": "After you skip a Casa tenant's NK (for example London · Finn Lopez), the Dashboard's Casa Castel per-tenant list still shows 'Settled · + 104 €' for him, although there is no letter and no result. So the list adds up to 4.066,08 € while NK-Abr. says 3.962,43 €.",
+     "fix_plain": "A skipped NK shows 'skipped' instead of an amount, as in the Casa tab, so the list adds up to NK-Abr. again.",
+     "ux": "Dashboard › tap the Casa Castel row › per tenant: 'London · Finn Lopez · former | Settled | skipped' (same style as 'in the rent'). The lines add up to 3.962,43 € = NK-Abr. The status 'Settled' stays, because a skip counts as done everywhere.",
+     "technical": "settlements-tab-dashboard.js sdOverview, Casa loop: v = t.skipped ? null : (result or preview); the row carries skipped. sdOverviewHTML shows '<b class=\"sdo-lv sdo-lv--t\">skipped</b>' for a skipped row. Rentals needs nothing, because srSummary already leaves skipped tenants out.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "None.",
+     "tests": "Repro t1-dash-casa.js: 'London | Finn Lopez · former | Settled | skipped'; the sum of the panel lines is 3962.43 = O.casa.ten. Must stay identical: a6-dash and a13-casa-send-skip (a6-dash differs only by the #51 numbers).",
+     "hours": 0.25,
+     "risk": "Very low; display only."
+    },
+    {
+     "no": 51,
+     "id": "tracking-dash-2",
+     "problem_plain": "The Casa tab and the Dashboard both say 'Jahresabrechnungen' for Casa Castel, but they show different numbers. Example: a Gas bill for 01.06.2024–31.05.2025 with a 365 € Nachzahlung, paid July 2025. The Casa tab shows 'you pay 365,00 €' for 2025 and nothing for 2024. The Dashboard shows −151 € for 2025 and −214 € for 2024, so 'net for you' is wrong by the difference.",
+     "fix_plain": "The Dashboard takes the same figure as the Casa tab tile: the Versorger bills of that year, as money.",
+     "ux": "Dashboard › 2025: Casa Castel 'Jahresabr. − 365 €'; box 'Jahresabrechnungen − 665 €' (WEG −300 + Casa −365); 'net for you' and in/out are right. 2024: Casa 'Jahresabr. —'; box '+ 95 €' (WEG only). Both tabs now show the same number. Nothing to tap.",
+     "technical": "settlements-tab-dashboard.js sdOverview, Casa block: J = scJaModel(M) (the function behind the Casa tab tile); C.hg = J.net (null while no bill is in). For in/out, each bill in J.S[*].real adds its amt to get when dir = 1 and to pay when dir = −1; this replaces M.money.hgLines, the NK cost share split by days. The NK calculation and the letters keep using the day split, unchanged.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "None (K1's casa changes do not touch scJaModel or sdOverview).",
+     "tests": "Repro t2-dash-ja.js. Prototype: 2025 'Jahresabr. − 365 €', box −665 €; 2024 'Jahresabr. —', box +95 €. t1-dash-casa.js: 'Jahresabr. − 260 €' = Casa tab 'you pay 260,00 €'. Must stay identical: casa-calc n2-ja and all casa-flow repros. Intended changes only in the Dashboard lines of td-a6-dash, td-s0-smoke and rf-p5-skip-card, plus the Dashboard length in C5 st1-newday (whose 'all = reload' still holds).",
+     "hours": 0.5,
+     "risk": "Low; display only, using the Casa tab's own function."
+    },
+    {
+     "no": 57,
+     "id": "tracking-dash-14",
+     "problem_plain": "In Rentals › apartment › Jahresabrechnung › Settings · period › Change, the day list always offers 01–31 for every month, so a slip like 30.02 is accepted and saved. The card then shows an impossible 'NK 30.02.2025–01.03.2026 · Frist 01.03.2027', and the year before overlaps it on 01.03.2025.",
+     "fix_plain": "The day list offers only the days the chosen month really has (February 01–28) and adjusts when you change the month. No message.",
+     "ux": "The row stays 'Period starts on [day] . [month] · Cancel · Save'. Choose month 02 and the day list shows 01–28; if 30 was chosen, it moves to 28. After Save the card reads 'NK 28.02.2025–27.02.2026 · Frist 27.02.2027'. Same in Tracking. Nothing else changes.",
+     "technical": "settlements-tab-tracking.js: _stMonthDays(mm) (February = 28, since 29.02 does not exist every year) and _stOpt. _stPeriodRow builds days 1.._stMonthDays(mm) and clamps the stored day. One document 'change' listener rebuilds #stPerD when #stPerM changes; it works in the Rentals pop-up and in Tracking, and the Rentals tab's own change handler ignores these selects. _stPeriodSave clamps the day to the month as a safety net, without a message. Note: rentals-tab-apartments.js has no period editor; this shared row is the only writer of nk_period_start.",
+     "files": "settlements-tab-tracking.js",
+     "k1_overlap": "None. K1 edits other parts of this file (_stState, _stSyncStatus, _stFormHtml, _stSave).",
+     "tests": "Repro t11-period-start.js. Prototype: nk_period_start '02-28'; card 'Am Markt 5 | NK 28.02.2025–27.02.2026 · Frist 27.02.2027'. Must stay identical: a5-rentals-skip-per, r4-period-skip, st-smoke (all identical).",
+     "hours": 0.5,
+     "risk": "Very low."
+    },
+    {
+     "no": 58,
+     "id": "tracking-dash-15",
+     "problem_plain": "When you come back to Settlements after more than a minute, everything is reloaded except your own NK drafts on the Dashboard. A draft made on the iPad doesn't appear on the iPhone, and a draft deleted on the iPad stays listed. Changing that deleted draft and tapping Save fails with 'Saving failed — JSON object requested, multiple (or no) rows returned'.",
+     "fix_plain": "Coming back also reloads the drafts list. If the draft you have open was deleted on another device meanwhile, Save simply keeps your work as a draft again, without the technical error.",
+     "ux": "Dashboard › 'n drafts': after you come back, the list matches the other device. A draft pop-up you have open stays open while the app reloads. Save says 'Draft saved' as usual. No new message.",
+     "technical": "settlements-tab-dashboard.js: new sdLoadDrafts(keep), now the only drafts reader (sdLoad uses it). With keep, a failed read leaves the list on screen instead of showing 'Run the SQL'. settlements-app.js visibilitychange: after stLoad, if SD.loaded, await sdLoadDrafts(true). _sdSaveNow: update(...).select().maybeSingle(). If no row comes back (deleted elsewhere), drop the old id from SD.drafts and insert the row as a new draft. The same pattern is already used in tab-lounge.js:344-349.",
+     "files": "settlements-tab-dashboard.js, settlements-app.js",
+     "k1_overlap": "None. K1 changes sdRow's settle_via in the same file; this item does not touch it.",
+     "tests": "Repro t12-return-drafts.js: after coming back the list shows 'Ben Neu' only. The script then tries to open Anna's deleted draft, which is no longer listed; that step no longer applies. New repro dash/h/k2-t12b-open-deleted.js (draft open while deleted on the other device): toast 'Draft saved', database holds Ben + Anna (new id), list shows both. C5 reload suites: s1-st-returns 'differs from fresh on: none' (one request more: the drafts), st-reopen identical. Must stay identical: c3-send-double, d1-manual-save, c2-send-nav.",
+     "hours": 0.5,
+     "risk": "Low. One extra read when the app comes back; the save fallback runs only when the row is gone."
+    },
+    {
+     "no": 64,
+     "id": "tracking-dash-9",
+     "problem_plain": "In 'NK-Abrechnung erstellen', if you enter costs before the tenant's name, the result at the top reads 'The pays you 240,00 €' or 'The gets back 120,00 €'.",
+     "fix_plain": "Until a name is there, it reads 'The tenant pays you …' / 'The tenant gets back …', and then the first name as today.",
+     "ux": "The result line at the top of the NK-Abrechnung erstellen pop-up reads 'The tenant pays you 240,00 €' until a name is typed or picked, then 'Eva pays you …'.",
+     "technical": "settlements-tab-dashboard.js sdResLabel: nm = trimmed tenant_name; first = nm ? its first word : 'The tenant'.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "None.",
+     "tests": "Repro t10-hero-the.js: 'The tenant pays you | 240,00 €' and 'The tenant gets back | 120,00 €'.",
+     "hours": 0.1,
+     "risk": "None."
+    },
+    {
+     "no": 65,
+     "id": "tracking-dash-11",
+     "problem_plain": "The Dashboard's drafts list labels a manual NK draft for 01.07.2024–30.06.2025 'Kaiserstr. 36 WHG 516 · NK 2025', which breaks your rule of never writing 'NK 2025'. Every draft in that list shows only the end year.",
+     "fix_plain": "The label shows the letter's own Zeitraum, e.g. 'Kaiserstr. 36 WHG 516 · NK 01.07.2024–30.06.2025'. For a tenant who lived there only part of it, it shows his own days, as in the letter title.",
+     "ux": "Dashboard › 'n drafts' list: 'Max Berg · Kaiserstr. 36 WHG 516 · NK 01.07.2024–30.06.2025'. This is the same wording as Controlling and the letter.",
+     "technical": "settlements-tab-dashboard.js draftsHtml: sdPropName(d) + ' · ' + stNkLabel(d.use_from || d.period_from, d.use_to || d.period_to), only when a period is set.",
+     "files": "settlements-tab-dashboard.js",
+     "k1_overlap": "None.",
+     "tests": "Repro t9-manual-former.js, first line: 'Kaiserstr. 36 WHG 516 · NK 01.07.2024–30.06.2025'. Also k2-t12b: 'Am Markt 5 · NK 01.01.2025–31.12.2025'.",
+     "hours": 0.1,
+     "risk": "None."
+    }
+   ],
+   "notes": "All 11 'dash' items are fixed and tested in a prototype; every repro now gives the correct result. Nothing in the repo or the K1 worktrees was edited.\n\nEstimate: about 5.5 h for the whole group. The items add up to 4.7 h; about 0.75 h more covers the ?v= cache bump in settlements.html and controlling.html and a final regression run on the merged K1.\n\n**What I ran**\n- The prototype sits on top of K1, which I built as main 511dbef plus the wt-k1r, wt-k1k and wt-k1t diffs (html cache bumps left out).\n- Repros on main and on the K1 tree: every bug still shows on both, except t3, where K1's tracking-dash-1 already makes the cost shares right. The table of months is still wrong after K1.\n- K1 repro set (172 jobs), K1 tree against the prototype: 156 identical. The 16 that differ are all intended: the item repros, plus Dashboard numbers from #51 in td-a6-dash, td-s0-smoke and rf-p5-skip-card.\n- Settlements checks (st-t-fixes, t-letter, t-returns, st-smoke) and the Controlling C3 Abrechnungen suites (fix1, fix2, fix3, v-book, v-book2, adv): all identical, with no FAIL and no page errors.\n- Reload checks: s1-st-returns makes one extra request (the drafts list, #58) and still shows nothing different from a fresh load; st1-newday's Dashboard is 6 characters longer (#51) and its 'all = reload' still holds.\n- K1's own k1r-money test (Kaution money step and undo): identical on both trees.\n\n**Decisions for the merge**\n- #31 changes a line K1 itself adds in settlements-tab-casa.js: `const bk = st.booking || ctlAbrBooking(st.res)` becomes `st.booking`. Keeping K1's version brings the bug back for Casa Kaution results.\n- #44 removes the manual 'Former tenant' switch. The casa group removes the Casa tab's switch the same way (item 43), so both screens stay consistent.\n- I did not add `paid_date: null` to the Settlements Undo. It turned out to be already handled (shown by k2-k1undo.js), so K1 needs no change there.\n- rentals-tab-apartments.js has no period editor. #57 is fixed in the shared period row in settlements-tab-tracking.js, the only place that saves the period start.\n- No SQL. Part-year own NKs sent before the fix keep their 01.01.–31.12. rows.\n\nFiles are in /tmp/claude-0/-home-user-Casa-Castel/73a72b00-f7fb-5b02-be13-e1f6fde2dd3e/scratchpad/rt/k2/dash/:\n- patch.py — reproducible patch script; applies to the K1 tree with python3 -I patch.py <tree>\n- k2-dash-prototype.patch — the diff against the K1 tree; 6 files, about 68 lines added and 31 removed\n- k1tree and proto — the two trees\n- h/k2-t6-money.js, h/k2-t12b-open-deleted.js, h/k2-t3-vzpart.js, h/k2-k1undo.js — new repros\n- out-main, out-k1, out-proto — repro outputs\n- reg/summary.txt and reg/st/out — regression results\n\nCache bump needed: settlements.html (settlements-app.js, settlements-tab-dashboard.js, settlements-tab-tracking.js, settlements-tab-rentals.js, settlements-tab-casa.js, controlling-abr.js) and controlling.html (controlling-abr.js)."
+  }
+ ],
+ "review": {
+  "workflow": "THE OWNER'S NK WORKFLOW AFTER K1 + K2 (iPhone, plain steps; [n] = K2 item that shapes the step)\n\nA. RENTALS: once a year per apartment (Settlements › Rentals › year › apartment card)\n1. Wait for the Jahresabrechnung. The card's Jahresabrechnung tile says 'expected Dezember 2026'. When the tenant Frist is less than 60 days away and it is still missing, the tile turns red: 'not in yet · Frist soon · ask HV'. Tap 'ask HV' to get the ready-made mail. The word 'overdue' appears only once the HV is really late (15 days after the month it usually sends). The card, the Jahresabrechnungen list, the ring and the Dashboard all use the same word [48]. A WEG result typed in the old way counts as 'in' [50].\n2. Enter the Jahresabrechnung (tap the tile):\n   - Step 1: 'Received on'.\n   - Step 2: the costs. Until you tap Mark complete, last year's rows stay offered empty, so a half-done entry never loses them [55]. A name picked from the list (CO₂ landlord share, Heizkosten) counts correctly at once [24].\n   - The WEG result (Nachzahlung / Guthaben / balanced) and its due date.\n   - Mark complete.\n3. WEG money. The tile says 'you pay 120,00 € · not paid yet'. Tap Paid or Received with the date, and Controlling books it once. History uses the same words [47]. If you later correct the result to the other direction, the tile says 'not received yet' again, and one tap on Received turns the old booking around [31].\n4. NK window (NK-Abrechnung tile):\n   - The costs in the NK. Grundsteuer comes in by itself; a Grundsteuer you type replaces it at once and stays editable [62].\n   - 'Who carries it': the tenants, plus the empty days that stay with you ('Leerstand · on you'). These always use the period each tenant is billed for [22]. The word '(measured)' appears only when the share really is measured, otherwise '(by days)' [23].\n5. Tenant window (tap the tenant). It has these sections:\n   - Period, Costs, Calculation.\n   - Letter details: address, letter date (today unless you type another one [36]), pay within, and the tenant IBAN when money goes back (K1).\n   - A yellow 'needs: …' chip names the section to fill [60].\n   - Open letter (PDF) to check it. The Zeitraum box says 'Abrechnungsjahr 2025', or 'Abrechnungszeitraum 01.07.2025–30.06.2026' for a period that is not a calendar year [39]. The Vorauszahlungen table has one row per month [41]. A Kaution part held for the NK is already offset (K1).\n6. Mark as sent. The letter is archived with today's date and the due date. Controlling shows the result as an open Soll that is not counted yet. From then on:\n   - The window shows that letter's figures ('Costs · as sent').\n   - Open letter (PDF) opens the archived copy [38].\n   - To send a corrected letter: 'undo' on the Letter step → 'Back to open' [61].\n7. Money step, in the same window. It names the one real bank transfer: 'Lena pays you 180,00 €' or 'You pay back 620,00 €'. With a held Kaution it shows the rest that really moves (K1). Date and amount are prefilled. Tap Received or Paid back, and Controlling books one line in that month. 'undo' here and clearing the Ist in Controlling do the same thing: the line goes back to 'sent · waiting for the money' everywhere, the tenant card included [30].\n8. Skip. The tenant line says 'skipped'. The card tile, the top tile and the Dashboard leave it out [45]. The NK-Abrechnungen sheet lists it under Settled and lists waiting tenants under 'Not yet', so its count matches the ring [49].\n9. Done. The card folds to 'all settled'. Controlling › Abrechnungen has the Soll from sending and the Ist from Received / Paid back. A Kaution never counts.\n\nB. CASA CASTEL (Settlements › Casa Castel › year)\n1. Enter each Versorger bill. The Casa Jahresabrechnungen tile and the Dashboard show the same figure [51].\n2. When the bills are in, lock the house costs. You can add a tenant who is not in the app, or remove one, only while the house costs are unlocked; Remove follows the same rule as Add [53].\n3. Room cards list each tenant's NK line. A tenant who only changes rent type is not 'moved out' and keeps the house address [42].\n4. Tenant sheet:\n   - Calculation ('Lived here … 1 month' [34]).\n   - Letter details: Address, IBAN when money goes back, Pay within, Belegliste on/off. The 'Former tenant' switch is gone [43].\n   - Open letter (PDF): page 1 is the letter, page 2 the Belegliste, which says 'auf Seite 1' [32]. A part-year tenant's Zeitraum names the billing year [33]. The Kaution text is one paragraph, and the closing block is never split [35].\n5. Mark as sent → archived. Later, 'Open letter (PDF)' opens that copy, or redraws it with the date and due date it was sent with [37].\n6. Money step → Received / Paid back → Controlling books it once. 'undo' works the same way for hand-added tenants [54].\n7. From the Casa app's tenant card: the NK line shows the Kalt + NK part of the year. 'Open NK-Abrechnung' opens exactly that sheet, and Skip skips exactly that line [52, 56].\n\nC. OWN NK ON THE DASHBOARD (older years, tenants not in the app)\n1. Dashboard › NK-Abrechnung erstellen › Who & when. Pick a tenant and the lived days are filled in; there is no Former switch [44]. Until a name is there, the result reads 'The tenant pays you …' [64].\n2. Costs (split by days for a part-year tenant, K1) and NK paid. Only the lived months are shown and counted, with a part month marked '15/30 Tage' in the letter [40].\n3. Preview PDF → Mark as sent. It is saved for the tenant's own days: Controlling shows 'NK 16.09.2025–31.12.2025 · Eva Wolf', and the Rentals line turns 'sent' [29]. The money then works as in A7.\n4. Drafts list: 'Name · Property · NK 01.07.2024–30.06.2025' [65]. It is up to date after you come back to the app [58].\n5. Overview. Needs you shows e.g. 'Jahresabrechnung not in yet · Rentals · Rheinblick 3 · Frist soon'. A skipped Casa NK shows 'skipped' [46].\n\nD. KAUTION AT MOVE-OUT (K1: Tenants › tenant › Kaution card)\n1. Settle in one form: Kept · other reasons (with a reason), Kept · for NK-Abrechnung, Refund to tenant, Settled on. The card then says 'Settled · 300 € held for NK'. Nothing goes to Controlling.\n2. Rent kept from the Kaution: Controlling Income, as received rent. Damage kept: Maintenance › Who pays › Schaden › Direct.\n3. The move-out year's NK letter takes the 300 € by itself and names the one transfer that is left. The Money step reads e.g. 'You pay back 100,00 €', and Controlling books +200 once. The Casa letter stays 2 pages [35], and a sent line keeps its figures [38].\n4. If no NK is sent within 12 months: add the held part to the refund on the card.\n\nSETTINGS: 'Period starts on' offers only days that exist (February 01–28) [57].\n\nHOW LONG: about 23.5 h of work, including tests and an independent check per package. With four builders working in parallel after K1 is merged, it takes about 12.5 h elapsed: the Rentals package is the longest at 9.5 h, then 3 h of integration.",
+  "ux_rules": [
+   "One word per state, the same on the Rentals card, lists, ring, History, the Casa tab, the Dashboard and the tenant cards. Jahresabrechnung: 'expected' → 'Frist soon' (red: missing, and the tenant Frist is 60 days or less away) → 'overdue' (only 15 days after the month the HV usually sends) → 'to enter' → 'not paid yet' / 'not received yet' → 'paid' / 'received' / 'settled'. Tenant NK: 'waiting' (costs not in yet) → 'to send' → 'sent' → 'settled' / 'skipped'. Money: 'pays you' / 'gets … back' / 'you pay back' / 'balanced'. Existing difference that stays: Casa room lines may say 'paid' / 'returned' as the done state.",
+   "Every view reads a status from the same function: card, list, ring, History, Dashboard and tenant card can never disagree (e.g. items 45, 46, 47, 48, 49, 50, 52).",
+   "One place per action: Jahresabrechnung window = HV letter and WEG result. NK window = costs and 'Who carries it'. Tenant window / sheet = letter (Mark as sent, undo) and money (Received / Paid back, undo). Kaution card = the Kaution. Clearing an Ist in Controlling does exactly what undo does. A link from a tenant card opens the exact sheet.",
+   "No hidden levels and no silent freezing: a value is stored only when the owner types something different from the suggestion. Opening a PDF, editing another field or choosing an option never fixes a date, address or Anlage.",
+   "A sent letter is fixed: the screen ('… as sent'), 'Open letter (PDF)', History and Controlling all show the letter the tenant got, with the same date, due date and figures. The archived copy comes first; a redraw uses the stored date and due date. Corrections go only through undo on the Letter step.",
+   "No new messages, warnings, hints, buttons or levels; existing toasts may only be reworded. A control that does nothing is removed, not explained (e.g. 'Former tenant', 'from Rentals').",
+   "English on screen, German only in letters. Undo: 'Back to open?' / 'Back to open'. Failures: 'Could not save — …' / 'Could not undo — …' / 'Please run the Settlements SQL in Supabase first'.",
+   "Period labels on screen: always 'NK dd.mm.yyyy–dd.mm.yyyy', never a slash and never 'NK 2025' (the tenant-card pill 'NK 2025 open' stays, as the owner chose). Letters: 'Abrechnungsjahr 2025' for 01.01.–31.12., otherwise 'Abrechnungszeitraum 01.07.2025–30.06.2026'. The same rule applies in the Rentals, Casa and own-NK letters.",
+   "Proper singular and plural: '1 Monat' / '1 month' / '1 day' / '1 tenant', and plural otherwise; never '(s)'.",
+   "Money colours stay as they are: green = to you, red = out, beige = nothing yet. Red also marks 'Frist soon' and 'overdue'.",
+   "Typing is never interrupted: totals follow at once, and lists redraw when the field is left.",
+   "Kaution (R1–R3, K1): never counted in Controlling; no 'with the rent' or 'via Kaution' choice; the kept part counts once, at the Money step that names the one real bank transfer.",
+   "iPhone: no new elements. A letter stays letter + Belegliste (2 pages); if a letter grows, its closing block (hints, greeting, signature, Anlage) moves as one piece with the correct 'Seite n'.",
+   "Old stored data stays as stored and no SQL is needed. A wrong status left by old data is checked, not handed to the owner as a rule to remember."
+  ],
+  "changes_to_designs": [
+   {
+    "no": 33,
+    "change": "When the Casa period is not a calendar year, print 'Abrechnungszeitraum 01.07.2024–30.06.2025' (full dates, the same rule as item 39) instead of 'Abrechnungsjahr 2024/25'. Calendar years keep '2 Monate · Abrechnungsjahr 2025'. This case only happens when the Casa period does not start on 01.01. The Zeitraum box may then take a second line; item 35's closing-block wrapper keeps the letter correct, and at worst the closing block moves to page 2 with the right 'Seite n'.",
+    "why": "The same thing had two wordings: Rentals (39) says 'Abrechnungszeitraum dd.mm.yyyy–dd.mm.yyyy', Casa said 'Abrechnungsjahr 2024/25'. The owner's label rule (settlements-ui.js header) is 'never a slash', and a year with a slash still does not name the real dates, which is exactly what item 39 fixes."
+   },
+   {
+    "no": 40,
+    "change": "Also in the own-NK letter (sdLetterData facts): the extra period column for a part-year tenant is labelled 'Abrechnungsjahr' only for 01.01.–31.12. and 'Abrechnungszeitraum' otherwise. This is one line in settlements-tab-dashboard.js, in the same package.",
+    "why": "This is the third letter that needs the same rule: today a 01.07.2024–30.06.2025 own NK calls its period 'Abrechnungsjahr'."
+   },
+   {
+    "no": 38,
+    "change": "A rebuilt sent letter (one without an archived copy) takes both its date and its due date from the stored result (res.date and res.db.due_date), exactly as Casa item 37 does, instead of date + 'pay within' days. Keep reusing K1's sentRes. Everything else in the design stays: the archived copy first, then 'Costs · as sent'.",
+    "why": "This gives one rule in both apps for 'a sent letter is the letter the tenant got'. Otherwise, if 'pay within' was changed after sending, the Rentals rebuild would print a different due date from the letter and from Controlling."
+   },
+   {
+    "no": 50,
+    "change": "On the card's Jahresabrechnung tile, for an old WEG result whose costs are not entered yet, the small text reads 'not paid yet · enter the costs' (or 'not received yet · enter the costs'). Once the costs are complete it reads 'not paid yet' as in the design.",
+    "why": "Without this, the card shows an amount next to a grey 'waiting' NK tile and nothing says why, so the owner's next step is hidden. 'enter the costs' is the wording the Jahresabrechnungen list uses for the same state."
+   },
+   {
+    "no": 45,
+    "change": "In _srTenLine and in the NK window's tenant list, the chip of an open tenant changes from 'letter ready' to 'to send'.",
+    "why": "On the same card the header chip says 'to send' and the tenant line below it says 'letter ready' for the same state. Casa says 'to send' everywhere. The chip is in the function this item already edits."
+   },
+   {
+    "no": 54,
+    "change": "When a room's tenant line is sent, the Casa room card header chip says 'sent' instead of 'waiting' (one word in the room-card builder).",
+    "why": "Everywhere else 'waiting' means 'the costs are not in yet' (the Rentals tenant chip, the Casa house card's 'waiting for the house costs', item 49). For this state the Casa house card and the Rentals card already say 'sent'."
+   },
+   {
+    "no": 23,
+    "change": "While this item edits the Leerstand line, apply the singular rule: '1 day' for a one-day gap, 'n days' otherwise.",
+    "why": "A one-day empty gap between two tenants is normal (out 30.06., in 02.07.) and would read '1 days'. This is the same rule as item 34."
+   },
+   {
+    "no": 29,
+    "change": "Do not leave the owner a 'don't send it a second time' rule for part-year own NKs sent before the fix. The integration package runs one read-only query: own-NK results whose stored period is wider than the letter's Nutzungszeitraum. Only if it lists rows do those rows get the letter's period in the same release. No new screen or message.",
+    "why": "Otherwise a wrong 'to send' status stays for old data, and the owner has to remember a rule, which is exactly what K2 is meant to remove. Most likely the query returns nothing."
+   },
+   {
+    "no": 31,
+    "change": "No change on screen. Build it split by file, with one fixed interface: P-D adds `stale` (a booking that went the other way) to _stState and _stSyncStatus. P-A (_srSetAmount, Skip) and P-B (scSetAmount; K1's `st.booking || ctlAbrBooking(st.res)` → `st.booking`) only read `st.booking || st.stale`.",
+    "why": "This keeps one owner per file. Until P-D is merged, `st.stale` is undefined and the reading lines behave as today, so the three packages can be built in parallel and the item is finished at integration."
+   }
+  ],
+  "packages": [
+   {
+    "name": "P-A Rentals tab (settlements-tab-rentals.js only)",
+    "items": [
+     24,
+     23,
+     62,
+     22,
+     55,
+     36,
+     38,
+     39,
+     41,
+     45,
+     47,
+     48,
+     49,
+     50,
+     60,
+     61,
+     31
+    ],
+    "hours": 9.5,
+    "why_together": "All Rentals items live in one file, so they need one owner. Items 48, 61 and 31 are only the parts in this file: 48 makes _srHvState return word/over and uses them on the card, list, ring and window; 61 changes the Rentals toasts; 31 adds the `st.booking || st.stale` reader in _srSetAmount and Skip. Build on the merged K1 in this order: 24 (_srNamed/_srKindOf inside K1's _srSgn) → 23 and 62 (they reuse _srKindOf) → 22 → 55 → 36 → 38 (merged into K1's Money step; reuse K1's sentRes; date and due date from the stored result) → 39, 41 → 45, 47, 49, 60 → 48, 50 → 61 (K1 changed the via line of _srSendNow) → 31. Port from rt/k2/rentals/patch.py; 24, 36 and 38 need hand-merging onto K1. This package also includes the small wording changes 'to send', '1 day' and 'enter the costs'. Tests: the item repros, the 37 Rentals regression scripts (expected differences: the ring text, the English failure toasts, the 'to send' chip), and K1's k1/build-r/repros.sh. About 1 h of that is the independent check. This is the critical path of K2."
+   },
+   {
+    "name": "P-B Casa tab and the shared letter frame (settlements-tab-casa.js, nk-letter.js)",
+    "items": [
+     32,
+     33,
+     34,
+     35,
+     37,
+     42,
+     43,
+     53,
+     54,
+     31
+    ],
+    "hours": 4.5,
+    "why_together": "These are all Casa sheet and letter items. nk-letter.js is shared with the Rentals and own-NK letters, but only this package edits it. The prototype patch applies on K1 with offsets (one fuzz-1 hunk at the movedOut line of 42). Order: 32 → 33 (with the 'Abrechnungszeitraum' wording) → 34 → 35 → 37 → 42 → 43 → 53 → 54 (plus the room header chip 'sent') → the Casa part of 31 (scSetAmount reads `st.booking || st.stale`; K1's scModel line becomes `st.booking`). Tests: m1/m2/m3 page and width measurements (Rentals letters must keep the same text and line positions), the K1 repro set, regress-st and the c3/c5 suites. Update casa-flow/p2.js and casa-calc/r6-letter-text.js. About 0.75 h of that is the independent check."
+   },
+   {
+    "name": "P-C Casa tenant card → Settlements (tab-tenants.js, cc-nk-settle.js, settlements-ui.js)",
+    "items": [
+     52,
+     56
+    ],
+    "hours": 2,
+    "why_together": "This is one path: the Casa app's tenant card into the right Settlements sheet, and nobody else edits these three files. Build 52 first (_tnKaltNKSpan; ccNksDue accepts a returned span, and Rentals' boolean path stays unchanged), then 56 (the '&f=' link uses the span start from 52, and stOpenLink picks that line). There is no K1 overlap apart from a separate hunk in tab-tenants.js. Tests: r5k2.js, p9k2.js, and a manual tap-through in landlord.html at iPhone width; the Rentals tenant card must stay unchanged."
+   },
+   {
+    "name": "P-D Dashboard, own NK and shared status (settlements-tab-dashboard.js, settlements-tab-tracking.js, controlling-abr.js, settlements-app.js)",
+    "items": [
+     29,
+     30,
+     31,
+     40,
+     44,
+     46,
+     51,
+     57,
+     58,
+     64,
+     65,
+     48,
+     61
+    ],
+    "hours": 4.5,
+    "why_together": "This package owns the shared status core plus the Dashboard and the own NK. 31 here is the core: _stState/_stSyncStatus count a booking only in the result's direction, otherwise it becomes `stale`. Also: 30 (ctlSettleUnpaid), 57 (period row), 61's toasts in tracking.js, and 48's Dashboard 'Needs you' line, which reads hv.over from P-A (before P-A merges it shows the old text). Own-NK items: 29, 40 (with the 'Abrechnungszeitraum' label), 44, 64, 65, 58. Dashboard items: 46, 51. The prototype (rt/k2/dash/patch.py) is already built on the K1 tree; move its rentals/casa lines of 31 out to P-A and P-B. Tests: the item repros plus k2-t6-money, k2-t12b and k2-t3-vzpart, the Controlling C3 Abrechnungen suites, the C5 reload suites, and K1's k1r-money. About 0.75 h of that is the independent check."
+   },
+   {
+    "name": "P-E Integration and end-to-end check (settlements.html, landlord.html, rentals-index.html, controlling.html)",
+    "items": [],
+    "hours": 3,
+    "why_together": "Runs after P-A to P-D, which never touch HTML. Steps:\n- Merge the four branches onto main with K1. They share no file, so there are no conflicts.\n- One ?v bump per changed script: settlements.html (rentals, casa, dashboard, tracking, app, ui, controlling-abr, nk-letter), landlord.html (nk-letter, tab-tenants, cc-nk-settle), rentals-index.html (nk-letter, cc-nk-settle), controlling.html (controlling-abr).\n- Full regression on K1+K2: the K1 172-job set, reg-r, the 37 Rentals scripts, regress-st, C3, C5 and the casa c3/c5 suites.\n- Finish the split items end to end: 31 (WEG flip then Received; a Rentals and a Casa NK flip), 48 (card = ring = list = Dashboard), 61, 35 on a Rentals Kaution letter, and the 37/38 rebuilt-letter dates.\n- Run 29's read-only query.\n- Sweep the wording at 390 px width against the UX rules.\n- A fresh reviewer walks the whole workflow, then the PR."
+   }
+  ],
+  "total_hours": 23.5
+ }
+}
