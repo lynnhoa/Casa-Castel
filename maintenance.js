@@ -4198,13 +4198,16 @@ function mtSbAddPhoto() {
 }
 /* "Camera": the camera that stays open (cc-ueberg-photos.js). Each photo is stored the moment it is taken,
    one after the other in the order taken (the same upload as "Add photo", its "Uploading x of n" line) — a photo is
-   never lost when the app goes to the background or closes. Taken at = the shutter. "Done" only closes the camera. */
+   never lost when the app goes to the background or closes. Taken at = the shutter. "Done" only closes the camera.
+   Nov 2026: × on a photo of the strip deletes it at once (owner) — not stored yet: it is never stored; being stored:
+   deleted as soon as it is; stored: its row and files go (as Delete in the list, without the question). */
 function mtSbCamera() {
   const c = mtSbCase(), f = MT.sb;
   if (!c || !f || f.busy || MT.up || typeof ccUbCamera !== 'function') return;
   mtSbCapsFlush();
   const up = { caseId: c.id, total: 0, done: 0, where: 'sb' };
-  const queue = [], thumbs = [];
+  const queue = [], shots = [];                              // shots: this round's photos { thumb, st: 'wait' | 'up' | 'done' | 'fail', doc, gone }
+  const live = () => shots.filter(x => !x.gone);
   let open = true, running = false, ok = 0, pending = 0;
   const end = () => {                                        // camera closed and every photo stored
     if (open || running || pending || queue.length || MT.up !== up) return;
@@ -4219,11 +4222,20 @@ function mtSbCamera() {
     running = true;
     while (queue.length) {
       const x = queue.shift();
+      x.st = 'up';
       try {
         const extra = await mtPhotoExtra(x.file);          // the iPhone camera's own date (fallback), else the shutter
         if (MT.d5 && !extra.taken_at) extra.taken_at = new Date(x.ts).toISOString();
-        if (await mtUploadOne(c, x.file, { type: 'photo', amount: null, date: mtFileDay(x.file) }, extra)) ok++;
-      } catch (e) { console.error('[maintenance] camera photo:', e); }
+        const n0 = MT.docs.length;
+        if (await mtUploadOne(c, x.file, { type: 'photo', amount: null, date: mtFileDay(x.file) }, extra)) {
+          ok++; x.st = 'done';
+          const d = MT.docs.length > n0 ? MT.docs[MT.docs.length - 1] : null;
+          x.doc = d ? d.id : null;
+        } else x.st = 'fail';
+      } catch (e) { x.st = 'fail'; console.error('[maintenance] camera photo:', e); }
+      if (x.gone) {                                         // × while it was being stored: it goes now
+        if (x.st === 'done' && x.doc) await mtSbDelPhoto(x.doc); else if (x.st === 'fail') up.total--;   // a deleted photo is not "not saved"
+      }
       up.done++;
       mtSbPhotosRender();
     }
@@ -4231,8 +4243,9 @@ function mtSbCamera() {
     end();
   };
   const add = (file, ts, thumb) => {
-    thumbs.push(thumb);
-    queue.push({ file, ts });
+    const x = { file, ts, thumb, st: 'wait', doc: null, gone: false };
+    shots.push(x);
+    queue.push(x);
     up.total++;
     if (MT.sb && String(MT.sb.caseId) === String(c.id)) MT.sb.photosOn = true;   // D20: a new photo turns on "With photos"
     mtSbPhotosRender();
@@ -4243,8 +4256,16 @@ function mtSbCamera() {
     try { await fn(...a); } finally { pending--; end(); }
   };
   const opened = ccUbCamera({ en: true,
-    list: () => thumbs,
+    list: () => live().map(x => x.thumb),
     alive: () => !!(MT.sb && String(MT.sb.caseId) === String(c.id) && document.getElementById('mtSbModal')),
+    del: i => {                                              // × on the strip: at once
+      const x = live()[i]; if (!x) return;
+      x.gone = true;
+      if (x.st === 'wait') { const k = queue.indexOf(x); if (k >= 0) queue.splice(k, 1); up.total--; mtSbPhotosRender(); }
+      else if (x.st === 'done' && x.doc) mtSbDelPhoto(x.doc);
+      // 'up': deleted as soon as it is stored (pump) · 'fail': nothing was stored
+      else if (x.st === 'fail') { up.total--; }
+    },
     onShot: shot(async (cv, ts) => {
       const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82));
       if (!blob) return;

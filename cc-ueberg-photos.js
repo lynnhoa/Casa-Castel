@@ -178,7 +178,7 @@ function _ccUbRenderGrid(key) {
 /* ── CAMERA THAT STAYS OPEN (Übergabe + Maintenance) ─────────
    Live picture · shutter (short white flash) · strip of the photos · counter · one exit "Fertig".
    No Cancel: a bad photo goes with the × on its picture in the strip — at once, or later in the grid or the large view
-   (the Bericht in Maintenance stores each photo at once: no × there, it is deleted in its list or view, which ask).
+   (in the Bericht in Maintenance, which stores each photo at once, the × deletes the stored photo at once).
    Escape, the app going to the background and back, or the form closing never lose a photo.
    o = { en, max, px, list() → strip pictures, onShot(canvas, ts), onFile(file, ts), del(i), alive(), onClose() } → true when it opened
    px: long side of a shot (receipts take more, the text must stay readable) · del: an × on each picture of the strip */
