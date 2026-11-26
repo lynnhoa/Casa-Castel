@@ -44,14 +44,22 @@ async function _sdLoadNow() {
     const tasks = [];
     if (typeof SR !== 'undefined' && !SR.loaded && typeof srLoadRows === 'function') tasks.push(srLoadRows());
     if (typeof SC !== 'undefined' && !SC.loaded && typeof scLoadRows === 'function') tasks.push(scLoadRows());
-    tasks.push((async () => {
-      const r = await _ctlSupa.from(SD_TABLE).select('*').order('updated_at', { ascending: false });
-      if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = (r.data || []).map(sdSplitOld); }
-    })());
+    tasks.push(sdLoadDrafts(false));
     await Promise.all(tasks);
     const y = SD.year || sdYearBounds().def, rec = typeof scRec === 'function' ? scRec(y) : null;
     if (!(rec && rec.locked_at) && typeof scLoadYear === 'function') { try { await scLoadYear(y); } catch (e) {} }
   } finally { SD.loaded = true; SD.loading = false; }
+}
+
+/* K2 #58 · the manual NK drafts — read at the start and again when the app comes back (settlements-app.js), so a draft
+   made or deleted on another device shows here too. keep: a failed read leaves the list as it is (no "Run the SQL"
+   because of the connection) */
+async function sdLoadDrafts(keep) {
+  let r;
+  try { r = await _ctlSupa.from(SD_TABLE).select('*').order('updated_at', { ascending: false }); } catch (e) { r = { error: e }; }
+  if (r.error) { if (!keep) { SD.missing = true; SD.drafts = []; } return false; }
+  SD.missing = false; SD.drafts = (r.data || []).map(sdSplitOld);
+  return true;
 }
 
 /* ── Summaries ────────────────────────────────────────────── */
@@ -163,15 +171,20 @@ function sdOverview(Y, casa) {
   }
   // Casa Castel
   if (casa && casa.M) {
-    const M = casa.M, C = { stages: [0, 0, 0, 0], ten: M.money.ten, hg: M.money.hg, get: M.money.get || 0, pay: M.money.back || 0, rows: [] };
-    (M.money.hgLines || []).forEach(l => { const t = Number(l.total) || 0; if (t > 0) C.pay += t; else C.get -= t; });
+    // K2 #51 (owner: A) · Jahresabrechnungen = the Casa tab's figure: the Versorger bills of that year, as money (scJaModel).
+    // The NK calculation and the letters keep splitting them by days — that is not money in or out this year.
+    const M = casa.M, J = typeof scJaModel === 'function' ? scJaModel(M) : null;
+    const C = { stages: [0, 0, 0, 0], ten: M.money.ten, hg: J ? J.net : M.money.hg, get: M.money.get || 0, pay: M.money.back || 0, rows: [] };
+    if (J) J.S.forEach(s => s.real.forEach(b => { const a = Number(b.amt) || 0; if (Number(b.dir) === 1) C.get += a; else C.pay += a; }));
+    else (M.money.hgLines || []).forEach(l => { const t = Number(l.total) || 0; if (t > 0) C.pay += t; else C.get -= t; });
     let vz = 0, share = 0;
     for (const t of M.ten) {
       if (t.k === 'none') { C.rows.push({ room: t.room, name: t.name, former: t.movedOut, stage: -1, v: null }); continue; }
       const st = t.k === 'done' ? 3 : t.k === 'sent' ? 2 : M.locked ? 1 : 0;
       C.stages[st]++;
-      const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : (M.R.lines.length ? t.saldo : null);
-      C.rows.push({ room: t.room, name: t.name, former: t.movedOut, stage: st, v: v === null ? null : cxR(v) });
+      // K2 #46: a skipped NK has no letter and no result — no amount (as the Casa tab: it is out of NK-Abr.)
+      const v = t.skipped ? null : t.st && t.st.res ? t.st.res.dir * t.st.res.amount : (M.R.lines.length ? t.saldo : null);
+      C.rows.push({ room: t.room, name: t.name, former: t.movedOut, stage: st, v: v === null ? null : cxR(v), skipped: !!t.skipped });
       vz += Number(t.vz) || 0; share += Number(t.sum) || 0;
     }
     const total = M.R && M.R.check ? Number(M.R.check.total) || 0 : 0;
@@ -243,7 +256,8 @@ function sdOverviewHTML(Y, O) {
       '<div class="sdo-lh"><span>ROOM \u00b7 TENANT</span><span>STATUS</span><span>RESULT</span></div>' +
       O.casa.rows.map(x => '<div class="sdo-lr"><span class="sdo-lm"><span class="sdo-ln">' + stEsc(x.room || '\u2014') + '</span><span class="sdo-ls">' +
         stEsc([x.name, x.former ? 'former' : ''].filter(Boolean).join(' \u00b7 ')) + '</span></span>' +
-        stTag(x.stage) + (x.stage < 0 ? '<b class="sdo-lv sdo-lv--t">in the rent</b>' : '<b class="sdo-lv ' + cls(x.v) + '">' + W(x.v) + '</b>') + '</div>').join('') + '</div>';
+        stTag(x.stage) + (x.stage < 0 ? '<b class="sdo-lv sdo-lv--t">in the rent</b>' : x.skipped ? '<b class="sdo-lv sdo-lv--t">skipped</b>'
+          : '<b class="sdo-lv ' + cls(x.v) + '">' + W(x.v) + '</b>') + '</div>').join('') + '</div>';
   }
   // Casa Castel house costs: two lines
   let costs = '';
@@ -649,8 +663,13 @@ const sdRow = d => ({ property_id: d.property_id || null, unit_label: d.unit_lab
                 tenant_app: d.tenant_ref && d.property_id ? (Number(d.property_id) === CASA_PROP_ID ? 'casa' : 'rentals') : null });
 async function _sdSaveNow(d, quiet) {
   const row = sdRow(d), sent = JSON.stringify(row);
-  const q = d.id ? _ctlSupa.from(SD_TABLE).update(row).eq('id', d.id).select().single() : _ctlSupa.from(SD_TABLE).insert(row).select().single();
-  const { data, error } = await q;
+  const q = d.id ? _ctlSupa.from(SD_TABLE).update(row).eq('id', d.id).select().maybeSingle() : _ctlSupa.from(SD_TABLE).insert(row).select().single();
+  let { data, error } = await q;
+  if (!error && !data && d.id) {                             // K2 #58: deleted on another device meanwhile → your work is a draft again
+    const gone = d.id;
+    SD.drafts = SD.drafts.filter(x => x.id !== gone);
+    ({ data, error } = await _ctlSupa.from(SD_TABLE).insert(row).select().single());
+  }
   if (error) { stSay(SD.missing ? 'Please run the SQL for the manual NK-Abrechnung first' : 'Saving failed — ' + (error.message || error)); return null; }
   const was = JSON.parse(sent), now = sdRow(d), keep = {};   // typed meanwhile → kept (the saved copy would undo it)
   Object.keys(was).forEach(k => { if (k !== 'updated_at' && k !== 'tenant_app' && JSON.stringify(was[k]) !== JSON.stringify(now[k])) keep[k] = d[k]; });

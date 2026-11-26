@@ -115,6 +115,8 @@ document.addEventListener('visibilitychange', async () => {
       if (typeof scReloadYears === 'function') await scReloadYears();
       else { SC.data = {}; SC._jaLd = {}; }
     }
+    // K2 #58: the Dashboard's manual NK drafts too (a draft made or deleted on another device)
+    if (typeof SD !== 'undefined' && SD.loaded && typeof sdLoadDrafts === 'function') await sdLoadDrafts(true);
     stRender();
   } catch (e) {}
 });
