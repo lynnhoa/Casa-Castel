@@ -516,16 +516,16 @@ async function _stReopen(l) {
   }
   if (!(r._virtual || String(r.id).startsWith('v:'))) {
     try { await ctlSettleOpen(r); }                               // the line open again (the same as Controlling's 'cancel')
-    catch (err2) { stSay('Fehlgeschlagen — ' + (err2.message || err2)); return; }
+    catch (err2) { stSay('Could not save — ' + (err2.message || err2)); return; }   // K2 #61: Rentals calls this — English, as Rentals
   }
   ctlSettlementInvalidate(); ST.edit = false;
-  stSay('Zurück auf Offen');
+  stSay('Back to open');
   stRenderTracking();
 }
 
 async function _stNotDone(l) {
   try { const row = await _stUpsertSettlement(l, { status: 'nicht durchgeführt' }); ST.sel = String(row.id); }
-  catch (err) { stSay('Fehlgeschlagen — ' + (err.message || err)); return; }
+  catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
   ctlSettlementInvalidate(); stRenderTracking();
 }
 

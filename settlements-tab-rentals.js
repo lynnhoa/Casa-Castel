@@ -298,7 +298,9 @@ function _srKeyText(rec, pos, apt) {
 /* A cost belongs to the Hausgeld-Jahresabrechnung (origin 'hv', the default) or only to the NK (origin 'nk').
    A Hausgeld cost goes into the NK when it is umlagefähig and not unticked ('nk' false). */
 const _srIsNkOnly = p => p.origin === 'nk';
-const _srInNk = (p, rec) => (_srIsNkOnly(p) || _srU(p, rec)) && p.nk !== false;      // Nov 2026: NK-only costs can be switched off too
+const _srInNk = (p, rec) => (_srIsNkOnly(p) || _srU(p, rec)) && p.nk !== false      // Nov 2026: NK-only costs can be switched off too
+  // K2 #62: a Grundsteuer you typed under NK only replaces the automatic one at once (the rule _srNkAutoNext stores)
+  && !(p.auto === 'gs' && rec && (rec.positions || []).some(q => !q.auto && _srIsNkOnly(q) && _srKindOf(q).k === 'grundsteuer'));
 /* Gewerbe: the Gewerbemietvertrag says "Verwaltungskosten sind im Gewerbemietverhältnis umlagefähig" — a Gewerbefläche's
    Verwaltung goes into the tenants' NK, from the first Abrechnung with no letter out yet on. An Abrechnung with a letter out
    (a result, an older tracking status, the letter archive) stays as it went out; the choice is kept with the record
@@ -812,9 +814,9 @@ function _srChecks(c, it, rec, x) {
     if (!String(s.iban || '').trim()) miss.push('IBAN → Profile');
     if (!String(s.kontoinhaber || '').trim()) miss.push('Kontoinhaber → Profile');
   }
-  if (!String(addr || '').trim()) miss.push('tenant’s address → Edit letter');
+  if (!String(addr || '').trim()) miss.push('tenant’s address → Letter details');   // K2 #60: today's section names
   if (!rec.hv_date) miss.push('statement date of the Jahresabrechnung');
-  if (x.missing) miss.push('amounts per tenant → Breakdown');
+  if (x.missing) miss.push('amounts per tenant → Costs');
   return miss;
 }
 function _srCheckHtml(c, it, rec, x) {
@@ -897,7 +899,7 @@ function _srCollectTenant() {
 }
 function _srQueueTenantSave(rec) {
   clearTimeout(_srTsTimer);
-  _srTsTimer = setTimeout(() => { srSaveRow(rec, null, ['tenants']).catch(err => stSay('Speichern fehlgeschlagen — ' + (err.message || err))); }, 600);
+  _srTsTimer = setTimeout(() => { srSaveRow(rec, null, ['tenants']).catch(err => stSay('Could not save — ' + (err.message || err))); }, 600);
 }
 
 /* 4 · PDF letter ─────────────────────────────────────────── */
@@ -1083,7 +1085,7 @@ async function _srSendNow(btn, got, key) {
   }
   const gvKeep = _srIsGew(c) && !(rec.keys && rec.keys.gv !== undefined);   // Gewerbe: the first letter out keeps its Verwaltung choice
   if (gvKeep && !SR.lettersRead) {                           // its choice needs the archive: not read → nothing is sent; read again, then drawn
-    stSay('Speichern fehlgeschlagen — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false;
+    stSay('Could not save — ' + (SR.lettersErr || 'nk_letters')); if (btn) btn.disabled = false;
     _srReadLetters().then(ok => { if (ok && typeof ST !== 'undefined' && ST.tab === 'rentals') stRenderRentals(); });
     return;
   }
@@ -1113,7 +1115,7 @@ async function _srSendNow(btn, got, key) {
   catch (err) {                                              // Gewerbe: the Verwaltung this letter bills must be kept with the record
     if ((gvKeep && rec._gv) || (hzKeep && rec._hz)) {        // the choice was not stored: not kept in memory either (also on a newer copy)
       for (const r of [rec, SR.rows.find(z => z.id === rec.id)]) for (const k of ['gv', 'hz']) if (r && r.keys && r.keys[k] !== undefined && (k === 'gv' ? gvKeep : hzKeep)) { r.keys = Object.assign({}, r.keys); delete r.keys[k]; }
-      stSay('Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+      stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   }
   const resRow = { property_id: c.p.id, kind: 'nk_tenant', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: r.tenant_id || null, unit_label: unit, tenant_name: _srTName(t) || null,
@@ -1122,7 +1124,7 @@ async function _srSendNow(btn, got, key) {
   const before = { status: r.status || 'offen', amount: r.amount ?? null, direction: r.direction ?? null, settled_via: r.settled_via ?? null, result_id: r.result_id ?? null };
   let row;
   try { row = await _stUpsertSettlement(l, { status: 'verschickt', amount: cxR(amountRec), direction: dir, settled_via: via }); }
-  catch (err) { stSay(_stSqlMissing(err) ? 'Bitte zuerst das Settlements-SQL in Supabase ausführen' : 'Speichern fehlgeschlagen — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
+  catch (err) { stSay(_stSqlMissing(err) ? 'Please run the Settlements SQL in Supabase first' : 'Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
   try {
     const saved = await _stWriteResult(null, resRow);
     await _ctlSupa.from('ctrl_settlements').update({ result_id: saved.id }).eq('id', row.id);
@@ -1130,7 +1132,7 @@ async function _srSendNow(btn, got, key) {
   } catch (err) {
     await _ctlSupa.from('ctrl_settlements').update(before).eq('id', row.id);
     Object.assign(row, before);
-    stSay('Speichern fehlgeschlagen — ' + (err.message || err));
+    stSay('Could not save — ' + (err.message || err));
     _srBusy.delete(key); if (btn) btn.disabled = false; ctlSettlementInvalidate();
     if (_srShowsTen(c.ck, it.r.id)) SR.modal.tid = String(row.id);   // C6: the line is stored now — its pop-up stays on it (was: 'Not found')
     stRenderRentals(); return;
@@ -2058,14 +2060,12 @@ function _srNkView(c) {
           '<span class="ct-lab">' + stEsc(p.label || 'Cost') + ' <small class="ct-src">' + stEsc(p.src || '') + '</small></span></label>' +
           '<span class="ct-ro">' + stEur(_srSigned(p, _srNum(p.amount) || 0)) + '</span></div>' + retRows(p);
       }
-      const k = _srKind(p.kind), named = p.kind !== 'grundsteuer' || p.label;
-      const lab = named ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || (p.kind === 'sonst' ? '' : k.l)) + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + ' <small class="ct-src">from Rentals</small></span>';
+      const k = _srKind(p.kind);                               // K2 #62: a cost you typed is always yours to rename (never "from Rentals")
+      const lab = '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || (p.kind === 'sonst' ? '' : k.l)) + '"/>';
       return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
     }).join('');
     const tHv = cxR(HV.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
     const tX = cxR(X.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
-    const hasGs = (d.positions || []).some(p => p.kind === 'grundsteuer');
-    const gsQ = c.verw ? _srNum(c.verw.grundsteuer_mtl) : null;
     // Nov 2026 · two folded lines (tap to see the positions) + the total · the fields stay in the page, so totals keep updating
     const nOn = HV.filter(([p]) => p.nk !== false && _srAmtOf(d, p, c.apt) !== null).length;
     costCard = '<p class="mx-lbl">Costs for the NK</p><section class="srm__card mx-nkc">' +
@@ -2075,7 +2075,7 @@ function _srNkView(c) {
       '<details class="mx-fold"' + (SR.nkOpenX || X.length || zRows ? ' open' : '') + ' data-fold="X"><summary><span class="mx-fold__i" style="background:#FAF0DC;color:#854F0B"><i class="ti ti-plus" aria-hidden="true"></i></span>' +
         '<span class="mx-fold__m"><b>NK only</b><small>' + (X.length ? X.filter(([p]) => p.nk !== false).length + ' of ' + X.length + ' in the NK · Grundsteuer, costs marked for the NK' : 'not in the Hausgeld, e.g. Grundsteuer') + '</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + retWarn + xRows + zRows +
-        '<div class="ct-adds">' + (void hasGs, void gsQ, '') +   // Nov 2026: Grundsteuer comes in by itself
+        '<div class="ct-adds">' +                                // Nov 2026: Grundsteuer comes in by itself
         '<button class="ct-add" data-sr="nkAdd"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button></div></div></details>' +
       '<div class="ct-tot"><span>Total for the NK</span><b data-sr-tot="nk">' + stEur(cxR(tHv + tX)) + '</b></div>' +
       '<datalist id="srKindList">' + SR_KINDS.filter(k => k.u).map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>' +
@@ -2722,13 +2722,12 @@ function srIsRentalsLine() { return false; }
     if (a === 'hvSave' || a === 'nkSave') { await _srHvSave4(b); SR.dirty = false; return; }
     if (a === 'toNk') { if (SR.dirty) { await _srHvSave4(b, 'nk'); SR.dirty = false; } else { SR.modal.view = 'nk'; _srRerenderPanel(); } return; }
     if (a === 'toHv') { _srCollect(); await _srAutoFlush(); SR.modal.view = 'hv'; SR.jaEdit = _srJaDone(_srRec(c.p, c.per), _srRecSummary(_srRec(c.p, c.per), c.apt)); SR.costsOpen = true; _srRerenderPanel(); return; }
-    if (a === 'nkAdd' || a === 'nkGs') {
+    if (a === 'nkAdd') {
       _srCollect();
-      const gs = a === 'nkGs', p = _srNewPos(gs ? 'grundsteuer' : 'sonst', SR.draft);
-      p.origin = 'nk'; p.u = true;
-      if (gs) { const q = _srNum(c.verw && c.verw.grundsteuer_mtl); p.amount = q ? cxR(q * 4) : null; } else p.label = '';
+      const p = _srNewPos('sonst', SR.draft);
+      p.origin = 'nk'; p.u = true; p.label = '';
       SR.draft.positions.push(p); _srRerenderPanel(); _srAutoQueue();
-      if (!gs) { const ins = document.querySelectorAll('#srPanel .ct-name'); if (ins.length) ins[ins.length - 1].focus(); }
+      const ins = document.querySelectorAll('#srPanel .ct-name'); if (ins.length) ins[ins.length - 1].focus();
       return;
     }
     if (a === 'expEdit') { _srCollect(); SR.expEdit = true; _srRerenderPanel(); return; }
