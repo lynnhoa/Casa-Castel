@@ -130,7 +130,7 @@ function stRenderDashboard(keepModal) {          // keepModal: only the page beh
   const draftsHtml = drafts.length ? '<div class="sdo-dr"><button class="sdo-drb" data-sd="drafts" aria-expanded="' + !!SD.showDrafts + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + drafts.length + (drafts.length === 1 ? ' draft' : ' drafts') + ' <i class="ti ti-chevron-' + (SD.showDrafts ? 'up' : 'down') + '" aria-hidden="true"></i></button></div>' +
     (SD.showDrafts ? '<div class="sc-card sc-list" style="margin-top:6px">' + drafts.map(d =>
       '<button class="sc-row" data-sd="openDraft" data-id="' + stEsc(d.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-pencil" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(d.tenant_name || 'Tenant') + '</span>' +
-      '<span class="sc-row__p">' + stEsc(sdPropName(d) + (d.period_from || d.period_to ? ' · ' + stNkLabel(d.use_from || d.period_from, d.use_to || d.period_to) : '')) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '') : '';
+      '<span class="sc-row__p">' + stEsc(sdPropName(d)) + (d.period_from && d.period_to ? ' · <span style="white-space:nowrap">' + stEsc(stNkLabel(d.use_from || d.period_from, d.use_to || d.period_to)) + '</span>' : '') + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '') : '';
   const sql = SD.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_manual is missing – the SQL is in the chat.</span></div></div>' : '';
 
   cxPaint(el, '<div class="st-page sc-page sd-page">' + create + draftsHtml + yearNav + sql + sdOverviewHTML(Y, O) + '</div>');   // B18: only what changed

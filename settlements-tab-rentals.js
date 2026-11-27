@@ -301,6 +301,7 @@ const _srIsNkOnly = p => p.origin === 'nk';
 const _srInNk = (p, rec) => (_srIsNkOnly(p) || _srU(p, rec)) && p.nk !== false      // Nov 2026: NK-only costs can be switched off too
   // K2 #62: a Grundsteuer you typed under NK only replaces the automatic one at once (the rule _srNkAutoNext stores)
   && !(p.auto === 'gs' && rec && (rec.positions || []).some(q => !q.auto && _srIsNkOnly(q) && _srKindOf(q).k === 'grundsteuer'));
+const _srGsOut = (p, rec) => p.auto === 'gs' && p.nk !== false && !_srInNk(p, rec);   // K2 #62: the automatic one, replaced (hidden, not counted)
 /* Gewerbe: the Gewerbemietvertrag says "Verwaltungskosten sind im Gewerbemietverhältnis umlagefähig" — a Gewerbefläche's
    Verwaltung goes into the tenants' NK, from the first Abrechnung with no letter out yet on. An Abrechnung with a letter out
    (a result, an older tracking status, the letter archive) stays as it went out; the choice is kept with the record
@@ -2056,7 +2057,7 @@ function _srNkView(c) {
     const xRows = X.map(([p, i]) => {
       if (p.auto) {                                            // Nov 2026: came in by itself (Grundsteuer, a cost marked for the NK) — untick to leave it out
         const on = p.nk !== false;
-        return '<div class="ct-r ct-r--nk ct-r--auto' + (on ? '' : ' is-off') + '"><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + '/>' +
+        return '<div class="ct-r ct-r--nk ct-r--auto' + (on ? '' : ' is-off') + '"' + (_srGsOut(p, d) ? ' style="display:none"' : '') + '><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + '/>' +
           '<span class="ct-lab">' + stEsc(p.label || 'Cost') + ' <small class="ct-src">' + stEsc(p.src || '') + '</small></span></label>' +
           '<span class="ct-ro">' + stEur(_srSigned(p, _srNum(p.amount) || 0)) + '</span></div>' + retRows(p);
       }
@@ -2065,7 +2066,8 @@ function _srNkView(c) {
       return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
     }).join('');
     const tHv = cxR(HV.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
-    const tX = cxR(X.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
+    const tX = cxR(X.reduce((s, [p]) => s + (_srInNk(p, d) ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
+    const xV = X.filter(([p]) => !_srGsOut(p, d));          // K2 #62: the replaced automatic Grundsteuer is hidden and not counted — as after the next sync
     // Nov 2026 · two folded lines (tap to see the positions) + the total · the fields stay in the page, so totals keep updating
     const nOn = HV.filter(([p]) => p.nk !== false && _srAmtOf(d, p, c.apt) !== null).length;
     costCard = '<p class="mx-lbl">Costs for the NK</p><section class="srm__card mx-nkc">' +
@@ -2073,7 +2075,7 @@ function _srNkView(c) {
         '<span class="mx-fold__m"><b>From the Jahresabrechnung</b><small>umlagefähig · ' + nOn + ' of ' + HV.length + ' in the NK</small></span><b class="mx-fold__v" data-sr-tot="hvnk">' + stEur(tHv) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + hvRows + '<button class="ct-add" data-sr="toHv"><i class="ti ti-pencil" aria-hidden="true"></i> Amounts are in the Jahresabrechnung</button></div></details>' +
       '<details class="mx-fold"' + (SR.nkOpenX || X.length || zRows ? ' open' : '') + ' data-fold="X"><summary><span class="mx-fold__i" style="background:#FAF0DC;color:#854F0B"><i class="ti ti-plus" aria-hidden="true"></i></span>' +
-        '<span class="mx-fold__m"><b>NK only</b><small>' + (X.length ? X.filter(([p]) => p.nk !== false).length + ' of ' + X.length + ' in the NK · Grundsteuer, costs marked for the NK' : 'not in the Hausgeld, e.g. Grundsteuer') + '</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
+        '<span class="mx-fold__m"><b>NK only</b><small>' + (X.length ? '<span data-sr-cnt="x">' + xV.filter(([p]) => p.nk !== false).length + ' of ' + xV.length + '</span> in the NK · Grundsteuer, costs marked for the NK' : 'not in the Hausgeld, e.g. Grundsteuer') + '</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + retWarn + xRows + zRows +
         '<div class="ct-adds">' +                                // Nov 2026: Grundsteuer comes in by itself
         '<button class="ct-add" data-sr="nkAdd"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button></div></div></details>' +
@@ -2182,9 +2184,14 @@ function _srRefreshTotals() {
   const d = SR.draft, t = { u: 0, n: 0, hvnk: 0, x: 0 };
   (d.positions || []).forEach(p => {
     const v = _srSigned(p, _srAmtOf(d, p, c.apt));
-    if (_srIsNkOnly(p)) { if (p.nk !== false) t.x += v; } else { if (_srU(p, d)) t.u += v; else t.n += v; if (_srU(p, d) && p.nk !== false) t.hvnk += v; }
+    if (_srIsNkOnly(p)) { if (_srInNk(p, d)) t.x += v; } else { if (_srU(p, d)) t.u += v; else t.n += v; if (_srU(p, d) && p.nk !== false) t.hvnk += v; }
   });
   const set = (k, v) => { const el = document.querySelector('#srPanel [data-sr-tot="' + k + '"]'); if (el) el.textContent = stEur(cxR(v)); };
+  // K2 #62: a Grundsteuer typed under NK only hides the automatic one at once (and shows it again when renamed) — the count follows
+  const X = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srIsNkOnly(p));
+  X.forEach(([p, i]) => { if (p.auto !== 'gs') return; const cb = document.querySelector('#srPanel [data-src="innk"][data-i="' + i + '"]'), r = cb && cb.closest('.ct-r'); if (r) r.style.display = _srGsOut(p, d) ? 'none' : ''; });
+  const cnt = document.querySelector('#srPanel [data-sr-cnt="x"]');
+  if (cnt) { const V = X.filter(([p]) => !_srGsOut(p, d)); cnt.textContent = V.filter(([p]) => p.nk !== false).length + ' of ' + V.length; }
   set('u', t.u); set('n', t.n); set('t', t.u + t.n); set('hvnk', t.hvnk); set('x', t.x); set('nk', t.hvnk + t.x);
   const hgEl = document.querySelector('#srPanel [data-srf="keys.hg_paid"]');
   if (hgEl) {
