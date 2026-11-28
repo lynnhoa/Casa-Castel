@@ -2803,14 +2803,14 @@ function scInput(e) {
     const r = scRecEnsure(SC.year), p = (r.tenants.__pos || []).find(x => x.id === el.dataset.id); if (!p) return;
     const f = el.dataset.scPos;
     if (f === 'amount') { const n = cxParse(el.value); p.amount = n === null ? null : cxR(n); } else p[f] = f === 'date' ? scD(el.value) : el.value;
-    scQueueSave(r); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+    scQueueSave(r); SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); return;
   }
   if (el && el.dataset && el.dataset.scIn === 'vzm') {                // NK paid, one month
     const s = scSet(el.dataset.k), n = cxParse(el.value);
     s.vzMonths = s.vzMonths || {};
     if (el.value.trim() === '' || n === null) delete s.vzMonths[el.dataset.ym]; else s.vzMonths[el.dataset.ym] = cxR(n);
     delete s.vz;
-    scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+    scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); return;
   }
   const f = el && el.dataset && el.dataset.scIn; if (!f) return;
   const s = scSet(el.dataset.k);
@@ -2819,7 +2819,7 @@ function scInput(e) {
   else if (f === 'days') s.days = Math.max(0, Math.round(Number(v) || 0)) || 30;
   else s[f] = v;
   scQueueSave(scRecEnsure(SC.year));
-  if (f === 'vz' || f === 'via') { SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); }
+  if (f === 'vz' || f === 'via') { SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); }
 }
 function stRenderCasaQuiet() { const m = SC.modal; stRenderCasa(); SC.modal = m; scRenderModal(); }
 /* C6: the end of a save started in a Casa pop-up (or on the Casa page): back to that tenant, or on in 'Send letters',

@@ -177,7 +177,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? cell(othLbl, _cckMoney(`cck-d-${pfx}`, dv('d', decided ? oth : ''), onIn, dis, ` onchange="ccKautionRest(${q})"`), 'cck-d') +
       (extra ? cell('Reason', _cckText(`cck-g-${pfx}`, dv('g', k.deduction_reason), onIn, dis), 'cck-g') : '')
     : cell(othLbl, val(oth, decided)) + (extra ? cell('Reason', k.deduction_reason ? _cckRo(k.deduction_reason) : _cckOff) : '');
-  const nkHint = '<div class="cck-nkhint">offset in Settlements with the NK-Abrechnung</div>';
+  const nkHint = '<div class="cck-nkhint">offset in Settlements with the <span style="white-space:nowrap">NK-Abrechnung</span></div>';
   const r3 = !hasNk ? '' : `<div class="${grid}">${editing
     ? cell('Kept · for NK-Abrechnung', money('cck-nk', decided && nkv ? nkv : ''), 'cck-nk') + (extra ? nkHint : '')
     : cell('Kept · for NK-Abrechnung', val(nkv, decided)) + (extra ? (nkv > 0 ? nkHint : '<div></div>') : '')}</div>`;
@@ -214,8 +214,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       <span class="tn-sec-lbl">Kaution</span>
       <span class="tnp ${L.pill[1]}" id="cck-pill-${pfx}">${L.pill[0]}</span>
     </div>
-    <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>
-    ${sollRow}
+    ${sollRow || `<div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>`}
     ${compact ? `<div class="cck-sum">${f(P.recv)} <span>received${k.received_at ? ' \u00b7 ' + A.fmtDate(k.received_at) : ''}</span></div>` : ''}
     <div class="cck-bar"><div id="cck-bar-${pfx}" style="width:${L.bar[0]}%;background:${L.bar[1]}"></div></div>
     <div class="cck-cap" id="cck-cap-${pfx}">${L.cap}</div>
@@ -461,24 +460,16 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   // K1b: rent owed / damage are booked in Controlling — its unit is looked up before anything is written
   const KB = F.kb.on ? await ccKauPrep(app, pfx, tid, !!refDate || keptAll, refDate || (keptAll ? _cckToday() : null)) : null;
   if (KB && KB.stop) return redraw();
-  const k1 = A.map()[tid], amt0 = { received: k1 ? k1.received : 0, returned: k1 ? k1.returned : 0 };
-  await A.saveAmounts(tid, F.recv, returned);          // memory + database (existing path)
+  // CARD-DOUBLE-FAIL: Received / Refund are written with the rest of the row (one write, below) — the Kaution row is saved whole or
+  // not at all, also when the put-back fails too or the page is left; only a first Save makes the row here (existing path)
+  if (!(A.map()[tid] || {}).id) await A.saveAmounts(tid, F.recv, returned);
   const k = A.map()[tid];
   if (!k || !k.id) return;
-  const amtOk = _cckR2(k.received) === _cckR2(F.recv) && _cckR2(k.returned) === returned;   // C2: "Saved" only when these were saved too
-  // K1b fix 4: not saved after the amounts → Received / Refund go back as well — "Your previous values are back" holds for the
-  // card too. Fin (NP1): in the queued put-back, which reads the row first: only while the row still holds the old kept ·
-  // settled · Settled on · NK; a row the write reached although both answers were lost is kept and the card takes it
+  // K1b: not saved → the bookings go back to the row as saved (queued put-back, reads the row first: a row the write reached
+  // although both answers were lost is kept and the card takes it) — nothing of the row was written, nothing else to put back
   const old = { kept: k.kept, settled: k.settled, settled_at: k.settled_at, nk_einbehalt: k.nk_einbehalt };
-  // K1b: amounts not saved (message shown) — fin2 (W1): that write may have landed although both answers were lost; nothing else
-  // of this Save was written, so the put-back finds the old kept · settled · NK and writes the old Received / Refund back
-  if (KB && (_cckR2(k.received) !== _cckR2(F.recv) || _cckR2(k.returned) !== returned)) { ccKauHealAfterFail(app, tid, { amt: amt0, old }); return redraw(); }
-  const back = () => {                                  // fin2 (b): also when this Save kept Received / Refund (amt null): the
-    const same = _cckR2(amt0.received) === _cckR2(F.recv) && _cckR2(amt0.returned) === returned;   // card takes a row the write reached
-    if (!same) { k.received = amt0.received; k.returned = amt0.returned; }
-    ccKauHealAfterFail(app, tid, { amt: same ? null : amt0, old });
-  };
-  const upd = {};
+  const back = () => ccKauHealAfterFail(app, tid, { amt: null, old });
+  const upd = { received: F.recv, returned };
   if (_cckHasExtra(A)) {                                // (a first save may have just created the row)
     if (rdV !== undefined) upd.received_at = rdV;
     if (gV !== undefined)  upd.deduction_reason = F.any ? gV : null;
@@ -504,10 +495,10 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     return redraw();
   }
   // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in after this Save read it (its dark Save)
-  if (ui.again || (ui.newer && _cckShown(pfx))) return amtOk;
+  if (ui.again || (ui.newer && _cckShown(pfx))) return true;
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
-  return amtOk;
+  return true;
 }
 function _cckToday() {
   if (typeof ccTodayISO === 'function') return ccTodayISO();

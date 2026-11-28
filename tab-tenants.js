@@ -311,6 +311,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-btn-done i { font-size:12px; }
 .tn-btn-ghost { height:48px; padding:0 16px; font-size:13px; font-weight:400;
   border:none; background:none; color:var(--cc-stone); }
+.tn-arc-btn { color:var(--cc-taupe); }   /* Archive is an action (like Add former tenant) — greyed only by its opacity while the Kaution is open */
 .tn-btn-danger { height:48px; padding:0 16px; font-size:13px; font-weight:400;
   background:none; color:#A32D2D; border:.5px solid #F09595; }
 .tn-btn-danger i { font-size:14px; }
@@ -779,7 +780,7 @@ function _tnSollWaits(rec) {
 }
 function _tnKautionSollInfo(rec) {
   if (!rec) return null;
-  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fixed since move-in' };
   const ctype = _tnBaseContractType(rec) || _tnRoomContractType(rec.room);   // the first contract of this tenancy
   const p = _tnRoomPricing(rec.room, ctype);
   if (p.kaution_override && p.kaution_fixed != null && p.kaution_fixed !== '') return { amount: Number(p.kaution_fixed), text: 'Individuell \u00b7 Karte' };
@@ -3704,7 +3705,7 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">—</span>'}${pr.label ? ` <span style="font-size:10px;color:var(--cc-stone)">${esc(pr.label)}</span>` : ''}</span></div>
         <div class="tn-field"><span class="tn-flbl">${dPau ? 'davon NK' : 'Nebenkosten'}</span>
           <span class="tn-fval">${(dPau ? dNI : dNK) != null ? _tnFmtEUR(dPau ? dNI : dNK) : '<span class="muted">—</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
+        <div class="tn-field"><span class="tn-flbl">Kaution Soll</span>
           <span class="tn-fval">${(() => {
             const live = _tnKsAuto(rec, ctK);
             if (dKS != null) return _tnFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(fixed)</span>';
@@ -3748,7 +3749,7 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
             value="${dKS ?? (_tnSollWaits(rec) ? '' : _tnKsAuto(rec, ctK)) ?? ''}" placeholder="${_tnKsAuto(rec, ctK) ?? ''}"/>
-          <span class="cck-soll-hint">${_tnSollWaits(rec) ? 'Wird mit dem Vertrag festgelegt' : 'Fest seit Einzug · ändert sich nicht mit der Miete'}</span>
+          <span class="cck-soll-hint">${_tnSollWaits(rec) ? 'Set with the contract' : 'Fixed since move-in · does not change with the rent'}</span>
         </div>
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Contract</span>

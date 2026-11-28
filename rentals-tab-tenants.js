@@ -267,6 +267,7 @@ html .rnt-ist .cc-sumline__vals { grid-template-columns:minmax(0, 1fr); }
 .tn-btn-done i { font-size:12px; }
 .tn-btn-ghost { height:48px; padding:0 16px; font-size:13px; font-weight:400;
   border:none; background:none; color:var(--cc-stone); }
+.tn-arc-btn { color:var(--cc-taupe); }   /* Archive is an action (like Add former tenant) — greyed only by its opacity while the Kaution is open */
 .tn-btn-danger { height:48px; padding:0 16px; font-size:13px; font-weight:400;
   background:none; color:#A32D2D; border:.5px solid #F09595; }
 .tn-btn-danger i { font-size:14px; }
@@ -595,7 +596,7 @@ function _rntPkPricing(pkId) {
    Rentals has no "Kurzzeit" tenant type: a fixed stay of ≤ 3 months uses the Kurzzeit rule (1×). */
 function _rntKautionSollInfo(rec) {
   if (!rec) return null;
-  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fixed since move-in' };
   if (rec.apartment_id) {
     const a  = appApartments?.find(x => x.id === rec.apartment_id);
     const pr = a?.pricing || {};
@@ -3105,7 +3106,7 @@ function _rntModalBodyHTML(rec, isApt) {
         <div class="tn-field"><span class="tn-flbl">Parkmiete</span>
           <span class="tn-fval">${dK != null ? _rntFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
         `}
-        <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
+        <div class="tn-field"><span class="tn-flbl">Kaution Soll</span>
           <span class="tn-fval">${dKS != null
             ? _rntFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(fixed)</span>'
             : soll != null ? _rntFmtEUR(soll) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>'
@@ -3151,7 +3152,7 @@ function _rntModalBodyHTML(rec, isApt) {
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
             value="${dKS ?? soll ?? ''}" placeholder="${soll ?? ''}"/>
-          <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
+          <span class="cck-soll-hint">Fixed since move-in · does not change with the rent</span>
         </div>
       </div>
     </div>

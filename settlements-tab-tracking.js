@@ -238,6 +238,15 @@ function _stPerDaysFit() {                               // the month changed: t
   ds.innerHTML = Array.from({ length: n }, (_, i) => '<option value="' + String(i + 1).padStart(2, '0') + '"' + (i + 1 === cur ? ' selected' : '') + '>' + String(i + 1).padStart(2, '0') + '</option>').join('');
 }
 document.addEventListener('change', e => { if (e.target && e.target.id === 'stPerM') _stPerDaysFit(); });
+/* K2 · a field left by a tap: its 'change' comes while the finger is still down — a redraw then took away (or moved) what
+   the finger is on, and the tap did nothing (the second tap worked). Such a redraw waits until the tap is over. */
+let _stDown = false;
+document.addEventListener('mousedown', () => { _stDown = true; }, true);
+document.addEventListener('mouseup', () => { _stDown = false; }, true);
+function stAfterTap(fn) {
+  if (!_stDown) return fn();
+  document.addEventListener('mouseup', () => setTimeout(fn, 0), { capture: true, once: true });
+}
 async function _stPeriodSave(pid) {
   const d0 = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
   if (!d0 || !m) return;
