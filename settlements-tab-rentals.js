@@ -936,7 +936,7 @@ async function _srPdf(btn) {
   if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     const out = await _srLetterBlob(c, it, rec, ts, x);
-    if (btn && btn.isConnected) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
+    if (btn && btn.isConnected && btn.dataset.stPdf) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';   // only while it is still this PDF's busy button
     await ccOpenPdf(out.blob, out.name);
   } catch (err) {
     console.error('[settlements] NK PDF', err);

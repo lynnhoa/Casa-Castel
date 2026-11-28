@@ -265,8 +265,10 @@ function stPdfStart(btn, id, sel, match) {
   const e = { id, sel, match: match || (() => true) }; ST_PDF.on.push(e); _stPdfOn(btn); return e;
 }
 function stPdfDone(e, btn) {
-  ST_PDF.on = ST_PDF.on.filter(x => x !== e); _stPdfOff(btn);
-  if (e && e.match()) document.querySelectorAll(e.sel).forEach(_stPdfOff);
+  ST_PDF.on = ST_PDF.on.filter(x => x !== e);
+  const other = b => ST_PDF.on.some(x => x.match() && b.matches(x.sel));   // a button now showing another letter on its way keeps its look
+  if (btn && !other(btn)) _stPdfOff(btn);
+  if (e && e.match()) document.querySelectorAll(e.sel).forEach(b => { if (!other(b)) _stPdfOff(b); });
 }
 function stPdfRepaint() { ST_PDF.on.forEach(e => { if (e.match()) document.querySelectorAll(e.sel).forEach(_stPdfOn); }); }
 async function _stPeriodSave(pid) {
