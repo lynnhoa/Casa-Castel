@@ -930,17 +930,16 @@ async function _srPdf(btn) {
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
-  const reset = btn ? btn.innerHTML : '';
-  if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
+  if (!stPdfStart(btn, '#srPanel [data-sr="pdf"]')) return;     // P10: one PDF at a time
   try {
     const out = await _srLetterBlob(c, it, rec, ts, x);
-    if (btn) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
+    if (btn && btn.isConnected) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
     await ccOpenPdf(out.blob, out.name);
   } catch (err) {
     console.error('[settlements] NK PDF', err);
     stNotice('The PDF could not be created. Please try again.');
   } finally {
-    if (btn) { btn.innerHTML = reset; btn.disabled = false; }
+    stPdfDone(btn);
   }
 }
 /* The letter as a PDF file (not opened) — for "Create PDF" and for the archive on "Mark sent" */
@@ -1301,6 +1300,7 @@ function _srSettledTxt(ti, weg, noDay) {
     return verb + stEur(st.booking.amount) + (noDay ? '' : ' · ' + stDM(st.booking.invoice_date)) + diff;
   }
   if (st.k !== 'erledigt' && st.confirm) return (st.res.via === 'miete' ? 'with the rent' : st.res.via === 'hausgeld' ? 'with the Hausgeld' : 'via Kaution') + ' · confirm';
+  if ((!st.res.amount || !st.res.dir) && (st.res.via === 'kaution' || st.res.via === 'miete')) return 'balanced';   // P10: not 'returned 0,00 € via Kaution'
   if (st.res.via === 'kaution') return (weg ? '' : st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' via Kaution';
   if (st.res.via === 'miete') return (st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' with the rent';
   if (st.res.via === 'hausgeld') return 'settled with the Hausgeld';

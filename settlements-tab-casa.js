@@ -2906,13 +2906,12 @@ async function scPdf(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (scKauWait(t)) return;                                       // S3: the held part is not known yet (no PDF offered)
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
-  const reset = btn ? btn.innerHTML : '';
-  if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
+  if (!stPdfStart(btn, '[data-sc="pdf"][data-k="' + CSS.escape(String(key)) + '"]')) return;   // P10: one PDF at a time
   try {
     const out = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t));
     await ccOpenPdf(out.blob, out.name);
   } catch (e) { console.error('[settlements] casa PDF', e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn) { btn.innerHTML = reset; btn.disabled = false; } }
+  finally { stPdfDone(btn); }
 }
 async function scListPdf(btn) {
   const M = SC.model; if (!M) return;
@@ -2924,10 +2923,10 @@ async function scListPdf(btn) {
   const d = { brand: 'Casa Castel', unitLabel: 'NK', unitName: String(M.y), footer: house.join(' \u00b7 '), listOnly: true,
               extra: { title: 'Belegliste ' + M.y + ' \u00b7 Einzelrechnungen', intro: 'Hausgeld-Jahresabrechnungen und Einzelrechnungen, die in die Nebenkosten ' + M.y + ' eingeflossen sind.',
                        rows: ex.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(ex.reduce((a, l) => a + l.info.amount, 0)) } };
-  const reset = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
+  if (!stPdfStart(btn, '[data-sc="listPdf"]')) return;          // P10: one PDF at a time
   try { const out = await nkLetterPdf(d, ccPdfFileName('Belegliste', M.y, 'Casa-Castel')); await ccOpenPdf(out.blob, out.name); }
   catch (e) { console.error(e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn) { btn.disabled = false; btn.innerHTML = reset; } }
+  finally { stPdfDone(btn); }
 }
 
 /* Mark as sent: letter → archive, result → Controlling (same path as Rentals)

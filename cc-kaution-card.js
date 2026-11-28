@@ -467,7 +467,9 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   if (!k || !k.id) return;
   // K1b: not saved → the bookings go back to the row as saved (queued put-back, reads the row first: a row the write reached
   // although both answers were lost is kept and the card takes it) — nothing of the row was written, nothing else to put back
-  const old = { kept: k.kept, settled: k.settled, settled_at: k.settled_at, nk_einbehalt: k.nk_einbehalt };
+  // P10: Received / Refund / Received on / Reason are in that one write too — the put-back compares them as well (amt: the row has them)
+  const old = { kept: k.kept, settled: k.settled, settled_at: k.settled_at, nk_einbehalt: k.nk_einbehalt,
+                amt: { received: k.received, returned: k.returned, received_at: k.received_at, deduction_reason: k.deduction_reason } };
   const back = () => ccKauHealAfterFail(app, tid, { amt: null, old });
   const upd = { received: F.recv, returned };
   if (_cckHasExtra(A)) {                                // (a first save may have just created the row)
@@ -495,7 +497,8 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     return redraw();
   }
   // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in after this Save read it (its dark Save)
-  if (ui.again || (ui.newer && _cckShown(pfx))) return true;
+  // P10: the list, pills, summary and footer follow the saved row also then (the first write used to do it, A.saveAmounts)
+  if (ui.again || (ui.newer && _cckShown(pfx))) { A.afterChange(tid); return true; }
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
   return true;

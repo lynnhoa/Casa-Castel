@@ -245,8 +245,23 @@ document.addEventListener('mousedown', () => { _stDown = true; }, true);
 document.addEventListener('mouseup', () => { _stDown = false; }, true);
 function stAfterTap(fn) {
   if (!_stDown) return fn();
-  document.addEventListener('mouseup', () => setTimeout(fn, 0), { capture: true, once: true });
+  document.addEventListener('mouseup', () => setTimeout(() => { fn(); stPdfRepaint(); }, 0), { capture: true, once: true });
 }
+/* P10 · one letter PDF at a time (nk-letter.js draws it in one shared box): a tap while one is made does nothing, and its button
+   reads 'Creating PDF' also when the sheet is drawn again meanwhile (e.g. the redraw after the tap that left a field) */
+const ST_PDF = { sel: null };
+function _stPdfOn(b) {
+  if (!b || b.dataset.stPdf) return;
+  b.dataset.stPdf = JSON.stringify([b.innerHTML, b.disabled]);
+  b.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; b.disabled = true;
+}
+function _stPdfOff(b) {
+  if (!b || !b.dataset.stPdf) return;
+  const [h, d] = JSON.parse(b.dataset.stPdf); delete b.dataset.stPdf; b.innerHTML = h; b.disabled = d;
+}
+function stPdfStart(btn, sel) { if (ST_PDF.sel) return false; ST_PDF.sel = sel; _stPdfOn(btn); return true; }
+function stPdfDone(btn) { const sel = ST_PDF.sel; ST_PDF.sel = null; _stPdfOff(btn); if (sel) document.querySelectorAll(sel).forEach(_stPdfOff); }
+function stPdfRepaint() { if (ST_PDF.sel) document.querySelectorAll(ST_PDF.sel).forEach(_stPdfOn); }
 async function _stPeriodSave(pid) {
   const d0 = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
   if (!d0 || !m) return;

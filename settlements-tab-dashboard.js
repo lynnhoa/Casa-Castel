@@ -750,7 +750,7 @@ async function sdLetterData(d) {
 const sdFileName = d => ccPdfFileName('NK-Abrechnung', String(d.period_to).slice(0, 4), sdPropName(d).replace(/\s*·\s*/g, '-'), String(d.tenant_name || '').split(' ').slice(-1)[0]);
 async function sdPdf(btn) {
   const d = SD.d; if (!d) return;
-  const reset = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
+  if (!stPdfStart(btn, '#sdModal [data-sd="pdf"]')) return;     // P10: one PDF at a time
   try {
     if (d.status === 'sent') {                                    // sent: open exactly the archived letter
       const L = (typeof SC !== 'undefined' ? SC.letters : []).find(l => d.letter_id && String(l.id) === String(d.letter_id));
@@ -758,10 +758,10 @@ async function sdPdf(btn) {
     }
     const saved = d.status === 'sent' ? null : await sdSave(true);
     const out = await nkLetterPdf(await sdLetterData(d), sdFileName(d));
-    if (saved && SD.d === d) { SD.pdfMade = true; sdRenderModal(); }   // next step: Mark as sent
+    if (saved && SD.d === d) { SD.pdfMade = true; sdRenderModal(); stPdfRepaint(); }   // next step: Mark as sent (P10: the button stays 'Creating PDF')
     await ccOpenPdf(out.blob, out.name);
   } catch (e) { console.error('[settlements] manual PDF', e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = reset; } }
+  finally { stPdfDone(btn); }
 }
 async function sdSend(btn) {
   const d = SD.d; if (!d) return;
