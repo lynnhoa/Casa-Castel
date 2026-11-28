@@ -289,8 +289,13 @@ function nkLetterHtml(d) {
   return `<div class="nk-letter"><style>${FONTS}</style><style>${scoped}</style>${d.listOnly ? pageX : page1 + pageB + pageX}</div>`;
 }
 
+/* P10: one letter drawn at a time — every drawing uses the one shared box (#_pdfRenderContainer): a second one waits until the
+   first is drawn (was: it took the first one's box away, which was then drawn from a box no longer in the page) */
+let _ccPdfDrawQ = Promise.resolve();
+function ccPdfOneAtATime(fn) { const p = _ccPdfDrawQ.then(fn, fn); _ccPdfDrawQ = p.then(() => {}, () => {}); return p; }
 /* Render the letter → { blob, name } (does not open it). Same pipeline as the Rentals letters. */
-async function nkLetterPdf(d, fileName) {
+function nkLetterPdf(d, fileName) { return ccPdfOneAtATime(() => _nkLetterPdf(d, fileName)); }
+async function _nkLetterPdf(d, fileName) {
   let box = document.getElementById('_pdfRenderContainer'); if (box) box.remove();
   box = document.createElement('div');
   box.id = '_pdfRenderContainer';

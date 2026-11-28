@@ -462,7 +462,8 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   if (KB && KB.stop) return redraw();
   // CARD-DOUBLE-FAIL: Received / Refund are written with the rest of the row (one write, below) — the Kaution row is saved whole or
   // not at all, also when the put-back fails too or the page is left; only a first Save makes the row here (existing path)
-  if (!(A.map()[tid] || {}).id) await A.saveAmounts(tid, F.recv, returned);
+  const had = !!(A.map()[tid] || {}).id;
+  if (!had) await A.saveAmounts(tid, F.recv, returned);
   const k = A.map()[tid];
   if (!k || !k.id) return;
   // K1b: not saved → the bookings go back to the row as saved (queued put-back, reads the row first: a row the write reached
@@ -471,6 +472,10 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   const old = { kept: k.kept, settled: k.settled, settled_at: k.settled_at, nk_einbehalt: k.nk_einbehalt,
                 amt: { received: k.received, returned: k.returned, received_at: k.received_at, deduction_reason: k.deduction_reason } };
   const back = () => ccKauHealAfterFail(app, tid, { amt: null, old });
+  // P10: as the first write used to (A.saveAmounts): Received / Refund in memory at once and the list, pills, summary and footer
+  // drawn with them now, before anything is typed meanwhile — they go back with the rest when the Save fails
+  const amt0 = { received: k.received, returned: k.returned };
+  if (had) { k.received = F.recv; k.returned = returned; A.afterChange(tid); }
   const upd = { received: F.recv, returned };
   if (_cckHasExtra(A)) {                                // (a first save may have just created the row)
     if (rdV !== undefined) upd.received_at = rdV;
@@ -482,13 +487,14 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
   if (KB) {                                             // K1b: the bookings first (same write queue), then the Kaution row with `kept`
     const b = await ccQueueWrite(A.writeKey + tid, () => ccKauApply(KB, k.id));
     if (b.error) {                                      // what was booked before the failure goes back to the saved card (back)
+      Object.assign(k, amt0);                           // P10: Received / Refund as saved
       if (typeof ccSaveFailed === 'function') ccSaveFailed(b.error, A.failLabel);
       back();
       return redraw();
     }
     upd.kept = KB.kept;
   }
-  const before = {}; Object.keys(upd).forEach(key => { before[key] = k[key]; });
+  const before = {}; Object.keys(upd).forEach(key => { before[key] = k[key]; }); Object.assign(before, amt0);
   Object.assign(k, upd);
   const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update(upd).eq('id', k.id));
   if (error) {                                          // not saved: the form stays open with what you typed
@@ -497,8 +503,7 @@ async function _cckSave(A, app, pfx, tid, ui, redraw) {
     return redraw();
   }
   // fin NP0: a newer Save waits — the form stays as typed (ccKautionAct) · C2: so does a form typed in after this Save read it (its dark Save)
-  // P10: the list, pills, summary and footer follow the saved row also then (the first write used to do it, A.saveAmounts)
-  if (ui.again || (ui.newer && _cckShown(pfx))) { A.afterChange(tid); return true; }
+  if (ui.again || (ui.newer && _cckShown(pfx))) return true;
   ui.mode = ''; ui.draft = null; ui.typed = null; ui.tk = null;
   redraw();
   return true;

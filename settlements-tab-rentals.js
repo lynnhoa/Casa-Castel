@@ -930,7 +930,10 @@ async function _srPdf(btn) {
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
-  if (!stPdfStart(btn, '#srPanel [data-sr="pdf"]')) return;     // P10: one PDF at a time
+  const ck = SR.sel && SR.sel.ck, tid = String(SR.sel && SR.sel.tid);
+  const job = stPdfStart(btn, 'sr|' + ck + '|' + tid, '#srPanel [data-sr="pdf"]',
+    () => !!(SR.modal && SR.modal.view === 'tenant' && SR.sel && SR.sel.ck === ck && String(SR.sel.tid) === tid));
+  if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     const out = await _srLetterBlob(c, it, rec, ts, x);
     if (btn && btn.isConnected) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
@@ -939,12 +942,12 @@ async function _srPdf(btn) {
     console.error('[settlements] NK PDF', err);
     stNotice('The PDF could not be created. Please try again.');
   } finally {
-    stPdfDone(btn);
+    stPdfDone(job, btn);
   }
 }
 /* The letter as a PDF file (not opened) — for "Create PDF" and for the archive on "Mark sent" */
 async function _srLetterBlob(c, it, rec, ts, x) {
-  {
+  return (typeof ccPdfOneAtATime === 'function' ? ccPdfOneAtATime : f => f())(async () => {   // P10: one drawing at a time (nk-letter.js)
     if (typeof loadSettings === 'function') await loadSettings();
     const d = _srLetterData(c, it, rec, x, ts);
     let box = document.getElementById('_pdfRenderContainer'); if (box) box.remove();
@@ -964,7 +967,7 @@ async function _srLetterBlob(c, it, rec, ts, x) {
       const name = ccPdfSafeName(ccPdfFileName('NK-Abrechnung', d.periodLabel.replace(/\//g, '-'), d.aptName, (d.names[0] || '').split(' ').slice(-1)[0]));
       return { blob: pdf.output('blob'), name, d };
     } finally { box.remove(); }
-  }
+  });
 }
 /* Mark sent → keep the letter exactly as sent (storage "nk-letters" + table nk_letters) */
 async function _srArchive(c, it, rec, ts, x, dir, amount) {

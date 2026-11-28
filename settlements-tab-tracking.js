@@ -247,9 +247,10 @@ function stAfterTap(fn) {
   if (!_stDown) return fn();
   document.addEventListener('mouseup', () => setTimeout(() => { fn(); stPdfRepaint(); }, 0), { capture: true, once: true });
 }
-/* P10 · one letter PDF at a time (nk-letter.js draws it in one shared box): a tap while one is made does nothing, and its button
-   reads 'Creating PDF' also when the sheet is drawn again meanwhile (e.g. the redraw after the tap that left a field) */
-const ST_PDF = { sel: null };
+/* P10 · a letter PDF on its way keeps its button 'Creating PDF' (disabled) until it is open, also when the sheet is drawn again
+   meanwhile (e.g. the redraw after the tap that left a field) — only that letter's button (id + match: the sheet shows it); a
+   second tap on it does nothing. Another letter's PDF is not held up: the drawings wait for each other (ccPdfOneAtATime) */
+const ST_PDF = { on: [] };
 function _stPdfOn(b) {
   if (!b || b.dataset.stPdf) return;
   b.dataset.stPdf = JSON.stringify([b.innerHTML, b.disabled]);
@@ -259,9 +260,15 @@ function _stPdfOff(b) {
   if (!b || !b.dataset.stPdf) return;
   const [h, d] = JSON.parse(b.dataset.stPdf); delete b.dataset.stPdf; b.innerHTML = h; b.disabled = d;
 }
-function stPdfStart(btn, sel) { if (ST_PDF.sel) return false; ST_PDF.sel = sel; _stPdfOn(btn); return true; }
-function stPdfDone(btn) { const sel = ST_PDF.sel; ST_PDF.sel = null; _stPdfOff(btn); if (sel) document.querySelectorAll(sel).forEach(_stPdfOff); }
-function stPdfRepaint() { if (ST_PDF.sel) document.querySelectorAll(ST_PDF.sel).forEach(_stPdfOn); }
+function stPdfStart(btn, id, sel, match) {
+  if (ST_PDF.on.some(e => e.id === id)) return null;
+  const e = { id, sel, match: match || (() => true) }; ST_PDF.on.push(e); _stPdfOn(btn); return e;
+}
+function stPdfDone(e, btn) {
+  ST_PDF.on = ST_PDF.on.filter(x => x !== e); _stPdfOff(btn);
+  if (e && e.match()) document.querySelectorAll(e.sel).forEach(_stPdfOff);
+}
+function stPdfRepaint() { ST_PDF.on.forEach(e => { if (e.match()) document.querySelectorAll(e.sel).forEach(_stPdfOn); }); }
 async function _stPeriodSave(pid) {
   const d0 = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
   if (!d0 || !m) return;

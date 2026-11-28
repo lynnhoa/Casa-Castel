@@ -2906,12 +2906,13 @@ async function scPdf(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (scKauWait(t)) return;                                       // S3: the held part is not known yet (no PDF offered)
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
-  if (!stPdfStart(btn, '[data-sc="pdf"][data-k="' + CSS.escape(String(key)) + '"]')) return;   // P10: one PDF at a time
+  const y = M.y, job = stPdfStart(btn, 'sc|' + y + '|' + key, '[data-sc="pdf"][data-k="' + CSS.escape(String(key)) + '"]', () => SC.year === y);
+  if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     const out = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t));
     await ccOpenPdf(out.blob, out.name);
   } catch (e) { console.error('[settlements] casa PDF', e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { stPdfDone(btn); }
+  finally { stPdfDone(job, btn); }
 }
 async function scListPdf(btn) {
   const M = SC.model; if (!M) return;
@@ -2923,10 +2924,11 @@ async function scListPdf(btn) {
   const d = { brand: 'Casa Castel', unitLabel: 'NK', unitName: String(M.y), footer: house.join(' \u00b7 '), listOnly: true,
               extra: { title: 'Belegliste ' + M.y + ' \u00b7 Einzelrechnungen', intro: 'Hausgeld-Jahresabrechnungen und Einzelrechnungen, die in die Nebenkosten ' + M.y + ' eingeflossen sind.',
                        rows: ex.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(ex.reduce((a, l) => a + l.info.amount, 0)) } };
-  if (!stPdfStart(btn, '[data-sc="listPdf"]')) return;          // P10: one PDF at a time
+  const y = M.y, job = stPdfStart(btn, 'scl|' + y, '[data-sc="listPdf"]', () => SC.year === y);
+  if (!job) return;                                               // P10: on its way (its button says so)
   try { const out = await nkLetterPdf(d, ccPdfFileName('Belegliste', M.y, 'Casa-Castel')); await ccOpenPdf(out.blob, out.name); }
   catch (e) { console.error(e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { stPdfDone(btn); }
+  finally { stPdfDone(job, btn); }
 }
 
 /* Mark as sent: letter → archive, result → Controlling (same path as Rentals)
