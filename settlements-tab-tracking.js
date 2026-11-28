@@ -238,6 +238,39 @@ function _stPerDaysFit() {                               // the month changed: t
   ds.innerHTML = Array.from({ length: n }, (_, i) => '<option value="' + String(i + 1).padStart(2, '0') + '"' + (i + 1 === cur ? ' selected' : '') + '>' + String(i + 1).padStart(2, '0') + '</option>').join('');
 }
 document.addEventListener('change', e => { if (e.target && e.target.id === 'stPerM') _stPerDaysFit(); });
+/* K2 · a field left by a tap: its 'change' comes while the finger is still down — a redraw then took away (or moved) what
+   the finger is on, and the tap did nothing (the second tap worked). Such a redraw waits until the tap is over. */
+let _stDown = false;
+document.addEventListener('mousedown', () => { _stDown = true; }, true);
+document.addEventListener('mouseup', () => { _stDown = false; }, true);
+function stAfterTap(fn) {
+  if (!_stDown) return fn();
+  document.addEventListener('mouseup', () => setTimeout(() => { fn(); stPdfRepaint(); }, 0), { capture: true, once: true });
+}
+/* P10 · a letter PDF on its way keeps its button 'Creating PDF' (disabled) until it is open, also when the sheet is drawn again
+   meanwhile (e.g. the redraw after the tap that left a field) — only that letter's button (id + match: the sheet shows it); a
+   second tap on it does nothing. Another letter's PDF is not held up: the drawings wait for each other (ccPdfOneAtATime) */
+const ST_PDF = { on: [] };
+function _stPdfOn(b) {
+  if (!b || b.dataset.stPdf) return;
+  b.dataset.stPdf = JSON.stringify([b.innerHTML, b.disabled]);
+  b.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; b.disabled = true;
+}
+function _stPdfOff(b) {
+  if (!b || !b.dataset.stPdf) return;
+  const [h, d] = JSON.parse(b.dataset.stPdf); delete b.dataset.stPdf; b.innerHTML = h; b.disabled = d;
+}
+function stPdfStart(btn, id, sel, match) {
+  if (ST_PDF.on.some(e => e.id === id)) return null;
+  const e = { id, sel, match: match || (() => true) }; ST_PDF.on.push(e); _stPdfOn(btn); return e;
+}
+function stPdfDone(e, btn) {
+  ST_PDF.on = ST_PDF.on.filter(x => x !== e);
+  const other = b => ST_PDF.on.some(x => x.match() && b.matches(x.sel));   // a button now showing another letter on its way keeps its look
+  if (btn && !other(btn)) _stPdfOff(btn);
+  if (e && e.match()) document.querySelectorAll(e.sel).forEach(b => { if (!other(b)) _stPdfOff(b); });
+}
+function stPdfRepaint() { ST_PDF.on.forEach(e => { if (e.match()) document.querySelectorAll(e.sel).forEach(_stPdfOn); }); }
 async function _stPeriodSave(pid) {
   const d0 = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
   if (!d0 || !m) return;

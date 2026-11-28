@@ -930,22 +930,24 @@ async function _srPdf(btn) {
   _srQueueTenantSave(rec);
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
-  const reset = btn ? btn.innerHTML : '';
-  if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
+  const ck = SR.sel && SR.sel.ck, tid = String(SR.sel && SR.sel.tid);
+  const job = stPdfStart(btn, 'sr|' + ck + '|' + tid, '#srPanel [data-sr="pdf"]',
+    () => !!(SR.modal && SR.modal.view === 'tenant' && SR.sel && SR.sel.ck === ck && String(SR.sel.tid) === tid));
+  if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     const out = await _srLetterBlob(c, it, rec, ts, x);
-    if (btn) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
+    if (btn && btn.isConnected && btn.dataset.stPdf) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';   // only while it is still this PDF's busy button
     await ccOpenPdf(out.blob, out.name);
   } catch (err) {
     console.error('[settlements] NK PDF', err);
     stNotice('The PDF could not be created. Please try again.');
   } finally {
-    if (btn) { btn.innerHTML = reset; btn.disabled = false; }
+    stPdfDone(job, btn);
   }
 }
 /* The letter as a PDF file (not opened) — for "Create PDF" and for the archive on "Mark sent" */
 async function _srLetterBlob(c, it, rec, ts, x) {
-  {
+  return (typeof ccPdfOneAtATime === 'function' ? ccPdfOneAtATime : f => f())(async () => {   // P10: one drawing at a time (nk-letter.js)
     if (typeof loadSettings === 'function') await loadSettings();
     const d = _srLetterData(c, it, rec, x, ts);
     let box = document.getElementById('_pdfRenderContainer'); if (box) box.remove();
@@ -965,7 +967,7 @@ async function _srLetterBlob(c, it, rec, ts, x) {
       const name = ccPdfSafeName(ccPdfFileName('NK-Abrechnung', d.periodLabel.replace(/\//g, '-'), d.aptName, (d.names[0] || '').split(' ').slice(-1)[0]));
       return { blob: pdf.output('blob'), name, d };
     } finally { box.remove(); }
-  }
+  });
 }
 /* Mark sent → keep the letter exactly as sent (storage "nk-letters" + table nk_letters) */
 async function _srArchive(c, it, rec, ts, x, dir, amount) {
@@ -1279,7 +1281,7 @@ function _srTenInfo(c, it, rec, sumOk) {
 }
 const _srMoneyTxt = (dir, amount, weg) => !dir || !amount ? 'balanced'
   : (weg ? (dir > 0 ? 'Guthaben from WEG ' : 'Nachzahlung to WEG ') : (dir > 0 ? 'Nachzahlung ' : 'Guthaben ')) + stEur(amount);
-function _srSettledTxt(ti, weg) {
+function _srSettledTxt(ti, weg, noDay) {
   const st = ti.st;
   if (ti.skipped) return 'skipped' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '');
   if (!st.res) return '';
@@ -1292,15 +1294,16 @@ function _srSettledTxt(ti, weg) {
     const way = Math.abs(tr) >= 0.005 ? tr : exp, turned = Math.abs(tr) >= 0.005 && Math.abs(exp) >= 0.005 && (tr > 0) !== (exp > 0);
     const moved = Math.abs(tr) >= 0.005 || Math.abs(exp) >= 0.005 ? (way > 0 ? 'received ' : 'paid back ') + stEur(Math.abs(tr)) +
       (Math.abs(tr - exp) >= 0.005 ? ' (instead of ' + (turned ? (exp > 0 ? 'receiving ' : 'paying back ') : '') + stEur(Math.abs(exp)) + ')' : '') : '';
-    return [kept > 0.004 ? 'kept ' + stEur(kept) + ' of the Kaution' : '', moved, when ? stDM(when) : ''].filter(Boolean).join(' · ');
+    return [kept > 0.004 ? 'kept ' + stEur(kept) + ' of the Kaution' : '', moved, when && !noDay ? stDM(when) : ''].filter(Boolean).join(' · ');
   }
-  if (st.booking && Number(st.booking.amount) < 0.005) return (weg ? 'nothing moved' : st.res.dir > 0 ? 'let go ' + stEur(st.res.amount) : 'kept ' + stEur(st.res.amount)) + ' · ' + stDM(st.booking.invoice_date);
+  if (st.booking && Number(st.booking.amount) < 0.005) return (weg ? 'nothing moved' : st.res.dir > 0 ? 'let go ' + stEur(st.res.amount) : 'kept ' + stEur(st.res.amount)) + (noDay ? '' : ' · ' + stDM(st.booking.invoice_date));
   if (st.booking) {
     const verb = weg ? (st.res.dir > 0 ? 'received ' : 'paid ') : (st.res.dir > 0 ? 'paid you ' : 'returned ');
     const diff = Math.abs(Number(st.booking.amount) - st.res.amount) >= 0.005 ? ' (instead of ' + stEur(st.res.amount) + ')' : '';
-    return verb + stEur(st.booking.amount) + ' · ' + stDM(st.booking.invoice_date) + diff;
+    return verb + stEur(st.booking.amount) + (noDay ? '' : ' · ' + stDM(st.booking.invoice_date)) + diff;
   }
   if (st.k !== 'erledigt' && st.confirm) return (st.res.via === 'miete' ? 'with the rent' : st.res.via === 'hausgeld' ? 'with the Hausgeld' : 'via Kaution') + ' · confirm';
+  if ((!st.res.amount || !st.res.dir) && (st.res.via === 'kaution' || st.res.via === 'miete')) return 'balanced';   // P10: not 'returned 0,00 € via Kaution'
   if (st.res.via === 'kaution') return (weg ? '' : st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' via Kaution';
   if (st.res.via === 'miete') return (st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' with the rent';
   if (st.res.via === 'hausgeld') return 'settled with the Hausgeld';
@@ -1659,8 +1662,9 @@ function _srTenLine(c, r, noAmt) {
   // K1-SET-VIA-KAUTION (R3): sent with a part of the Kaution held back → what is kept · what moves by bank, in the words of
   // Casa Castel's list (was: 'pays you 450,00 €' while 150,00 € come by bank — the sheet says 'Lena transfers 150,00 €')
   const kt = r.k === 'sent' ? _srKauOf({ st: r.st, it: r.it }) : null;
-  const say = kt ? (Math.abs(v) < 0.005 ? 'you pay back ' + stEur(kt.E) + ' (Kaution)' : 'kept ' + stEur(kt.E) + ' of the Kaution · ' + (kt.T > 0.004 ? 'pays you ' + stEur(kt.T) : kt.T < -0.004 ? 'gets ' + stEur(-kt.T) + ' back' : 'nothing to transfer'))
-    : v === null ? 'waiting for the Jahresabrechnung' : Math.abs(v) < 0.005 ? 'balanced' : v > 0 ? 'pays you ' + stEur(v) : 'gets ' + stEur(-v) + ' back';
+  const said = r.k === 'settled' && !r.skipped ? _srSettledTxt(r, false, true) : '';   // settled: what really happened, as the Money step and Casa Castel's room line
+  const say = said || (kt ? (Math.abs(v) < 0.005 ? 'you pay back ' + stEur(kt.E) + ' (Kaution)' : 'kept ' + stEur(kt.E) + ' of the Kaution · ' + (kt.T > 0.004 ? 'pays you ' + stEur(kt.T) : kt.T < -0.004 ? 'gets ' + stEur(-kt.T) + ' back' : 'nothing to transfer'))
+    : v === null ? 'waiting for the Jahresabrechnung' : Math.abs(v) < 0.005 ? 'balanced' : v > 0 ? 'pays you ' + stEur(v) : 'gets ' + stEur(-v) + ' back');
   const tone = kt && Math.abs(v) < 0.005 ? 'neg' : v === null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'pos' : 'neg';
   const chip = r.k === 'open' ? ['send', 'letter ready'] : r.k === 'sent' ? ['wait', 'sent'] : r.k === 'settled' ? ['done', r.skipped ? 'skipped' : 'settled'] : ['grey', 'waiting'];
   return '<button class="sc-row sr5-ln sr5-tl" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">' +
@@ -2321,8 +2325,8 @@ function _srTenView(c) {
     (vzAlt.length ? '<div class="sr-vzalt"><span>use instead:</span>' + vzAlt.map(([k, t]) => '<button class="sr-vzalt__b" data-sr="vzUse" data-v="' + k + '">' + stEsc(t) + '</button>').join('') + '</div>' : '') +
     (x.pre ? '<p class="sr-hint2">Before the purchase (' + stDM(x.pre.from) + '–' + stDate(x.pre.to) + '): ' + stEur(x.pre.soll) + ' per contract – check with the seller.</p>' : '') +
     stTpRow({ title: '= ' + (F.saldo > 0 ? first + ' pays you' : F.saldo < 0 ? first + ' gets back' : 'all even'), value: stEur(Math.abs(F.saldo)), vAttr: 'data-sr-res', tone: F.saldo > 0 ? 'pos' : F.saldo < 0 ? 'neg' : '', tot: true }) +
-    // fin2: the result = the held part (T = 0) → 'nothing to transfer', as in Casa Castel (was: 'pay back to the tenant 0,00 €')
-    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc(Math.abs(cxR(x.einbehalt - F.saldo)) < 0.005 ? 'nothing to transfer' : (cxR(x.einbehalt - F.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - F.saldo)))), value: stEur(x.einbehalt) }) : '');
+    // the transfer the letter names (T = 0: 'nothing to transfer'); once settled what really moved, as in Casa Castel
+    (x.einbehalt > 0 ? stTpRow({ title: 'Kaution held back', sub: stEsc(_srKauRowTxt(ti, cxR(F.saldo - x.einbehalt), settledT)), value: stEur(x.einbehalt) }) : '');
   // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (!sent) {
@@ -2427,6 +2431,15 @@ async function _srKauAgain(m) {
 const _srKauB = (k, t) => cxR(k.E + (k.T < -0.004 ? -1 : 1) * t);
 /* The transfer that really moved, back from a booking (signed as T) — the done text is built from it */
 const _srKauT = (k, b) => cxR((b ? _cxAbrDir(b) * (Number(b.amount) || 0) : 0) - k.E);
+/* The 'Kaution held back' row of the Calculation: the transfer T the letter names (none: 'nothing to transfer'); once settled
+   what really moved — back from the booking as the Money step says it (balanced, no booking: the held part went back) —
+   in the words of Casa Castel (scKauRowTxt) */
+function _srKauRowTxt(ti, T, done) {
+  const r = ti.st && ti.st.res, bk = ti.st && ti.st.booking, kt = done && r ? _srKauOf({ st: ti.st, it: ti.it }) : null;
+  const moved = !!kt && (!!bk || !r.dir || !r.amount), tr = moved ? _srKauT(kt, bk) : T;
+  if (Math.abs(tr) < 0.005) return moved ? 'nothing transferred' : 'nothing to transfer';
+  return moved ? (tr > 0 ? 'received ' : 'paid back ') + stEur(Math.abs(tr)) : (tr < 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(tr));
+}
 /* K1 (C4): an older WEG result "with the Hausgeld" booked as received → its record keeps 'zahlung' (and the open draft) */
 async function _srWegViaPaid(x) {
   const rec = x.rec; if (!rec || rec.weg_via !== 'hausgeld') return;
@@ -2816,8 +2829,8 @@ function srIsRentalsLine() { return false; }
     if (cb && SR.draft) { _srCollect(); const p = SR.draft.positions[Number(cb.dataset.i)]; if (p) p.split = cb.checked ? 'mieter' : 'tage'; _srRerenderPanel(); _srAutoQueue(); return; }
     if (e.target.closest('[data-srf]')) {
       _srCollect(); _srAutoQueue();
-      if (e.target.dataset.srf === 'keys.hg_paid' || e.target.dataset.srf === 'weg_amount') _srRerenderPanel();
-      else if (SR.modal && SR.modal.view === 'nk') _srRefreshNkTens();          // tenants only – the field you type in keeps its focus
+      if (e.target.dataset.srf === 'keys.hg_paid' || e.target.dataset.srf === 'weg_amount') stAfterTap(_srRerenderPanel);
+      else if (SR.modal && SR.modal.view === 'nk') stAfterTap(_srRefreshNkTens);   // tenants only – the field you type in keeps its focus
       return;
     }
     const t = e.target.closest('[data-srt]');
@@ -2825,7 +2838,7 @@ function srIsRentalsLine() { return false; }
       t.dataset.touched = '1';                                // K2: you changed this field (_srCollectTenant keeps it)
       const res = _srRefreshTenant(); if (!res) return;
       _srQueueTenantSave(res.got.rec);
-      if (_srSign(res.x) !== SR.sign || t.dataset.srt === 'date' || t.dataset.srt === 'vz') _srRerenderPanel();
+      if (_srSign(res.x) !== SR.sign || t.dataset.srt === 'date' || t.dataset.srt === 'vz') stAfterTap(_srRerenderPanel);
     }
   });
   host.addEventListener('input', e => {

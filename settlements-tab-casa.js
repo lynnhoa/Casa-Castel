@@ -2803,14 +2803,14 @@ function scInput(e) {
     const r = scRecEnsure(SC.year), p = (r.tenants.__pos || []).find(x => x.id === el.dataset.id); if (!p) return;
     const f = el.dataset.scPos;
     if (f === 'amount') { const n = cxParse(el.value); p.amount = n === null ? null : cxR(n); } else p[f] = f === 'date' ? scD(el.value) : el.value;
-    scQueueSave(r); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+    scQueueSave(r); SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); return;
   }
   if (el && el.dataset && el.dataset.scIn === 'vzm') {                // NK paid, one month
     const s = scSet(el.dataset.k), n = cxParse(el.value);
     s.vzMonths = s.vzMonths || {};
     if (el.value.trim() === '' || n === null) delete s.vzMonths[el.dataset.ym]; else s.vzMonths[el.dataset.ym] = cxR(n);
     delete s.vz;
-    scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+    scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); return;
   }
   const f = el && el.dataset && el.dataset.scIn; if (!f) return;
   const s = scSet(el.dataset.k);
@@ -2819,7 +2819,7 @@ function scInput(e) {
   else if (f === 'days') s.days = Math.max(0, Math.round(Number(v) || 0)) || 30;
   else s[f] = v;
   scQueueSave(scRecEnsure(SC.year));
-  if (f === 'vz' || f === 'via') { SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); }
+  if (f === 'vz' || f === 'via') { SC.model = scModel(SC.year); stAfterTap(() => { scRenderModal(); stRenderCasaQuiet(); }); }
 }
 function stRenderCasaQuiet() { const m = SC.modal; stRenderCasa(); SC.modal = m; scRenderModal(); }
 /* C6: the end of a save started in a Casa pop-up (or on the Casa page): back to that tenant, or on in 'Send letters',
@@ -2906,13 +2906,13 @@ async function scPdf(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (scKauWait(t)) return;                                       // S3: the held part is not known yet (no PDF offered)
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
-  const reset = btn ? btn.innerHTML : '';
-  if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
+  const y = M.y, job = stPdfStart(btn, 'sc|' + y + '|' + key, '[data-sc="pdf"][data-k="' + CSS.escape(String(key)) + '"]', () => SC.year === y);
+  if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     const out = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t));
     await ccOpenPdf(out.blob, out.name);
   } catch (e) { console.error('[settlements] casa PDF', e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn) { btn.innerHTML = reset; btn.disabled = false; } }
+  finally { stPdfDone(job, btn); }
 }
 async function scListPdf(btn) {
   const M = SC.model; if (!M) return;
@@ -2924,10 +2924,11 @@ async function scListPdf(btn) {
   const d = { brand: 'Casa Castel', unitLabel: 'NK', unitName: String(M.y), footer: house.join(' \u00b7 '), listOnly: true,
               extra: { title: 'Belegliste ' + M.y + ' \u00b7 Einzelrechnungen', intro: 'Hausgeld-Jahresabrechnungen und Einzelrechnungen, die in die Nebenkosten ' + M.y + ' eingeflossen sind.',
                        rows: ex.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(ex.reduce((a, l) => a + l.info.amount, 0)) } };
-  const reset = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
+  const y = M.y, job = stPdfStart(btn, 'scl|' + y, '[data-sc="listPdf"]', () => SC.year === y);
+  if (!job) return;                                               // P10: on its way (its button says so)
   try { const out = await nkLetterPdf(d, ccPdfFileName('Belegliste', M.y, 'Casa-Castel')); await ccOpenPdf(out.blob, out.name); }
   catch (e) { console.error(e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn) { btn.disabled = false; btn.innerHTML = reset; } }
+  finally { stPdfDone(job, btn); }
 }
 
 /* Mark as sent: letter → archive, result → Controlling (same path as Rentals)

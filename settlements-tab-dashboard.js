@@ -586,7 +586,7 @@ function sdChange(e) {
   if (f === 'tenant_name') {                                       // a known tenant → fill address, days and NK
     const t = sdTenants(d).find(z => [z.first_name, z.last_name].filter(Boolean).join(' ').toLowerCase() === String(el.value).trim().toLowerCase());
     const left = SD.leftPick && SD.leftPick.d === d ? SD.leftPick : null; SD.leftPick = null;
-    if (t) { sdPickTenant(d, t); SD.dirty = true; return sdRenderModal(); }
+    if (t) { sdPickTenant(d, t); SD.dirty = true; return stAfterTap(sdRenderModal); }
     // K2 (44): a tenant picked from the app, replaced by another name typed by hand → his move-out no longer counts (the
     // letter: 'auf das bekannte Konto', or type the IBAN) · a draft typed by hand keeps what it was saved with
     if (left && String(left.name || '').trim().toLowerCase() !== String(el.value).trim().toLowerCase()) d.former = false;
@@ -600,21 +600,21 @@ function sdChange(e) {
     if (d.tenant_ref) d.former = false;                            // K2 (44): the tenant picked from the app is left
     d.unit_label = ''; d.tenant_ref = '';
     if (!d.address) d.address = '';
-    return sdRenderModal();
+    return stAfterTap(sdRenderModal);
   }
   if (f === 'tenant_ref') {
     d.tenant_ref = el.value;
     const t = sdTenants(d).find(x => String(x.id) === String(el.value));
     if (t) sdPickTenant(d, t);
-    return sdRenderModal();
+    return stAfterTap(sdRenderModal);
   }
   if (f === 'period_from' || f === 'period_to') {                 // new period → the tenant's days and monthly NK follow
     const same = sdSameVz(d); d[f] = el.value; SD.customPeriod = true;
     sdAfterPeriod(d, same);
-    return sdRenderModal();
+    return stAfterTap(sdRenderModal);
   }
-  if (f === 'use_from' || f === 'use_to') { const same = sdSameVz(d); d[f] = el.value; sdRespread(d, same); return sdRenderModal(); }
-  if (f === 'letter_date' || f === 'unit_label' || f === 'settle_via') { d[f] = el.value; return sdRenderModal(); }
+  if (f === 'use_from' || f === 'use_to') { const same = sdSameVz(d); d[f] = el.value; sdRespread(d, same); return stAfterTap(sdRenderModal); }
+  if (f === 'letter_date' || f === 'unit_label' || f === 'settle_via') { d[f] = el.value; return stAfterTap(sdRenderModal); }
 }
 /* The tenant's own days inside the period + monthly NK from the contract (only while no month is typed in) */
 function sdTenantPeriod(d, t) {
@@ -750,7 +750,8 @@ async function sdLetterData(d) {
 const sdFileName = d => ccPdfFileName('NK-Abrechnung', String(d.period_to).slice(0, 4), sdPropName(d).replace(/\s*·\s*/g, '-'), String(d.tenant_name || '').split(' ').slice(-1)[0]);
 async function sdPdf(btn) {
   const d = SD.d; if (!d) return;
-  const reset = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
+  const job = stPdfStart(btn, d, '#sdModal [data-sd="pdf"]', () => !!SD.modal && SD.d === d);
+  if (!job) return;                                               // P10: this letter is on its way (its button says so)
   try {
     if (d.status === 'sent') {                                    // sent: open exactly the archived letter
       const L = (typeof SC !== 'undefined' ? SC.letters : []).find(l => d.letter_id && String(l.id) === String(d.letter_id));
@@ -758,10 +759,10 @@ async function sdPdf(btn) {
     }
     const saved = d.status === 'sent' ? null : await sdSave(true);
     const out = await nkLetterPdf(await sdLetterData(d), sdFileName(d));
-    if (saved && SD.d === d) { SD.pdfMade = true; sdRenderModal(); }   // next step: Mark as sent
+    if (saved && SD.d === d) { SD.pdfMade = true; sdRenderModal(); stPdfRepaint(); }   // next step: Mark as sent (P10: the button stays 'Creating PDF')
     await ccOpenPdf(out.blob, out.name);
   } catch (e) { console.error('[settlements] manual PDF', e); stNotice('The PDF could not be created. Please try again.'); }
-  finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = reset; } }
+  finally { stPdfDone(job, btn); }
 }
 async function sdSend(btn) {
   const d = SD.d; if (!d) return;

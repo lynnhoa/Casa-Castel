@@ -624,6 +624,10 @@ function ccKauHealAfterFail(app, tid, back) {
   return ccKauHeal(app, tid, false, back);
 }
 const _ckbState = k => JSON.stringify([!!k.settled, _ckbD(k.settled_at), _ckbR2(k.nk_einbehalt), _ckbKept(k)]);
+/* P10: a Save writes Received / Refund / Received on / Reason in the same write as the rest (cc-kaution-card.js) — after a failed
+   one, the row it may have reached is told apart by these too (o.amt: the values before that Save) */
+const _ckbAmt = (k, o) => JSON.stringify([_ckbR2(o.received), _ckbR2(o.returned), _ckbD(o.received_at), String(o.deduction_reason || '')])
+  === JSON.stringify([_ckbR2(k.received), _ckbR2(k.returned), _ckbD(k.received_at), String(k.deduction_reason || '')]);
 function ccKauHeal(app, tid, check, back) {
   const A = _CCK[app], k0 = A && tid ? A.map()[tid] : null;
   if (!A || !A.kb || !k0 || !k0.id || typeof sbL === 'undefined' || !sbL) return Promise.resolve({});
@@ -638,7 +642,7 @@ function ccKauHeal(app, tid, check, back) {
       const bad = res.find(r => r.error); if (bad) return { error: bad.error };
       const k = (res[0].data || [])[0];
       if (k && back) {                                     // NP1: the row decides whether the amounts go back
-        if (_ckbState(k) === _ckbState(back.old)) {
+        if (_ckbState(k) === _ckbState(back.old) && (!back.old.amt || _ckbAmt(k, back.old.amt))) {
           if (back.amt) {                                  // fin2 (b): none to put back when the Save kept Received / Refund
             const w = await sbL.from(A.table).update(back.amt).eq('id', k.id);
             if (w.error) return { error: w.error };
